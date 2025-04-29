@@ -103,8 +103,8 @@ jobs:
       - name: Build UI
         run: npm run client-build
 
-#      - name: Build and publish dockerfiles
-#        run: sh docker.sh
+      - name: Build
+        run: sh build.sh
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
