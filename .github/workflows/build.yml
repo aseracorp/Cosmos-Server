@@ -12,6 +12,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  MAX_TOKEN: ${{ secrets.MAX_TOKEN }}
   BUILD_VERSION: "head"
   PKG_NAME: "cosmos-cloud"
   MAINTAINER_NAME: "Yann Stepienik"
@@ -51,9 +52,7 @@ jobs:
           node-version: 16
 
       - name: install dependencies
-        run: |
-            sudo apt-get install bash curl
-            npm install
+        run: npm install
 
       - name: Download GeoLite2-Country database
         run: |
