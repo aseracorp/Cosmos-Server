@@ -62,22 +62,40 @@ jobs:
       - name: install dependencies
         run: npm install
 
+      - name: cache GeoLite2-Country database
+        id: cache-geolite
+        uses: actions/cache@v4
+        with:
+          path: GeoLite2-Country.mmdb
+          key: ${{ runner.os }}-geolite2
+
       - name: Download GeoLite2-Country database
+        if: steps.cache-geolite.outputs.cache-hit != 'true'
         run: |
             curl -s -L "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=$MAX_TOKEN&suffix=tar.gz" -o GeoLite2-Country.tar.gz
             tar -xzf GeoLite2-Country.tar.gz --strip-components 1 --wildcards "*.mmdb"
 
+      - name: cache Nebula Binary
+        id: cache-nebula
+        uses: actions/cache@v4
+        with:
+          path: nebula*
+          key: ${{ runner.os }}-nebula
+
       - name: Download and Extract ARM Nebula Binary
+        if: steps.cache-nebula.outputs.cache-hit != 'true'
         run: |
             curl -LO https://github.com/slackhq/nebula/releases/download/v1.8.2/nebula-linux-arm64.tar.gz
             tar -xzvf nebula-linux-arm64.tar.gz
 
       - name: Rename ARM Nebula Binary
+        if: steps.cache-nebula.outputs.cache-hit != 'true'
         run: |
             mv nebula nebula-arm
             mv nebula-cert nebula-arm-cert
 
       - name: Download and Extract Nebula Binary
+        if: steps.cache-nebula.outputs.cache-hit != 'true'
         run: |
             curl -LO https://github.com/slackhq/nebula/releases/download/v1.8.2/nebula-linux-amd64.tar.gz
             tar -xzvf nebula-linux-amd64.tar.gz
@@ -99,7 +117,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          tags: type=raw,value=latest,enable=${{ github.head_ref || github.ref_name }} 
+          tags: type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       # This step uses the `docker/build-push-action` action to build the image, based on your repository's `Dockerfile`. If the build succeeds, it pushes the image to GitHub Packages.
       # It uses the `context` parameter to define the build's context as the set of files located in the specified path. For more information, see "[Usage](https://github.com/docker/build-push-action#usage)" in the README of the `docker/build-push-action` repository.
