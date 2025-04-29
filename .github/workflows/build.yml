@@ -51,7 +51,6 @@ jobs:
         with:
           node-version: 16
           cache: 'npm'
-          cache-dependency-path: ./package-lock.json
 
       #- name: Cache dependencies
       #  uses: actions/cache@v2
@@ -60,8 +59,8 @@ jobs:
        #   key: npm-${{ hashFiles('package-lock.json') }}
        #   restore-keys: npm-
 
-#      - name: install dependencies
-#        run: npm install
+      - name: install dependencies
+        run: npm install
 
       - name: Download GeoLite2-Country database
         run: |
