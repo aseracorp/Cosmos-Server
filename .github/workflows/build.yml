@@ -8,9 +8,6 @@ on:
   pull_request:
     branches: [ "master", "unstable" ]
 
-permissions:
-  contents: write
-
 # Defines two custom environment variables for the workflow. These are used for the Container registry domain, and a name for the Docker image that this workflow builds.
 env:
   REGISTRY: ghcr.io
@@ -26,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     permissions:
-      contents: read
+      contents: write
       packages: write
       attestations: write
       id-token: write
