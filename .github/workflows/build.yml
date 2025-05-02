@@ -186,6 +186,5 @@ jobs:
         uses: ncipollo/release-action@v1      
         with:
           artifacts: "${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-*.zip,${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-*.zip.md5"
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tag: ${{ steps.meta.outputs.tags }}
           allowUpdates: true
