@@ -185,6 +185,7 @@ jobs:
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1      
         with:
-          artifacts: "${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-/*"
-          tag: ${{ steps.version-step.outputs.version }}
+          artifacts: "${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-*.zip,${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-*.zip.md5"
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           allowUpdates: true
