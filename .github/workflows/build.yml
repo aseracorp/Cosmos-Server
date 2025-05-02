@@ -13,7 +13,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   MAX_TOKEN: ${{ secrets.MAX_TOKEN }}
-  BUILD_VERSION: "head"
+  VERSION: "head"
   PKG_NAME: "cosmos-cloud"
   MAINTAINER_NAME: "Yann Stepienik"
   MAINTAINER_EMAIL: "cosmoscloudsup@gmail.com"
@@ -30,6 +30,11 @@ jobs:
       id-token: write
       # 
     steps:
+
+      - name: Set environment variables
+        run: |
+          echo "VERSION=$(jq -r .version package.json)" >> $env:GITHUB_ENV
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -117,7 +122,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          tags: type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
+          tags: type=raw,value=latest,enable=${{ env.VERSION }}
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       # This step uses the `docker/build-push-action` action to build the image, based on your repository's `Dockerfile`. If the build succeeds, it pushes the image to GitHub Packages.
       # It uses the `context` parameter to define the build's context as the set of files located in the specified path. For more information, see "[Usage](https://github.com/docker/build-push-action#usage)" in the README of the `docker/build-push-action` repository.
@@ -145,56 +150,35 @@ jobs:
 
       - name: Prepare package structure
         run: |
-            mkdir -p ${PKG_NAME}-${VERSION}
-            cp -r build/* ${PKG_NAME}-${VERSION}/
-            rm ${PKG_NAME}-${VERSION}/cosmos-launcher-arm64
-            rm ${PKG_NAME}-${VERSION}/cosmos-arm64
-            rm ${PKG_NAME}-${VERSION}/nebula-arm
-            rm ${PKG_NAME}-${VERSION}/nebula-arm-cert
+            mkdir -p ${{ env.PKG_NAME }}-${{ env.VERSION }}
+            cp -r build/* ${{ env.PKG_NAME }}-${{ env.VERSION }}/
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/cosmos-launcher-arm64
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/cosmos-arm64
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm-cert
 
       - name: Prepare ARM64 package structure
         run: |
-            mkdir -p ${PKG_NAME}-${VERSION}-arm64
-            cp -r build/* ${PKG_NAME}-${VERSION}-arm64/
-            mv ${PKG_NAME}-${VERSION}-arm64/nebula-arm ${PKG_NAME}-${VERSION}-arm64/nebula
-            mv ${PKG_NAME}-${VERSION}-arm64/nebula-arm-cert ${PKG_NAME}-${VERSION}-arm64/nebula-cert
-            mv ${PKG_NAME}-${VERSION}-arm64/cosmos-arm64 ${PKG_NAME}-${VERSION}-arm64/cosmos
-            mv ${PKG_NAME}-${VERSION}-arm64/cosmos-launcher-arm64 ${PKG_NAME}-${VERSION}-arm64/cosmos-launcher
+            mkdir -p ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64
+            cp -r build/* ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher
 
       - name: Create .zip packages
         run: |
-            zip -r ${PKG_NAME}-${VERSION}-amd64.zip ${PKG_NAME}-${VERSION}
-            zip -r ${PKG_NAME}-${VERSION}-arm64.zip ${PKG_NAME}-${VERSION}-arm64
+            zip -r ${{ env.PKG_NAME }}-${{ env.VERSION }}-amd64.zip ${{ env.PKG_NAME }}-${{ env.VERSION }}
+            zip -r ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64.zip ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64
 
       - name: Generate MD5 hashes
         run: |
-            md5sum ${PKG_NAME}-${VERSION}-amd64.zip > ${PKG_NAME}-${VERSION}-amd64.zip.md5
-            md5sum ${PKG_NAME}-${VERSION}-arm64.zip > ${PKG_NAME}-${VERSION}-arm64.zip.md5
+            md5sum ${{ env.PKG_NAME }}-${{ env.VERSION }}-amd64.zip > ${{ env.PKG_NAME }}-${{ env.VERSION }}-amd64.zip.md5
+            md5sum ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64.zip > ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64.zip.md5
 
       - name: Create GitHub Release
-        run: |
-            VERSION=$(jq -r .version package.json)
-            PKG_NAME=cosmos-cloud
-           
-            # Get current branch name
-            BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
-           
-            if [ "$BRANCH_NAME" = "master" ] || [ "$BRANCH_NAME" = "main" ]; then
-              gh release create v$VERSION \
-                ${PKG_NAME}-${VERSION}-amd64.zip \
-                ${PKG_NAME}-${VERSION}-amd64.zip.md5 \
-                ${PKG_NAME}-${VERSION}-arm64.zip \
-                ${PKG_NAME}-${VERSION}-arm64.zip.md5 \
-                --title "Release $VERSION" \
-                --notes "Release version $VERSION for x86_64 and ARM64 architectures"
-            else
-              gh release create v$VERSION \
-                ${PKG_NAME}-${VERSION}-amd64.zip \
-                ${PKG_NAME}-${VERSION}-amd64.zip.md5 \
-                ${PKG_NAME}-${VERSION}-arm64.zip \
-                ${PKG_NAME}-${VERSION}-arm64.zip.md5 \
-                --prerelease \
-                --title "Beta Release $VERSION" \
-                --notes "Beta release version $VERSION for x86_64 and ARM64 architectures from branch $BRANCH_NAME"
-            fi
-      
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.PKG_NAME }}-${{ env.VERSION }}-/*"
+          tag: ${{ env.VERSION }}
+          allowUpdates: true
