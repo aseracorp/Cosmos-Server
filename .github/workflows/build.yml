@@ -126,10 +126,10 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          tags: type=raw,value=latest,enable=${{ steps.version-step.outputs.version }}   
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        env:
-          VERSION: ${{ steps.version-step.outputs.version }}          
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
+            type=semver,pattern={{version}},value=${{ steps.version-step.outputs.version }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}   
       # This step uses the `docker/build-push-action` action to build the image, based on your repository's `Dockerfile`. If the build succeeds, it pushes the image to GitHub Packages.
       # It uses the `context` parameter to define the build's context as the set of files located in the specified path. For more information, see "[Usage](https://github.com/docker/build-push-action#usage)" in the README of the `docker/build-push-action` repository.
       # It uses the `tags` and `labels` parameters to tag and label the image with the output from the "meta" step.
@@ -156,35 +156,35 @@ jobs:
 
       - name: Prepare package structure       
         run: |
-            mkdir -p ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   
-            cp -r build/* ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   /
-            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   /cosmos-launcher-arm64
-            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   /cosmos-arm64
-            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   /nebula-arm
-            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   /nebula-arm-cert
+            mkdir -p ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}
+            cp -r build/* ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}/
+            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}/cosmos-launcher-arm64
+            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}/cosmos-arm64
+            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}/nebula-arm
+            rm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}/nebula-arm-cert
 
       - name: Prepare ARM64 package structure      
         run: |
-            mkdir -p ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64
-            cp -r build/* ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/
-            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/nebula-arm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/nebula
-            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/nebula-arm-cert ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/nebula-cert
-            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/cosmos
-            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64/cosmos-launcher
+            mkdir -p ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64
+            cp -r build/* ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/
+            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/nebula-arm ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/nebula
+            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/nebula-arm-cert ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/nebula-cert
+            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/cosmos
+            mv ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64/cosmos-launcher
 
       - name: Create .zip packages       
         run: |
-            zip -r ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -amd64.zip ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   
-            zip -r ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64.zip ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64
+            zip -r ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-amd64.zip ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}
+            zip -r ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64.zip ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64
 
       - name: Generate MD5 hashes    
         run: |
-            md5sum ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -amd64.zip > ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -amd64.zip.md5
-            md5sum ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64.zip > ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -arm64.zip.md5
+            md5sum ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-amd64.zip > ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-amd64.zip.md5
+            md5sum ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64.zip > ${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-arm64.zip.md5
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1      
         with:
-          artifacts: "${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}   -/*"
-          tag: ${{ steps.version-step.outputs.version }}   
+          artifacts: "${{ env.PKG_NAME }}-${{ steps.version-step.outputs.version }}-/*"
+          tag: ${{ steps.version-step.outputs.version }}
           allowUpdates: true
