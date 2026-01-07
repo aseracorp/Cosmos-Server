@@ -1,16 +1,18 @@
 package docker
 
 import (
-	"github.com/azukaar/cosmos-server/src/utils" 
-	"net/http"
-	"fmt"
 	"errors"
+	"fmt"
+	"net/http"
+
+	"github.com/azukaar/cosmos-server/src/utils"
 
 	// "github.com/docker/docker/client"
 	// "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
-	
+
 	"runtime"
+
 	"golang.org/x/sys/cpu"
 )
 
@@ -62,7 +64,10 @@ func RunDB(db utils.DatabaseConfig) (DockerServiceCreateRequest, error) {
 		Name: db.Hostname,
 		Image: imageName,
 		RestartPolicy: "always",
-		Command: "--wiredTigerCacheSizeGB 0.25",
+		Command: []string{
+			"mongod",
+			"--wiredTigerCacheSizeGB=0.25",
+		},
 		Environment: []string{
 			"MONGO_INITDB_ROOT_USERNAME=" + db.Username,
 			"MONGO_INITDB_ROOT_PASSWORD=" + db.Password,
