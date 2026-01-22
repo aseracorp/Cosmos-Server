@@ -123,7 +123,7 @@ func NewDB(w http.ResponseWriter, req *http.Request) (utils.DatabaseConfig, erro
 	mongoPass := utils.GenerateRandomString(24)
 	monHost := "cosmos-mongo-" + id
 	
-	imageVersion := "6"
+	imageVersion := "8"
 
 	dbConf := utils.DatabaseConfig {
 		PuppetMode: true,

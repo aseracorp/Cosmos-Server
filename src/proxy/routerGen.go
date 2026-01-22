@@ -97,7 +97,7 @@ func RouterGen(route utils.ProxyRouteConfig, router *mux.Router, destination htt
 	if route.UseHost {
 		origin = origin.Host(route.Host)
 
-		if route.Mode == "SERVAP" || route.Mode == "PROXY" || route.Mode == "REDIRECT" {
+		if route.Mode == "SERVAPP" || route.Mode == "PROXY" || route.Mode == "REDIRECT" {
 			// if Scheme is not http/https, discard
 			urlRoute, err := url.Parse(route.Target)
 			if err != nil {
@@ -196,10 +196,10 @@ func RouterGen(route utils.ProxyRouteConfig, router *mux.Router, destination htt
 	}
 
 	if !route.DisableHeaderHardening {
-		destination = utils.SetSecurityHeaders(destination)
+		destination = utils.SetSecurityHeaders(utils.CORSHeader(originCORS)(destination))
 	}
 
-	destination = tokenMiddleware(route)(utils.CORSHeader(originCORS)((destination)))
+	destination = tokenMiddleware(route)(utils.SetCosmosHeader(destination))
 
 	origin.Handler(destination)
 

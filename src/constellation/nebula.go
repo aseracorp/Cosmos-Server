@@ -130,7 +130,7 @@ func handleProcessOutput(stdout, stderr io.ReadCloser, logBuffer *lumberjack.Log
 			scanner := bufio.NewScanner(stdout)
 			for scanner.Scan() {
 					line := scanner.Text()
-					utils.VPN(line)
+					utils.VPNWithLevel(line)
 					if _, err := logBuffer.Write([]byte(line + "\n")); err != nil {
 							utils.Error("Failed to write to log buffer", err)
 					}
@@ -283,7 +283,7 @@ func ResetNebula() error {
 
 func GetAllLightHouses() ([]utils.ConstellationDevice, error) {
 	c, closeDb, err := utils.GetEmbeddedCollection(utils.GetRootAppId(), "devices")
-  defer closeDb()
+    defer closeDb()
 	if err != nil {
 		return []utils.ConstellationDevice{}, err
 	}
@@ -306,7 +306,7 @@ func GetAllLightHouses() ([]utils.ConstellationDevice, error) {
 
 func GetBlockedDevices() ([]utils.ConstellationDevice, error) {
 	c, closeDb, err := utils.GetEmbeddedCollection(utils.GetRootAppId(), "devices")
-  defer closeDb()
+    defer closeDb()
 	if err != nil {
 		return []utils.ConstellationDevice{}, err
 	}

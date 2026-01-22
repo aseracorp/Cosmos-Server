@@ -1,5 +1,66 @@
 export const ServeConfig = [
     {
+        "Name": "samba",
+        "Description": "Samba / SMB/CIFS Share",
+        "Prefix": "smb",
+        "Proxy": "tcp",
+        "DefaultSource": "0.0.0.0:445",
+        "Options": [
+            {
+                "Name": "user",
+                "Help": "User name for authentication (Samba requires a Linux user account. Cosmos will create it if it does not exist)",
+                "Provider": "",
+                "Default": "",
+                "Value": null,
+                "ShortOpt": "",
+                "Hide": 0,
+                "Required": true,
+                "IsPassword": false,
+                "NoPrefix": false,
+                "Advanced": false
+            },
+            {
+                "Name": "pass",
+                "Help": "Password for authentication",
+                "Provider": "",
+                "Default": "",
+                "Value": null,
+                "ShortOpt": "",
+                "Hide": 0,
+                "Required": true,
+                "IsPassword": true,
+                "NoPrefix": false,
+                "Advanced": false
+            },
+            {
+                "Name": "force user",
+                "Help": "Force files to be manipulated as this linux user (use this to fix permission issues)",
+                "Provider": "",
+                "Default": "",
+                "Value": null,
+                "ShortOpt": "",
+                "Hide": 0,
+                "Required": false,
+                "IsPassword": false,
+                "NoPrefix": false,
+                "Advanced": true
+            },
+            {
+                "Name": "permission",
+                "Help": "Permission level: R (read), F (full/write) [Default: F]",
+                "Provider": "",
+                "Default": "F",
+                "Value": null,
+                "ShortOpt": "",
+                "Hide": 0,
+                "Required": false,
+                "IsPassword": false,
+                "NoPrefix": false,
+                "Advanced": true
+            }
+        ]
+    },
+    {
         "Name": "sftp",
         "Description": "SFTP server",
         "Prefix": "sftp",
