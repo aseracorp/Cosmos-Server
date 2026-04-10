@@ -10,11 +10,11 @@ rm -rf build
 
 cp src/update.go src/launcher/update.go
 
-go build -o build/cosmos src/*.go
+go build --ldflags '-extldflags "-static"' -o build/cosmos src/*.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
-go build -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
+go build --ldflags '-extldflags "-static"' -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
