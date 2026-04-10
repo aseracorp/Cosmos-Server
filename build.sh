@@ -15,20 +15,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-go build -trimpath -ldflags "-s -w -linkmode 'external' -extldflags '-static'" -o build/cosmos src/*.go
+CC=musl-gcc go build -trimpath -ldflags "-s -w" -o build/cosmos src/*.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
-go build -trimpath -ldflags "-s -w -linkmode 'external' -extldflags '-static'" -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
+CC=musl-gcc go build -trimpath -ldflags "-s -w" -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
-
-# Remove debug symbols from the binary.
-strip build/cosmos-arm64
-strip build/cosmos-launcher-arm64
-strip build/cosmos
-strip build/cosmos-launcher
 
 # Compress the executable (test performance impact before using in production).
 upx -9 build/cosmos-arm64
