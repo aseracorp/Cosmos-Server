@@ -10,11 +10,11 @@ rm -rf build
 
 cp src/update.go src/launcher/update.go
 
-CGO_ENABLED=0 go build -o build/cosmos src/*.go
+go build -ldflags "-linkmode 'external' -extldflags '-static'" -o build/cosmos src/*.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
-CGO_ENABLED=0 go build -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
+go build -ldflags "-linkmode 'external' -extldflags '-static'" -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
