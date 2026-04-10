@@ -63,7 +63,7 @@ jobs:
       - name: install dependencies
         run: |
           npm install
-          sudo apt-get update && sudo apt-get install -y musl
+          sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: cache GeoLite2-Country database
         id: cache-geolite
