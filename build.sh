@@ -6,20 +6,20 @@ rm -rf build
 
 cp src/update.go src/launcher/update.go
 
-env GOARCH=arm64 go build -o build/cosmos-arm64 src/*.go
+env GOARCH=arm64 go build -ldflags "-s -w" -o build/cosmos-arm64 src/*.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
-env GOARCH=arm64 go build -o build/cosmos-launcher-arm64 ./src/launcher/launcher.go ./src/launcher/update.go
+env GOARCH=arm64 go build -ldflags "-s -w" -o build/cosmos-launcher-arm64 ./src/launcher/launcher.go ./src/launcher/update.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
 
-go build -ldflags "-linkmode 'external' -extldflags '-static'" -o build/cosmos src/*.go
+go build -ldflags "-s -w -linkmode 'external' -extldflags '-static'" -o build/cosmos src/*.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
-go build -ldflags "-linkmode 'external' -extldflags '-static'" -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
+go build -ldflags "-s -w -linkmode 'external' -extldflags '-static'" -o build/cosmos-launcher ./src/launcher/launcher.go ./src/launcher/update.go
 if [ $? -ne 0 ]; then
     exit 1
 fi
