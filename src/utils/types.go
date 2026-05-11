@@ -446,6 +446,11 @@ type ConstellationDevice struct {
 	Fingerprint string `json:"fingerprint" 	bson:"Fingerprint"`
 	APIKey string `json:"-" bson:"APIKey"`
 	Invisible bool `json:"invisible" bson:"Invisible"`
+	// Tags are free-form labels assigned to this device. Deployments with a
+	// matching Tags selector will only land on devices whose Tags contain
+	// every requested tag (AND semantics). Used by the scheduler's placement
+	// filter — see src/pro/scheduler.go.
+	Tags []string `json:"tags,omitempty" bson:"Tags,omitempty"`
 }
 
 type NebulaFirewallRule struct {

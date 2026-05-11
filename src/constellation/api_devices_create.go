@@ -246,8 +246,8 @@ func DeviceCreate(request DeviceCreateRequestJSON) (string, string, string, Devi
 			return "", "", "", DeviceCreateRequestJSON{}, err
 		}
 
-		// Check cosmos node and devices limit
-		if request.CosmosNode > 0 {
+		// Check cosmos node and devices limit (skipped on Pro — unlimited).
+		if !utils.IsPro() && request.CosmosNode > 0 {
 			countManagers, errCount := c.CountDocuments(nil, map[string]interface{}{
 				"CosmosNode": 2,
 				"Blocked": false,
@@ -282,18 +282,20 @@ func DeviceCreate(request DeviceCreateRequestJSON) (string, string, string, Devi
 			}
 		}
 
-		totalClientLimit := 10 * int64(utils.GetNumberUsers())
+		if !utils.IsPro() {
+			totalClientLimit := 10 * int64(utils.GetNumberUsers())
 
-		countDevices, errCountDevices := c.CountDocuments(nil, map[string]interface{}{
-			"Blocked": false,
-		})
+			countDevices, errCountDevices := c.CountDocuments(nil, map[string]interface{}{
+				"Blocked": false,
+			})
 
-		if errCountDevices != nil {
-			return "", "", "", DeviceCreateRequestJSON{}, errCountDevices
-		}
+			if errCountDevices != nil {
+				return "", "", "", DeviceCreateRequestJSON{}, errCountDevices
+			}
 
-		if countDevices >= totalClientLimit {
-			return "", "", "", DeviceCreateRequestJSON{}, errors.New("DeviceCreation: Device limit reached")
+			if countDevices >= totalClientLimit {
+				return "", "", "", DeviceCreateRequestJSON{}, errors.New("DeviceCreation: Device limit reached")
+			}
 		}
 
 		if request.IsLighthouse && request.Nickname != "" {

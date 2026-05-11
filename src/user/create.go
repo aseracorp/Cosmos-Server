@@ -89,7 +89,7 @@ func UserCreate(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		if count >= int64(utils.GetNumberUsers()) {
+		if !utils.IsPro() && count >= int64(utils.GetNumberUsers()) {
 			utils.Error("UserCreation: User limit reached", nil)
 			utils.HTTPError(w, "User limit reached", http.StatusConflict, "UC014")
 			return

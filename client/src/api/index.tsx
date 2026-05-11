@@ -12,6 +12,7 @@ import createBackupsAPI from './backup';
 import createApiTokensAPI from './apiTokens';
 import createOpenIDAPI from './openid';
 import createGroupsAPI from './groups';
+import createDeploymentsAPI from './deployments';
 
 import * as authDemo from './authentication.demo';
 import * as usersDemo from './users.demo';
@@ -57,6 +58,7 @@ export function createClient({ baseUrl, token }) {
     apiTokens: createApiTokensAPI(apiFetch),
     openid: createOpenIDAPI(apiFetch),
     groups: createGroupsAPI(apiFetch),
+    deployments: createDeploymentsAPI(apiFetch),
 
     getStatus: () => {
       return wrap(apiFetch('/cosmos/api/status', {

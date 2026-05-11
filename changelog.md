@@ -1,3 +1,31 @@
+## Version 0.22.18
+ - More Terraform improvemnts
+
+## Version 0.22.17
+ - Fixed bug with some constellation devices not being deletable
+ 
+## Version 0.22.16
+ - Improve standalone constellation check
+ - More Terraform improvements 
+
+## Version 0.22.15
+ - Terraform improvements for first installs 
+ - Some pro scaffolding
+
+## Version 0.22.14
+ - added missing deployments function in the SDK
+
+## Version 0.22.13
+ - Add licence to new install SDK function
+
+## Version 0.22.12
+ - Allow single lighthouse to start NATS (regression)
+
+## Version 0.22.11
+ - Added labels to volumes## Version 0.22.12
+ - Minor improvement on Constellation edit device
+ - Some pro scaffolding
+
 ## Version 0.22.10
  - Fix some Restic warning breaking integration
  - Remove NATS when there's only one server in Constellation

@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/azukaar/cosmos-server/src/utils"
+	"github.com/azukaar/cosmos-server/src/pro"
+	"github.com/azukaar/cosmos-server/src/docker"
 )
 
 func getNATSReplicas() int {
@@ -86,6 +88,14 @@ func GetAllTunneledRoutes() []utils.ProxyRouteConfig {
 }
 
 func StopHeartbeat() {
+	// Scheduler must stop before heartbeat: it depends on the NATS client and
+	// KV buckets that the heartbeat tears down.
+	StopSchedulerInConstellation()
+	// Sampler is independent of the scheduler (runs on every node regardless
+	// of leader role) but we stop it here because the heartbeat loop is its
+	// only consumer in production.
+	pro.StopResourceSampler()
+
 	if heartbeatStopChan != nil {
 		close(heartbeatStopChan)
 		heartbeatStopChan = nil
@@ -141,7 +151,19 @@ func ClientHeartbeatInit() {
 		utils.Debug("[NATS] JetStream not ready, retrying... " + err.Error())
 	}
 
+	pro.ClientHeartbeatInit(&clientConfigLock, js, getNATSReplicas())
+
 	utils.Debug("[NATS] Key-Value store 'constellation-nodes' ready")
+
+	// Resource sampler: caches CPU/RAM snapshots so the heartbeat builder can
+	// read them without paying the 1s cpu.Percent cost on every tick. The
+	// LeastBusyPlacement strategy consumes these.
+	pro.StartResourceSampler()
+
+	// Scheduler: runs the deployment reconciler on whichever node wins the
+	// leader election in constellation-nodes. Must be started after
+	// pro.ClientHeartbeatInit so the deployments KV exists.
+	StartSchedulerInConstellation()
 
 	UpdateLocalTunnelCache()
 
@@ -230,6 +252,21 @@ func ClientHeartbeatInit() {
 
 				key := sanitizeNATSUsername(device.DeviceName)
 
+				// Docker is authoritative for "what is running here" — query
+				// containers labeled cosmos-deployment each tick rather than
+				// tracking in-process state. Failures degrade gracefully to
+				// an empty list; the scheduler's safety-net reconcile will
+				// retry within 1 minute.
+				running, rerr := docker.ListDeploymentNamesRunningHere()
+				if rerr != nil {
+					utils.Warn("[SCHED-NODE] failed to list cosmos-deployment containers for heartbeat: " + rerr.Error())
+					running = nil
+				}
+
+				// Read the latest cached resource sample. Cheap — the
+				// sampler's own goroutine paid the cpu.Percent cost.
+				res := pro.GetCurrentResources()
+
 				heartbeat := NodeHeartbeat{
 					DeviceName: device.DeviceName,
 					IP: device.IP,
@@ -238,6 +275,11 @@ func ClientHeartbeatInit() {
 					IsExitNode: device.IsExitNode,
 					CosmosNode: device.CosmosNode,
 					Tunnels: GetAllTunneledRoutes(),
+					RunningDeployments: running,
+					CPUPercent: res.CPUPercent,
+					RAMPercent: res.RAMPercent,
+					MonitoringOn: res.MonitoringOn,
+					Tags: device.Tags,
 				}
 
 				heartbeatData, err := json.Marshal(heartbeat)

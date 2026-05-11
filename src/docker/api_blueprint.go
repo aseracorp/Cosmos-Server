@@ -103,6 +103,7 @@ type ContainerCreateRequestVolume struct {
 	Driver string `json:"driver"`
 	Source string `json:"source"`
 	Target string `json:"target"`
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 type ContainerCreateRequestNetworkIPAMConfig struct {
@@ -349,6 +350,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			Attachable: networkToCreate.Attachable,
 			Internal:   networkToCreate.Internal,
 			EnableIPv6: networkToCreate.EnableIPv6,
+			Labels:     networkToCreate.Labels,
 			IPAM: &network.IPAM{
 					Driver: networkToCreate.IPAM.Driver,
 					Config: ipamConfig,
@@ -395,6 +397,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		_, err = DockerClient.VolumeCreate(DockerContext, volumetype.CreateOptions{
 			Driver:     volume.Driver,
 			Name:       volume.Name,
+			Labels:     volume.Labels,
 		})
 
 		if err != nil {
