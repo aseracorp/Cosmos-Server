@@ -108,6 +108,27 @@ jobs:
             tar -xzvf nebula-linux-amd64.tar.gz
             upx -9 nebula
 
+      - name: cache restic Binary
+        id: cache-restic
+        uses: actions/cache@v4
+        with:
+          path: restic*
+          key: ${{ runner.os }}-restic
+
+      - name: Download and Extract ARM Restic binary
+        if: steps.cache-restic.outputs.cache-hit != 'true'
+        run: |
+            curl -LO https://github.com/restic/restic/releases/download/v0.17.3/restic_0.17.3_linux_arm64.bz2
+            bunzip2 restic_0.17.3_linux_arm64.bz2
+            mv restic_0.17.3_linux_arm64 restic-arm
+
+      - name: Download and Extract Restic binary
+        if: steps.cache-restic.outputs.cache-hit != 'true'
+        run: |
+            curl -LO https://github.com/restic/restic/releases/download/v0.17.3/restic_0.17.3_linux_amd64.bz2
+            bunzip2 restic_0.17.3_linux_amd64.bz2
+            mv restic_0.17.3_linux_amd64 restic
+
       - name: Build UI
         run: npm run client-build
 
@@ -165,7 +186,7 @@ jobs:
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/cosmos-arm64
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm-cert
-
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/restic-arm
       - name: Prepare ARM64 package structure      
         run: |
             mkdir -p ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64
@@ -174,6 +195,7 @@ jobs:
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic
 
       - name: Create .zip packages       
         run: |
