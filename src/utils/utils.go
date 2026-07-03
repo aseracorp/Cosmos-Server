@@ -1258,22 +1258,65 @@ func GetProxyOIDCredentials(route ProxyRouteConfig, hashSecret bool) *fosite.Def
 
 	callbackURL := fmt.Sprintf("https://%s/cosmos/oauth2/detect-callback", route.Host)
 	callbackURLClient := fmt.Sprintf("https://%s/oauth2/callback", route.Host)
+	// Also accept the route root, so an app doing its own OIDC with redirect_uri
+	// pointing at its homepage (e.g. https://app.example.com/) is supported without
+	// requiring a manually-created OpenID client.
+	rootURL := fmt.Sprintf("https://%s/", route.Host)
 
-	redURls := []string{callbackURL, callbackURLClient}
+	// Loopback redirect bases for native apps (RFC 8252 §7.3). fosite matches these
+	// with ANY port (only the port is ignored; scheme/host/path/query must match), so
+	// registering the root path here lets a native app use http://127.0.0.1:<random>/ as
+	// its redirect_uri with no per-client configuration. Safe to expose unconditionally:
+	// loopback redirects are delivered only on the user's own machine (the code never
+	// leaves the device), and public clients still require PKCE. Only the "/" path is
+	// covered; an app redirecting to a sub-path would need that path registered too.
+	loopbackRoot := "http://127.0.0.1/"
+	loopbackRootV6 := "http://[::1]/"
+
+	redURls := []string{callbackURL, callbackURLClient, rootURL, loopbackRoot, loopbackRootV6}
 
 	if IsHTTPS && config.HTTPConfig.AllowHTTPLocalIPAccess {
 		callbackURL2 := fmt.Sprintf("http://%s/cosmos/oauth2/detect-callback", route.Host)
-		redURls = append(redURls, callbackURL2)
+		rootURL2 := fmt.Sprintf("http://%s/", route.Host)
+		redURls = append(redURls, callbackURL2, rootURL2)
 	}
 	
+	// Auto-provisioned route clients are public (PKCE) clients: a public discovery
+	// endpoint can never hand out a secret, and native/SPA apps cannot keep one. The
+	// deterministic secret above is kept only so existing callers compile; it is not
+	// assigned to the client. The Cosmos-gated proxy flow authenticates via PKCE too
+	// (see performLogin / detectCallbackEndpoint and DerivePKCEVerifier).
+	_ = secret
+
 	return &fosite.DefaultClient{
 			ID:            clientID,
-			Secret: 			 []byte(secret),
+			Public:        true,
 			RedirectURIs:  redURls,
 			Scopes:        []string{"openid", "email", "profile", "offline"},
 			ResponseTypes: []string{"code"},
-			GrantTypes:    []string{"authorization_code"},
+			GrantTypes:    []string{"authorization_code", "refresh_token"},
 	}
+}
+
+// DerivePKCEVerifier deterministically derives a PKCE code_verifier from a request
+// path, so the Cosmos-gated proxy flow can compute the same verifier in performLogin
+// (which sends the code_challenge) and later in detectCallbackEndpoint (which sends the
+// verifier) without storing any session state between the two requests. This mirrors the
+// deterministic-secret pattern in GetProxyOIDCredentials.
+//
+// This is safe ONLY because both ends run server-side inside Cosmos: the verifier never
+// reaches a browser/device (only its challenge hash is sent on the front channel), so its
+// secrecy rests on AuthPrivateKey staying secret - the same assumption the deterministic
+// secret already made. Native/SPA apps (Path B) generate their own random verifier and
+// never use this function.
+//
+// A distinct key slice ([0:32]) and domain-separation prefix are used so the result never
+// collides with the state hash (which uses AuthPrivateKey[32:64]). RawURLEncoding of a
+// 32-byte SHA-256 yields 43 chars from [A-Za-z0-9-_], meeting RFC 7636's verifier rules.
+func DerivePKCEVerifier(path string) string {
+	config := GetMainConfig()
+	h := sha256.Sum256([]byte("cosmos-pkce:" + path + config.HTTPConfig.AuthPrivateKey[0:32]))
+	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
 func FindRouteByReqHost(hostname string) (string, *ProxyRouteConfig) {

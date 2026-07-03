@@ -1,3 +1,18 @@
+## Version 0.22.23
+ - Add RootProtocol and RootHostname to cosmos-installer in cosmos-compose
+
+## Version 0.22.22
+ - Add openID clients to non-auth URLs
+ - Allow openID auto-clients to connect native apps
+
+## Version 0.22.21
+ - Tiny adjustment to openid redirect_uri
+
+## Version 0.22.20
+ - Added support for public OAuth2/OIDC via PKCE 
+ - Minor OpenID improvements
+ - Build is now statically linked (CGO_ENABLED=0) for more diverse system compatibility
+
 ## Version 0.22.19
  - Only allow manager server to bypass tunnel authorization
  - Add authorization check on legacy Public Device endpoint

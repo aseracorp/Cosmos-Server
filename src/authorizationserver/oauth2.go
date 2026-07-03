@@ -47,6 +47,7 @@ func Init() {
 		AccessTokenLifespan: time.Minute * 30,
 		GlobalSecret:        secret,
 		SendDebugMessagesToClients: config.LoggingLevel == "DEBUG",
+		EnforcePKCEForPublicClients:    true,
 	}
 
 	store := storage.NewMemoryStore()
@@ -56,13 +57,24 @@ func Init() {
 		utils.Log("Registering OpenID client: " + client.ID)
 
 		// register client
+		grantTypes := []string{"implicit", "refresh_token", "authorization_code", "password", "client_credentials"}
+		clientSecret := []byte(client.Secret)
+
+		if client.Public {
+			// Public clients (SPA/mobile) authenticate via PKCE instead of a secret,
+			// and are restricted to the authorization_code + refresh_token flows.
+			grantTypes = []string{"authorization_code", "refresh_token"}
+			clientSecret = nil
+		}
+
 		store.Clients[client.ID] = &fosite.DefaultClient{
 			ID:             client.ID,
-			Secret:         []byte(client.Secret),
+			Secret:         clientSecret,
+			Public:         client.Public,
 			RedirectURIs:   strings.Split(client.Redirect, ","),
 			Scopes:         []string{"openid", "email", "profile", "offline", "roles", "groups", "address", "phone", "role"},
 			ResponseTypes:  []string{"id_token", "code", "token", "id_token token", "code id_token", "code token", "code id_token token"},
-			GrantTypes:     []string{"implicit", "refresh_token", "authorization_code", "password", "client_credentials"},
+			GrantTypes:     grantTypes,
 		}
 	}
 	
@@ -82,9 +94,19 @@ func Init() {
 	routes := config.HTTPConfig.ProxyConfig.Routes
 	routes = append(routes, utils.GetConstellationTunnelRoutes()...)
 
-	// Add proxy route clients
+	// Add proxy route clients.
+	// Register the public OpenID client for every host-based route that actually
+	// serves an app at route.Host, regardless of AuthEnabled: the discovery endpoint
+	// (openid-detect) advertises this client_id unconditionally, so native/SPA apps
+	// need it present in the store to be able to initiate login even when the route
+	// does not force auth. AuthEnabled still gates whether the route actually requires
+	// login (see routerGen / app_gate).
+	//
+	// REDIRECT routes are excluded on purpose: they host no app (route.Host just 302s
+	// to an external destination), so a client there would be pointless and its
+	// redirect URIs (all on route.Host) point at a host that bounces off-site.
 	for _, route := range routes {
-		if route.AuthEnabled && route.UseHost && !route.Disabled {
+		if route.UseHost && !route.Disabled && route.Mode != "REDIRECT" {
 			utils.Log("Registering OpenID client for route: " + route.Host)
 			client := utils.GetProxyOIDCredentials(route, true)
 			store.Clients[client.ID] = client
@@ -207,15 +229,21 @@ func detectCallbackEndpoint(w http.ResponseWriter, req *http.Request) {
 
 	_, route := utils.FindRouteByReqHost(req.Host)
 	client := utils.GetProxyOIDCredentials(*route, false)
-	strcli := (string)(client.Secret)
-	
+
 	utils.Log("OpenID Direct: Exchanging code for token for client: " + client.ID)
 
-	// Create form data - remove client_id and client_secret from body
+	// The client is public (PKCE), so there is no secret to present. Authenticate the
+	// code exchange by re-deriving the same deterministic verifier whose challenge was
+	// sent in performLogin (keyed off the now-verified path).
+	codeVerifier := utils.DerivePKCEVerifier(path)
+
+	// Create form data - public client, no client_id/client_secret, PKCE verifier instead
 	formData := url.Values{
-			"grant_type":   {"authorization_code"},
-			"code":         {code},
-			"redirect_uri": {client.RedirectURIs[0]},
+			"grant_type":    {"authorization_code"},
+			"code":          {code},
+			"redirect_uri":  {client.RedirectURIs[0]},
+			"client_id":     {client.ID},
+			"code_verifier": {codeVerifier},
 	}
 
 	tokenReq, err := http.NewRequestWithContext(
@@ -231,8 +259,8 @@ func detectCallbackEndpoint(w http.ResponseWriter, req *http.Request) {
 			return
 	}
 
-	// Set Basic auth header for client authentication
-	tokenReq.SetBasicAuth(client.ID, strcli)
+	// Public client: no Basic auth; the client is identified by client_id and proven by
+	// the PKCE code_verifier, both in the form body above.
 	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	// Set additional required attributes
