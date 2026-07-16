@@ -1903,6 +1903,10 @@ definitions:
         type: string
       pathPrefix:
         type: string
+      publicOpenIDName:
+        type: string
+      publicOpenIDRedirectURIs:
+        type: string
       restrictToConstellation:
         type: boolean
       skipURLClean:
@@ -2059,7 +2063,7 @@ info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.22.27
+  version: 0.22.30
 paths:
   /_logs:
     get:

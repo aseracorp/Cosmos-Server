@@ -1239,7 +1239,12 @@ func GetProxyOIDCredentials(route ProxyRouteConfig, hashSecret bool) *fosite.Def
 			Error("Error parsing host: " + fullhost, err)
 	}
 
-	clientID := route.Name //SanitizeNoSpace(Route.Name) + "_" + hex.EncodeToString(hash[:8])
+	// Prefixed so auto-provisioned route clients never clash with (and overwrite) manual OpenID clients sharing the route name
+	clientID := "__route_" + route.Name
+	if route.PublicOpenIDName != "" {
+		// custom client_id set in the route's advanced settings
+		clientID = route.PublicOpenIDName
+	}
 	plainSecret := hex.EncodeToString(hash[8:24])
 
 
@@ -1280,6 +1285,13 @@ func GetProxyOIDCredentials(route ProxyRouteConfig, hashSecret bool) *fosite.Def
 		rootURL2 := fmt.Sprintf("http://%s/", route.Host)
 		redURls = append(redURls, callbackURL2, rootURL2)
 	}
+
+	// extra redirect URIs configured on the route (advanced settings), comma-separated
+	for _, extraURI := range strings.Split(route.PublicOpenIDRedirectURIs, ",") {
+		if extraURI = strings.TrimSpace(extraURI); extraURI != "" {
+			redURls = append(redURls, extraURI)
+		}
+	}
 	
 	// Auto-provisioned route clients are public (PKCE) clients: a public discovery
 	// endpoint can never hand out a secret, and native/SPA apps cannot keep one. The
@@ -1292,7 +1304,7 @@ func GetProxyOIDCredentials(route ProxyRouteConfig, hashSecret bool) *fosite.Def
 			ID:            clientID,
 			Public:        true,
 			RedirectURIs:  redURls,
-			Scopes:        []string{"openid", "email", "profile", "offline"},
+			Scopes:        []string{"openid", "email", "profile", "offline", "role", "roles"},
 			ResponseTypes: []string{"code"},
 			GrantTypes:    []string{"authorization_code", "refresh_token"},
 	}

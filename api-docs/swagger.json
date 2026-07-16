@@ -4,7 +4,7 @@
         "description": "REST API for Cosmos Cloud server management",
         "title": "Cosmos Server API",
         "contact": {},
-        "version": "0.22.27"
+        "version": "0.22.30"
     },
     "basePath": "/cosmos",
     "paths": {
@@ -11155,6 +11155,12 @@
                     "type": "string"
                 },
                 "pathPrefix": {
+                    "type": "string"
+                },
+                "publicOpenIDName": {
+                    "type": "string"
+                },
+                "publicOpenIDRedirectURIs": {
                     "type": "string"
                 },
                 "restrictToConstellation": {
