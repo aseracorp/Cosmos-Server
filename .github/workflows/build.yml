@@ -191,8 +191,6 @@ jobs:
         run: |
             mkdir -p ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64
             cp -r build/* ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic
