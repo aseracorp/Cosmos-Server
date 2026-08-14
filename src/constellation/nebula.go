@@ -994,7 +994,7 @@ func populateIPTableMasquerade() {
 		rules := []string{
 			fmt.Sprintf("iptables -t nat -A POSTROUTING -s "+utils.GetMainConfig().ConstellationConfig.IPRange+" -o %s -m comment --comment 'COSMOS-CLOUD-EXIT-NODE' -j MASQUERADE", iface),
 			fmt.Sprintf("iptables -A FORWARD -i nebula1 -o %s -m comment --comment 'COSMOS-CLOUD-EXIT-NODE' -j ACCEPT", iface),
-			fmt.Sprintf("iptables -A FORWARD -i %s -o nebula1 -m state --state RELATED,ESTABLISHED -m comment --comment 'COSMOS-CLOUD-EXIT-NODE' -j ACCEPT", iface),
+			fmt.Sprintf("iptables -A FORWARD -i %s -o nebula1 -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment 'COSMOS-CLOUD-EXIT-NODE' -j ACCEPT", iface),
 		}
 
 		for _, rule := range rules {
