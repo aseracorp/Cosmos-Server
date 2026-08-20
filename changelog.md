@@ -19,6 +19,7 @@
  - Fix events not being pruned
  - Fix events date issues
  - Improve resilience of NATS cluster
+ - Update to Go 1.25.0
 
 ## Version 0.22.35
  - Fix "JetStream Unavailable" once and for all (hopefully :p )
