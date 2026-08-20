@@ -197,7 +197,6 @@ jobs:
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/cosmos-launcher-arm*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/cosmos-arm*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm*
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm*-cert
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/restic-arm*
 
       - name: Prepare ARM package structure      
