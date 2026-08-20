@@ -140,8 +140,7 @@ jobs:
         with:
           tags: |
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
-            type=raw,value=pre-release,enable=${{ github.ref == format('refs/heads/{0}', 'unstable') }}
-            type=semver,pattern={{raw}},value=${{ env.VERSION }}
+            type=raw,value=${{ env.VERSION }}
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - id: string
