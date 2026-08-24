@@ -443,6 +443,7 @@ type CronJobRequestJSON struct {
 
 // DockerContainerCreateRequestContainer defines model for docker.ContainerCreateRequestContainer.
 type DockerContainerCreateRequestContainer struct {
+	BlkioConfig   *DockerContainerCreateRequestServiceBlkioConfig               `json:"blkio_config,omitempty"`
 	CapAdd        *[]string                                                      `json:"cap_add,omitempty"`
 	CapDrop       *[]string                                                      `json:"cap_drop,omitempty"`
 	Command       *string                                                        `json:"command,omitempty"`
@@ -461,6 +462,7 @@ type DockerContainerCreateRequestContainer struct {
 	Expose        *[]string                                                      `json:"expose,omitempty"`
 	ExtraHosts    *[]string                                                      `json:"extra_hosts,omitempty"`
 	Gid           *int                                                           `json:"gid,omitempty"`
+	Gpus          *[]DockerContainerCreateRequestGPURequest                    `json:"gpus,omitempty"`
 	Healthcheck   *DockerContainerCreateRequestContainerHealthcheck              `json:"healthcheck,omitempty"`
 	Hostname      *string                                                        `json:"hostname,omitempty"`
 	Image         string                                                         `json:"image"`
@@ -508,6 +510,34 @@ type DockerContainerCreateRequestContainer struct {
 type DockerContainerCreateRequestContainerDependsOnCont struct {
 	Condition *string `json:"condition,omitempty"`
 	Restart   *string `json:"restart,omitempty"`
+}
+
+// DockerContainerCreateRequestServiceBlkioConfig defines model for docker.ContainerCreateRequestServiceBlkioConfig.
+type DockerContainerCreateRequestServiceBlkioConfig struct {
+	DeviceReadBps   *[]DockerContainerCreateRequestBlkioThrottleDevice `json:"device_read_bps,omitempty"`
+	DeviceReadIOps  *[]DockerContainerCreateRequestBlkioThrottleDevice `json:"device_read_iops,omitempty"`
+	DeviceWriteBps  *[]DockerContainerCreateRequestBlkioThrottleDevice `json:"device_write_bps,omitempty"`
+	DeviceWriteIOps *[]DockerContainerCreateRequestBlkioThrottleDevice `json:"device_write_iops,omitempty"`
+	Weight          *uint16                                            `json:"weight,omitempty"`
+	WeightDevice    *[]DockerContainerCreateRequestBlkioWeightDevice   `json:"weight_device,omitempty"`
+}
+
+// DockerContainerCreateRequestBlkioWeightDevice defines model for docker.BlkioWeightDevice.
+type DockerContainerCreateRequestBlkioWeightDevice struct {
+	Path   *string `json:"path,omitempty"`
+	Weight *uint16 `json:"weight,omitempty"`
+}
+
+// DockerContainerCreateRequestBlkioThrottleDevice defines model for docker.BlkioThrottleDevice.
+type DockerContainerCreateRequestBlkioThrottleDevice struct {
+	Path *string `json:"path,omitempty"`
+	Rate *string `json:"rate,omitempty"`
+}
+
+// DockerContainerCreateRequestGPURequest defines model for docker.ContainerCreateRequestGPURequest.
+type DockerContainerCreateRequestGPURequest struct {
+	Count  *int    `json:"count,omitempty"`
+	Driver *string `json:"driver,omitempty"`
 }
 
 // DockerContainerCreateRequestContainerHealthcheck defines model for docker.ContainerCreateRequestContainerHealthcheck.
