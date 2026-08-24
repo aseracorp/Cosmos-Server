@@ -449,6 +449,7 @@ type DockerContainerCreateRequestContainer struct {
 	ContainerName *string                                                        `json:"container_name,omitempty"`
 	CpuShares     *int                                                           `json:"cpu_shares,omitempty"`
 	Cpus          *float32                                                       `json:"cpus,omitempty"`
+	Cpuset        *string                                                        `json:"cpuset,omitempty"`
 	CpusetCpus    *string                                                        `json:"cpuset_cpus,omitempty"`
 	DependsOn     *map[string]DockerContainerCreateRequestContainerDependsOnCont `json:"depends_on,omitempty"`
 	Devices       *[]string                                                      `json:"devices,omitempty"`
