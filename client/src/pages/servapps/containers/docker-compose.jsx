@@ -255,6 +255,15 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
               }
             }
 
+            // convert cpuset: docker-compose names the explicit CPU affinity
+            // field "cpuset" (e.g. cpuset: 0-3 or cpuset: 0,1). Older Cosmos
+            // backups used the legacy docker-engine key "cpuset_cpus"; map it
+            // to the canonical "cpuset" so imported compose behaves the same.
+            if (doc.services[key].cpuset_cpus && !doc.services[key].cpuset) {
+              doc.services[key].cpuset = doc.services[key].cpuset_cpus;
+              delete doc.services[key].cpuset_cpus;
+            }
+
             // convert DependsOn
             if (doc.services[key].depends_on) {
               if (Array.isArray(doc.services[key].depends_on)) {
