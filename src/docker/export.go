@@ -20,12 +20,12 @@ import (
 
 var ExportError = "" 
 
-// FormatShmSize converts a raw byte count (as reported by the docker daemon's
-// HostConfig.ShmSize) into a docker-compose-style byte-size string such as
-// "64mb" or "1gb". This keeps shm_size consistent with the {amount}{unit}
-// format docker-compose expects, so round-tripped exports behave the same as
-// the originals.
-func FormatShmSize(bytes int64) string {
+// FormatByteSize converts a raw byte count (as reported by the docker daemon's
+// Resources/HostConfig fields) into a docker-compose-style byte-size string
+// such as "64mb" or "1gb". This keeps byte-value fields (shm_size, mem_limit,
+// mem_reservation) consistent with the {amount}{unit} format docker-compose
+// expects, so round-tripped exports behave the same as the originals.
+func FormatByteSize(bytes int64) string {
 	if bytes <= 0 {
 		return ""
 	}
@@ -87,7 +87,7 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			StorageOpt:       detailedInfo.HostConfig.StorageOpt,
 			Sysctls:          detailedInfo.HostConfig.Sysctls,
 			Isolation:        string(detailedInfo.HostConfig.Isolation),
-			ShmSize:          FormatShmSize(detailedInfo.HostConfig.ShmSize),
+			ShmSize:          FormatByteSize(detailedInfo.HostConfig.ShmSize),
 			CapAdd:           detailedInfo.HostConfig.CapAdd,
 			CapDrop:          detailedInfo.HostConfig.CapDrop,
 			Privileged:       detailedInfo.HostConfig.Privileged,
@@ -95,19 +95,19 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			// Resource constraints
 			MemLimit: func() string {
 				if detailedInfo.HostConfig.Resources.Memory > 0 {
-					return strconv.FormatInt(detailedInfo.HostConfig.Resources.Memory, 10)
+					return FormatByteSize(detailedInfo.HostConfig.Resources.Memory)
 				}
 				return ""
 			}(),
 			MemReservation: func() string {
 				if detailedInfo.HostConfig.Resources.MemoryReservation > 0 {
-					return strconv.FormatInt(detailedInfo.HostConfig.Resources.MemoryReservation, 10)
+					return FormatByteSize(detailedInfo.HostConfig.Resources.MemoryReservation)
 				}
 				return ""
 			}(),
 			CPUs:       float64(detailedInfo.HostConfig.Resources.NanoCPUs) / 1e9,
 			CPUShares:  detailedInfo.HostConfig.Resources.CPUShares,
-			CpusetCpus: detailedInfo.HostConfig.Resources.CpusetCpus,
+			Cpuset:     detailedInfo.HostConfig.Resources.CpusetCpus,
 
 			// StopGracePeriod:  int(detailedInfo.HostConfig.StopGracePeriod.Seconds()),
 			

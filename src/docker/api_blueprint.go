@@ -92,6 +92,9 @@ type ContainerCreateRequestContainer struct {
 	MemReservation string `json:"mem_reservation,omitempty"`
 	CPUs float64 `json:"cpus,omitempty"`
 	CPUShares int64 `json:"cpu_shares,omitempty"`
+	Cpuset string `json:"cpuset,omitempty"`
+	// Legacy alias for cpuset (older Cosmos backups used cpuset_cpus). Kept for
+	// backward compatibility; Cpuset takes precedence when both are present.
 	CpusetCpus string `json:"cpuset_cpus,omitempty"`
 
 	PostInstall []string `json:"post_install,omitempty"`
@@ -836,6 +839,14 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 
+		// cpuset: canonical "cpuset" wins over the legacy "cpuset_cpus" alias.
+		var cpusetValue string
+		if container.Cpuset != "" {
+			cpusetValue = container.Cpuset
+		} else {
+			cpusetValue = container.CpusetCpus
+		}
+
 		hostConfig := &conttype.HostConfig{
 			PortBindings: PortBindings,
 			Mounts:       ToDockerMountSlice(container.Volumes),
@@ -859,7 +870,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 				MemoryReservation: memReservation,
 				NanoCPUs:          int64(container.CPUs * 1e9),
 				CPUShares:         container.CPUShares,
-				CpusetCpus:        container.CpusetCpus,
+				CpusetCpus:        cpusetValue,
 			},
 		}
 
