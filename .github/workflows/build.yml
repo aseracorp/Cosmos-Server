@@ -206,6 +206,12 @@ jobs:
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/cosmos-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/cosmos-launcher-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/cosmos-launcher
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/restic-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/restic
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/cosmos-launcher-arm64
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/cosmos-arm64
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/nebula
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/nebula-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/nebula-arm64*
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm/restic-arm64
 
       - name: Prepare ARM64 package structure      
         run: |
@@ -214,6 +220,13 @@ jobs:
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic-arm
 
       - name: Create .zip packages       
         run: |
