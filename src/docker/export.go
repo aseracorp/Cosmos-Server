@@ -147,6 +147,55 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 				}
 				return uls
 			}(),
+			BlkioConfig: func() *ContainerCreateRequestServiceBlkioConfig {
+				rc := detailedInfo.HostConfig.Resources
+				if rc.BlkioWeight == 0 && len(rc.BlkioWeightDevice) == 0 &&
+					len(rc.BlkioDeviceReadBps) == 0 && len(rc.BlkioDeviceWriteBps) == 0 &&
+					len(rc.BlkioDeviceReadIOps) == 0 && len(rc.BlkioDeviceWriteIOps) == 0 {
+					return nil
+				}
+				cfg := &ContainerCreateRequestServiceBlkioConfig{
+					Weight: rc.BlkioWeight,
+				}
+				for _, wd := range rc.BlkioWeightDevice {
+					cfg.WeightDevice = append(cfg.WeightDevice, BlkioWeightDevice{Path: wd.Path, Weight: wd.Weight})
+				}
+				for _, t := range rc.BlkioDeviceReadBps {
+					cfg.DeviceReadBps = append(cfg.DeviceReadBps, BlkioThrottleDevice{Path: t.Path, Rate: ByteSize(FormatByteSize(int64(t.Rate)))})
+				}
+				for _, t := range rc.BlkioDeviceWriteBps {
+					cfg.DeviceWriteBps = append(cfg.DeviceWriteBps, BlkioThrottleDevice{Path: t.Path, Rate: ByteSize(FormatByteSize(int64(t.Rate)))})
+				}
+				for _, t := range rc.BlkioDeviceReadIOps {
+					cfg.DeviceReadIOps = append(cfg.DeviceReadIOps, BlkioThrottleDevice{Path: t.Path, Rate: ByteSize(strconv.FormatUint(t.Rate, 10))})
+				}
+				for _, t := range rc.BlkioDeviceWriteIOps {
+					cfg.DeviceWriteIOps = append(cfg.DeviceWriteIOps, BlkioThrottleDevice{Path: t.Path, Rate: ByteSize(strconv.FormatUint(t.Rate, 10))})
+				}
+				return cfg
+			}(),
+			Gpus: func() GPURequests {
+				gpus := GPURequests{}
+				for _, dr := range detailedInfo.HostConfig.Resources.DeviceRequests {
+					// Only map device requests that carry the implicit gpu
+					// capability (docker-compose's gpus == device request).
+					hasGPU := false
+					for _, caps := range dr.Capabilities {
+						for _, c := range caps {
+							if c == "gpu" {
+								hasGPU = true
+							}
+						}
+					}
+					if hasGPU {
+						gpus = append(gpus, ContainerCreateRequestGPURequest{
+							Driver: dr.Driver,
+							Count:  dr.Count,
+						})
+					}
+				}
+				return gpus
+			}(),
 
 			// StopGracePeriod:  int(detailedInfo.HostConfig.StopGracePeriod.Seconds()),
 			
