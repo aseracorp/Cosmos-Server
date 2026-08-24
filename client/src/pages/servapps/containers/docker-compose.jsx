@@ -39,6 +39,7 @@ import { FilePickerButton } from '../../../components/filePicker';
 import PermissionGuard from '../../../components/permissionGuard';
 import { PERM_RESOURCES } from '../../../utils/permissions';
 
+
 function checkIsOnline() {
   API.isOnline().then((res) => {
     window.location.reload();
@@ -237,10 +238,15 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
                 doc.services[key].command = String(doc.services[key].command);
             }
 
-            // entrypoint follows the same rules as command (docker-compose allows a
-            // string for shell-form or an array for exec-form).
-            if (doc.services[key].entrypoint && typeof doc.services[key].entrypoint !== 'string' && !Array.isArray(doc.services[key].entrypoint)) {
-                doc.services[key].entrypoint = String(doc.services[key].entrypoint);
+            // convert shm_size: docker-compose uses a byte-size string
+            // (e.g. "64mb", "1gb") — keep it as a string so the backend can
+            // parse it with the same semantics as docker-compose itself.
+            if (doc.services[key].shm_size) {
+              if (typeof doc.services[key].shm_size !== 'string') {
+                // Accept a bare number for backward compat with older compose
+                // files, but normalize it to a byte-size string (raw bytes).
+                doc.services[key].shm_size = String(doc.services[key].shm_size) + 'b';
+              }
             }
 
             // convert DependsOn
