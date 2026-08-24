@@ -8,7 +8,7 @@ import (
 )
 
 type DeviceBlockRequestJSON struct {
-  Nickname string `json:"nickname" validate:"required,min=3,max=32"`
+  Nickname string `json:"nickname" validate:"required,max=32"`
   DeviceName string `json:"deviceName" validate:"required,min=3,max=32"`
   Block bool `json:"block,omitempty"`
 }
