@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	conttype "github.com/docker/docker/api/types/container"
 	doctype "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/blkiodev"
 	strslice "github.com/docker/docker/api/types/strslice"
 	volumetype "github.com/docker/docker/api/types/volume"
 
@@ -82,6 +83,65 @@ func (b *ByteSize) UnmarshalJSON(data []byte) error {
 // fields) keep working.
 func (b ByteSize) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(b))
+}
+
+// BlkioWeightDevice mirrors docker-compose's blkio_config.weight_device entry.
+type BlkioWeightDevice struct {
+	Path   string `json:"path"`
+	Weight uint16 `json:"weight"`
+}
+
+// BlkioThrottleDevice mirrors docker-compose's blkio_config device rate
+// entries (device_read_bps, device_write_bps, device_read_iops,
+// device_write_iops). Rate is a byte-size value for the *bps fields and a
+// plain integer (ops/sec) for the *iops fields; ByteSize accepts both
+// number and string so either compose form works.
+type BlkioThrottleDevice struct {
+	Path string   `json:"path"`
+	Rate ByteSize `json:"rate"`
+}
+
+// ContainerCreateRequestServiceBlkioConfig mirrors docker-compose's
+// blkio_config attribute.
+type ContainerCreateRequestServiceBlkioConfig struct {
+	Weight          uint16                `json:"weight,omitempty"`
+	WeightDevice    []BlkioWeightDevice   `json:"weight_device,omitempty"`
+	DeviceReadBps   []BlkioThrottleDevice `json:"device_read_bps,omitempty"`
+	DeviceWriteBps  []BlkioThrottleDevice `json:"device_write_bps,omitempty"`
+	DeviceReadIOps  []BlkioThrottleDevice `json:"device_read_iops,omitempty"`
+	DeviceWriteIOps []BlkioThrottleDevice `json:"device_write_iops,omitempty"`
+}
+
+// ContainerCreateRequestGPURequest mirrors docker-compose's gpus list entry
+// ({driver, count}); count -1 means all devices.
+type ContainerCreateRequestGPURequest struct {
+	Driver string `json:"driver,omitempty"`
+	Count  int    `json:"count,omitempty"`
+}
+
+// GPURequests accepts both docker-compose forms of gpus: the string "all"
+// and the list form ([{driver, count}]). It always marshals back to the
+// list form.
+type GPURequests []ContainerCreateRequestGPURequest
+
+// UnmarshalJSON accepts "all" or an array of {driver, count}.
+func (g *GPURequests) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == `"all"` {
+		*g = GPURequests{{Count: -1}}
+		return nil
+	}
+	var arr []ContainerCreateRequestGPURequest
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	*g = GPURequests(arr)
+	return nil
+}
+
+// MarshalJSON emits the array form.
+func (g GPURequests) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]ContainerCreateRequestGPURequest(g))
 }
 
 type ContainerCreateRequestContainer struct {
@@ -153,6 +213,8 @@ type ContainerCreateRequestContainer struct {
 	// "nofile=1024:2048"), matching docker-compose's ulimits object after
 	// normalization. Parsed with go-units at create time.
 	Ulimits []string `json:"ulimits,omitempty"`
+	BlkioConfig *ContainerCreateRequestServiceBlkioConfig `json:"blkio_config,omitempty"`
+	Gpus GPURequests `json:"gpus,omitempty"`
 
 	PostInstall []string `json:"post_install,omitempty"`
 }
@@ -951,6 +1013,88 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			pidsLimitPtr = &container.PidsLimit
 		}
 
+		// blkio_config: convert compose form into the daemon's blkiodev types.
+		var blkioWeight uint16
+		var blkioWeightDevice []*blkiodev.WeightDevice
+		var blkioDeviceReadBps, blkioDeviceWriteBps []*blkiodev.ThrottleDevice
+		var blkioDeviceReadIOps, blkioDeviceWriteIOps []*blkiodev.ThrottleDevice
+		if container.BlkioConfig != nil {
+			blkioWeight = container.BlkioConfig.Weight
+			for _, wd := range container.BlkioConfig.WeightDevice {
+				blkioWeightDevice = append(blkioWeightDevice, &blkiodev.WeightDevice{
+					Path:   wd.Path,
+					Weight: wd.Weight,
+				})
+			}
+			// bps rates are byte values; iops rates are plain integers.
+			parseRate := func(r ByteSize, isIOPS bool) (uint64, error) {
+				if r == "" {
+					return 0, nil
+				}
+				if isIOPS {
+					return strconv.ParseUint(string(r), 10, 64)
+				}
+				b, err := units.RAMInBytes(string(r))
+				if err != nil {
+					return 0, err
+				}
+				if b < 0 {
+					return 0, fmt.Errorf("negative rate not allowed")
+				}
+				return uint64(b), nil
+			}
+			for _, t := range container.BlkioConfig.DeviceReadBps {
+				rate, err := parseRate(t.Rate, false)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_read_bps rate: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_read_bps rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceReadBps = append(blkioDeviceReadBps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+			for _, t := range container.BlkioConfig.DeviceWriteBps {
+				rate, err := parseRate(t.Rate, false)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_write_bps: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_write_bps rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceWriteBps = append(blkioDeviceWriteBps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+			for _, t := range container.BlkioConfig.DeviceReadIOps {
+				rate, err := parseRate(t.Rate, true)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_read_iops: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_read_iops rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceReadIOps = append(blkioDeviceReadIOps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+			for _, t := range container.BlkioConfig.DeviceWriteIOps {
+				rate, err := parseRate(t.Rate, true)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_write_iops: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_write_iops rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceWriteIOps = append(blkioDeviceWriteIOps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+		}
+
+		// gpus: docker-compose gpus == device request with "gpu" capability.
+		var deviceRequests []conttype.DeviceRequest
+		for _, g := range container.Gpus {
+			deviceRequests = append(deviceRequests, conttype.DeviceRequest{
+				Driver:       g.Driver,
+				Count:        g.Count,
+				Capabilities: [][]string{{"gpu"}},
+			})
+		}
+
 		hostConfig := &conttype.HostConfig{
 			PortBindings: PortBindings,
 			Mounts:       ToDockerMountSlice(container.Volumes),
@@ -985,6 +1129,13 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 				OomKillDisable:    oomKillDisablePtr,
 				PidsLimit:         pidsLimitPtr,
 				Ulimits:           ulimits,
+				BlkioWeight:       blkioWeight,
+				BlkioWeightDevice: blkioWeightDevice,
+				BlkioDeviceReadBps:   blkioDeviceReadBps,
+				BlkioDeviceWriteBps:  blkioDeviceWriteBps,
+				BlkioDeviceReadIOps:  blkioDeviceReadIOps,
+				BlkioDeviceWriteIOps: blkioDeviceWriteIOps,
+				DeviceRequests:       deviceRequests,
 			},
 		}
 
