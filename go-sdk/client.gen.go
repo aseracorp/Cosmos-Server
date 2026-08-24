@@ -471,27 +471,37 @@ type DockerContainerCreateRequestContainer struct {
 	ShmSize       *string                                                        `json:"shm_size,omitempty"`
 
 	// MemLimit Resource constraints
-	MemLimit        *string                                                `json:"mem_limit,omitempty"`
-	MemReservation  *string                                                `json:"mem_reservation,omitempty"`
-	NetworkMode     *string                                                `json:"network_mode,omitempty"`
-	Networks        *map[string]DockerContainerCreateRequestServiceNetwork `json:"networks,omitempty"`
-	Ports           *[]string                                              `json:"ports,omitempty"`
-	PostInstall     *[]string                                              `json:"post_install,omitempty"`
-	Privileged      *bool                                                  `json:"privileged,omitempty"`
-	Restart         *string                                                `json:"restart,omitempty"`
-	Routes          *[]UtilsProxyRouteConfig                               `json:"routes,omitempty"`
-	Runtime         *string                                                `json:"runtime,omitempty"`
-	SecurityOpt     *[]string                                              `json:"security_opt,omitempty"`
-	StdinOpen       *bool                                                  `json:"stdin_open,omitempty"`
-	StopGracePeriod *int                                                   `json:"stop_grace_period,omitempty"`
-	StopSignal      *string                                                `json:"stop_signal,omitempty"`
-	StorageOpt      *map[string]string                                     `json:"storage_opt,omitempty"`
-	Sysctls         *map[string]string                                     `json:"sysctls,omitempty"`
-	Tty             *bool                                                  `json:"tty,omitempty"`
-	Uid             *int                                                   `json:"uid,omitempty"`
-	User            *string                                                `json:"user,omitempty"`
-	Volumes         *[]MountMount                                          `json:"volumes,omitempty"`
-	WorkingDir      *string                                                `json:"working_dir,omitempty"`
+	CpuPeriod          *int       `json:"cpu_period,omitempty"`
+	CpuQuota           *int       `json:"cpu_quota,omitempty"`
+	CpuRealtimePeriod  *int       `json:"cpu_rt_period,omitempty"`
+	CpuRealtimeRuntime *int       `json:"cpu_rt_runtime,omitempty"`
+	CpusetMems         *string    `json:"cpuset_mems,omitempty"`
+	MemLimit           *string    `json:"mem_limit,omitempty"`
+	MemReservation     *string    `json:"mem_reservation,omitempty"`
+	MemSwapLimit       *string    `json:"memswap_limit,omitempty"`
+	MemSwappiness      *int       `json:"mem_swappiness,omitempty"`
+	NetworkMode        *string    `json:"network_mode,omitempty"`
+	Networks           *map[string]DockerContainerCreateRequestServiceNetwork `json:"networks,omitempty"`
+	OomKillDisable     *bool      `json:"oom_kill_disable,omitempty"`
+	PidsLimit          *int       `json:"pids_limit,omitempty"`
+	Ports              *[]string  `json:"ports,omitempty"`
+	PostInstall        *[]string  `json:"post_install,omitempty"`
+	Privileged         *bool      `json:"privileged,omitempty"`
+	Restart            *string    `json:"restart,omitempty"`
+	Routes             *[]UtilsProxyRouteConfig `json:"routes,omitempty"`
+	Runtime            *string    `json:"runtime,omitempty"`
+	SecurityOpt        *[]string  `json:"security_opt,omitempty"`
+	StdinOpen          *bool      `json:"stdin_open,omitempty"`
+	StopGracePeriod    *int       `json:"stop_grace_period,omitempty"`
+	StopSignal         *string    `json:"stop_signal,omitempty"`
+	StorageOpt         *map[string]string `json:"storage_opt,omitempty"`
+	Sysctls            *map[string]string `json:"sysctls,omitempty"`
+	Tty                *bool      `json:"tty,omitempty"`
+	Uid                *int       `json:"uid,omitempty"`
+	Ulimits            *[]string  `json:"ulimits,omitempty"`
+	User               *string    `json:"user,omitempty"`
+	Volumes            *[]MountMount `json:"volumes,omitempty"`
+	WorkingDir         *string    `json:"working_dir,omitempty"`
 }
 
 // DockerContainerCreateRequestContainerDependsOnCont defines model for docker.ContainerCreateRequestContainerDependsOnCont.

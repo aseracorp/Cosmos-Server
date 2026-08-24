@@ -264,6 +264,31 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
               delete doc.services[key].cpuset_cpus;
             }
 
+            // convert ulimits: docker-compose specifies ulimits as an object
+            // ({name: int} or {name: {soft, hard}}). The backend expects
+            // "name=soft[:hard]" strings (e.g. "nofile=2048",
+            // "nofile=1024:2048"), so normalize the object form.
+            if (doc.services[key].ulimits) {
+              if (typeof doc.services[key].ulimits === 'object' && !Array.isArray(doc.services[key].ulimits)) {
+                let uls = [];
+                Object.keys(doc.services[key].ulimits).forEach((n) => {
+                  const val = doc.services[key].ulimits[n];
+                  if (typeof val === 'object' && val !== null && (val.soft !== undefined || val.hard !== undefined)) {
+                    let s = val.soft !== undefined ? String(val.soft) : String(val.hard);
+                    let h = val.hard !== undefined ? String(val.hard) : String(val.soft || val.hard);
+                    uls.push(n + '=' + s + ':' + h);
+                  } else {
+                    uls.push(n + '=' + String(val));
+                  }
+                });
+                doc.services[key].ulimits = uls;
+              } else if (Array.isArray(doc.services[key].ulimits)) {
+                // Already in name=soft[:hard] form; pass through.
+              } else {
+                delete doc.services[key].ulimits;
+              }
+            }
+
             // convert DependsOn
             if (doc.services[key].depends_on) {
               if (Array.isArray(doc.services[key].depends_on)) {

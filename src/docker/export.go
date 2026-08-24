@@ -109,6 +109,45 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			CPUShares:  detailedInfo.HostConfig.Resources.CPUShares,
 			Cpuset:     detailedInfo.HostConfig.Resources.CpusetCpus,
 
+			// Additional resource constraints (docker-compose parity)
+			MemSwapLimit: func() string {
+				ms := detailedInfo.HostConfig.Resources.MemorySwap
+				if ms == -1 {
+					return "-1"
+				}
+				if ms > 0 {
+					return FormatByteSize(ms)
+				}
+				return ""
+			}(),
+			CPUPeriod:          detailedInfo.HostConfig.Resources.CPUPeriod,
+			CPUQuota:           detailedInfo.HostConfig.Resources.CPUQuota,
+			CPURealtimePeriod:  detailedInfo.HostConfig.Resources.CPURealtimePeriod,
+			CPURealtimeRuntime: detailedInfo.HostConfig.Resources.CPURealtimeRuntime,
+			MemSwappiness: func() int {
+				if detailedInfo.HostConfig.Resources.MemorySwappiness != nil {
+					return int(*detailedInfo.HostConfig.Resources.MemorySwappiness)
+				}
+				return 0
+			}(),
+			OomKillDisable: func() bool {
+				return detailedInfo.HostConfig.Resources.OomKillDisable != nil && *detailedInfo.HostConfig.Resources.OomKillDisable
+			}(),
+			PidsLimit: func() int64 {
+				if detailedInfo.HostConfig.Resources.PidsLimit != nil {
+					return *detailedInfo.HostConfig.Resources.PidsLimit
+				}
+				return 0
+			}(),
+			CpusetMems: detailedInfo.HostConfig.Resources.CpusetMems,
+			Ulimits: func() []string {
+				uls := []string{}
+				for _, u := range detailedInfo.HostConfig.Resources.Ulimits {
+					uls = append(uls, u.String())
+				}
+				return uls
+			}(),
+
 			// StopGracePeriod:  int(detailedInfo.HostConfig.StopGracePeriod.Seconds()),
 			
 			// Ports

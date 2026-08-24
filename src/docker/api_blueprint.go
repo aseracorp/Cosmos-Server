@@ -97,6 +97,21 @@ type ContainerCreateRequestContainer struct {
 	// backward compatibility; Cpuset takes precedence when both are present.
 	CpusetCpus string `json:"cpuset_cpus,omitempty"`
 
+	// Additional resource constraints (docker-compose parity)
+	CPUPeriod int64 `json:"cpu_period,omitempty"`
+	CPUQuota int64 `json:"cpu_quota,omitempty"`
+	CPURealtimePeriod int64 `json:"cpu_rt_period,omitempty"`
+	CPURealtimeRuntime int64 `json:"cpu_rt_runtime,omitempty"`
+	MemSwappiness int `json:"mem_swappiness,omitempty"`
+	MemSwapLimit string `json:"memswap_limit,omitempty"`
+	OomKillDisable bool `json:"oom_kill_disable,omitempty"`
+	PidsLimit int64 `json:"pids_limit,omitempty"`
+	CpusetMems string `json:"cpuset_mems,omitempty"`
+	// ulimits as "name=soft[:hard]" strings (e.g. "nofile=2048" or
+	// "nofile=1024:2048"), matching docker-compose's ulimits object after
+	// normalization. Parsed with go-units at create time.
+	Ulimits []string `json:"ulimits,omitempty"`
+
 	PostInstall []string `json:"post_install,omitempty"`
 }
 
@@ -839,12 +854,59 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 
+		// memswap_limit is a byte-size string (e.g. "1gb"); "-1" enables
+		// unlimited swap, mirroring docker-compose's memswap_limit.
+		var memSwap int64
+		if container.MemSwapLimit != "" {
+			if container.MemSwapLimit == "-1" {
+				memSwap = -1
+			} else {
+				memSwap, err = units.RAMInBytes(container.MemSwapLimit)
+				if err != nil {
+					utils.Error("CreateService: Invalid memswap_limit", err)
+					OnLog(utils.DoErr("Invalid memswap_limit value: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+			}
+		}
+
+		// ulimits: "name=soft[:hard]" strings, e.g. "nofile=2048" or
+		// "nofile=1024:2048". Parsed with go-units (same as docker-compose).
+		var ulimits []*units.Ulimit
+		for _, u := range container.Ulimits {
+			parsed, err := units.ParseUlimit(u)
+			if err != nil {
+				utils.Error("CreateService: Invalid ulimit: " + u, err)
+				OnLog(utils.DoErr("Invalid ulimit value: %s\n", err.Error()))
+				Rollback(rollbackActions, OnLog)
+				return err
+			}
+			ulimits = append(ulimits, parsed)
+		}
+
 		// cpuset: canonical "cpuset" wins over the legacy "cpuset_cpus" alias.
 		var cpusetValue string
 		if container.Cpuset != "" {
 			cpusetValue = container.Cpuset
 		} else {
 			cpusetValue = container.CpusetCpus
+		}
+
+		// Pointers for the daemon's optional resource fields. nil means the
+		// constraint was not set (leave the daemon default unchanged).
+		var memSwappinessPtr *int64
+		if container.MemSwappiness != 0 {
+			memSwappinessInt := int64(container.MemSwappiness)
+			memSwappinessPtr = &memSwappinessInt
+		}
+		var oomKillDisablePtr *bool
+		if container.OomKillDisable {
+			oomKillDisablePtr = &container.OomKillDisable
+		}
+		var pidsLimitPtr *int64
+		if container.PidsLimit != 0 {
+			pidsLimitPtr = &container.PidsLimit
 		}
 
 		hostConfig := &conttype.HostConfig{
@@ -868,9 +930,19 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			Resources: conttype.Resources{
 				Memory:            memLimit,
 				MemoryReservation: memReservation,
+				MemorySwap:        memSwap,
 				NanoCPUs:          int64(container.CPUs * 1e9),
 				CPUShares:         container.CPUShares,
 				CpusetCpus:        cpusetValue,
+				CpusetMems:        container.CpusetMems,
+				CPUPeriod:         container.CPUPeriod,
+				CPUQuota:          container.CPUQuota,
+				CPURealtimePeriod: container.CPURealtimePeriod,
+				CPURealtimeRuntime: container.CPURealtimeRuntime,
+				MemorySwappiness:  memSwappinessPtr,
+				OomKillDisable:    oomKillDisablePtr,
+				PidsLimit:         pidsLimitPtr,
+				Ulimits:           ulimits,
 			},
 		}
 
