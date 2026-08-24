@@ -42,6 +42,48 @@ type ContainerCreateRequestContainerDependsOnCont struct {
 	Restart string `json:"restart"`
 }
 
+// ByteSize is a byte-value field that accepts both a JSON string
+// ("1gb", "300m", "1073741824") and a JSON number (raw bytes, possibly -1
+// for unlimited). This mirrors docker-compose's byte-value handling and
+// keeps older Cosmos exports/backups (which stored raw byte numbers for
+// shm_size, and raw byte strings for mem_limit) backward compatible.
+// It always marshals back to a string.
+type ByteSize string
+
+// UnmarshalJSON accepts a string (byte-value or raw bytes) or a number
+// (raw bytes, -1 allowed for unlimited).
+func (b *ByteSize) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*b = ""
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*b = ByteSize(s)
+		return nil
+	}
+	// Number: raw bytes (e.g. 1073741824, or -1 for unlimited).
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	if _, err := strconv.ParseInt(n.String(), 10, 64); err != nil {
+		return fmt.Errorf("invalid byte size: %s", n.String())
+	}
+	*b = ByteSize(n.String())
+	return nil
+}
+
+// MarshalJSON always emits a string so old clients (which expect string
+// fields) keep working.
+func (b ByteSize) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(b))
+}
+
 type ContainerCreateRequestContainer struct {
 	Name 			string            `json:"container_name"`
 	Image       string            `json:"image" validate:"required"`
@@ -82,14 +124,14 @@ type ContainerCreateRequestContainer struct {
 	StorageOpt map[string]string `json:"storage_opt,omitempty"`
 	Sysctls map[string]string `json:"sysctls,omitempty"`
 	Isolation string `json:"isolation,omitempty"`
-	ShmSize string `json:"shm_size,omitempty"`
+	ShmSize ByteSize `json:"shm_size,omitempty"`
 
 	CapAdd []string `json:"cap_add,omitempty"`
 	CapDrop []string `json:"cap_drop,omitempty"`
 
 	// Resource constraints
-	MemLimit string `json:"mem_limit,omitempty"`
-	MemReservation string `json:"mem_reservation,omitempty"`
+	MemLimit ByteSize `json:"mem_limit,omitempty"`
+	MemReservation ByteSize `json:"mem_reservation,omitempty"`
 	CPUs float64 `json:"cpus,omitempty"`
 	CPUShares int64 `json:"cpu_shares,omitempty"`
 	Cpuset string `json:"cpuset,omitempty"`
@@ -103,7 +145,7 @@ type ContainerCreateRequestContainer struct {
 	CPURealtimePeriod int64 `json:"cpu_rt_period,omitempty"`
 	CPURealtimeRuntime int64 `json:"cpu_rt_runtime,omitempty"`
 	MemSwappiness int `json:"mem_swappiness,omitempty"`
-	MemSwapLimit string `json:"memswap_limit,omitempty"`
+	MemSwapLimit ByteSize `json:"memswap_limit,omitempty"`
 	OomKillDisable bool `json:"oom_kill_disable,omitempty"`
 	PidsLimit int64 `json:"pids_limit,omitempty"`
 	CpusetMems string `json:"cpuset_mems,omitempty"`
@@ -823,7 +865,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		// Parse resource constraints
 		var memLimit, memReservation int64
 		if container.MemLimit != "" {
-			memLimit, err = units.RAMInBytes(container.MemLimit)
+			memLimit, err = units.RAMInBytes(string(container.MemLimit))
 			if err != nil {
 				utils.Error("CreateService: Invalid mem_limit", err)
 				OnLog(utils.DoErr("Invalid mem_limit value: %s\n", err.Error()))
@@ -832,7 +874,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 		if container.MemReservation != "" {
-			memReservation, err = units.RAMInBytes(container.MemReservation)
+			memReservation, err = units.RAMInBytes(string(container.MemReservation))
 			if err != nil {
 				utils.Error("CreateService: Invalid mem_reservation", err)
 				OnLog(utils.DoErr("Invalid mem_reservation value: %s\n", err.Error()))
@@ -845,7 +887,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		// Parse it into raw bytes for the docker daemon, mirroring mem_limit.
 		var shmSize int64
 		if container.ShmSize != "" {
-			shmSize, err = units.RAMInBytes(container.ShmSize)
+			shmSize, err = units.RAMInBytes(string(container.ShmSize))
 			if err != nil {
 				utils.Error("CreateService: Invalid shm_size", err)
 				OnLog(utils.DoErr("Invalid shm_size value: %s\n", err.Error()))
@@ -861,7 +903,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			if container.MemSwapLimit == "-1" {
 				memSwap = -1
 			} else {
-				memSwap, err = units.RAMInBytes(container.MemSwapLimit)
+				memSwap, err = units.RAMInBytes(string(container.MemSwapLimit))
 				if err != nil {
 					utils.Error("CreateService: Invalid memswap_limit", err)
 					OnLog(utils.DoErr("Invalid memswap_limit value: %s\n", err.Error()))

@@ -26,7 +26,7 @@ type ContainerForm struct {
 	// we make this a int so that we can ignore 0
 	Interactive    int               `json:"interactive"`
 	NetworkMode 	 string           `json:"networkMode"`
-	MemLimit       string            `json:"memLimit"`
+	MemLimit       ByteSize          `json:"memLimit"`
 	CPUs           float64           `json:"cpus"`
 }
 
@@ -149,7 +149,7 @@ func UpdateContainerRoute(w http.ResponseWriter, req *http.Request) {
 
 		// Resource constraints
 		if form.MemLimit != "" {
-			memLimit, err := units.RAMInBytes(form.MemLimit)
+			memLimit, err := units.RAMInBytes(string(form.MemLimit))
 			if err != nil {
 				utils.Error("UpdateContainer: Invalid mem_limit", err)
 				utils.HTTPError(w, "Invalid memory limit: "+err.Error(), http.StatusBadRequest, "DS003")
