@@ -87,21 +87,21 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			StorageOpt:       detailedInfo.HostConfig.StorageOpt,
 			Sysctls:          detailedInfo.HostConfig.Sysctls,
 			Isolation:        string(detailedInfo.HostConfig.Isolation),
-			ShmSize:          FormatByteSize(detailedInfo.HostConfig.ShmSize),
+			ShmSize:          ByteSize(FormatByteSize(detailedInfo.HostConfig.ShmSize)),
 			CapAdd:           detailedInfo.HostConfig.CapAdd,
 			CapDrop:          detailedInfo.HostConfig.CapDrop,
 			Privileged:       detailedInfo.HostConfig.Privileged,
 
 			// Resource constraints
-			MemLimit: func() string {
+			MemLimit: func() ByteSize {
 				if detailedInfo.HostConfig.Resources.Memory > 0 {
-					return FormatByteSize(detailedInfo.HostConfig.Resources.Memory)
+					return ByteSize(FormatByteSize(detailedInfo.HostConfig.Resources.Memory))
 				}
 				return ""
 			}(),
-			MemReservation: func() string {
+			MemReservation: func() ByteSize {
 				if detailedInfo.HostConfig.Resources.MemoryReservation > 0 {
-					return FormatByteSize(detailedInfo.HostConfig.Resources.MemoryReservation)
+					return ByteSize(FormatByteSize(detailedInfo.HostConfig.Resources.MemoryReservation))
 				}
 				return ""
 			}(),
@@ -110,13 +110,13 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			Cpuset:     detailedInfo.HostConfig.Resources.CpusetCpus,
 
 			// Additional resource constraints (docker-compose parity)
-			MemSwapLimit: func() string {
+			MemSwapLimit: func() ByteSize {
 				ms := detailedInfo.HostConfig.Resources.MemorySwap
 				if ms == -1 {
 					return "-1"
 				}
 				if ms > 0 {
-					return FormatByteSize(ms)
+					return ByteSize(FormatByteSize(ms))
 				}
 				return ""
 			}(),
