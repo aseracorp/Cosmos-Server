@@ -247,4 +247,5 @@ jobs:
           tag: v${{ env.VERSION }}
           name: Release ${{ env.VERSION }}
           allowUpdates: true
+          prerelease: ${{ github.ref != format('refs/heads/{0}', 'master') }}
           makeLatest: ${{ github.ref == format('refs/heads/{0}', 'master') }}
