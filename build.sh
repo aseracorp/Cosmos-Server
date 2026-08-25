@@ -6,6 +6,15 @@ rm -rf build
 
 cp src/update.go src/launcher/update.go
 
+env GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o build/cosmos-armv6 src/*.go
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+env GOARCH=arm GOARM=6 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o build/cosmos-launcher-armv6 ./src/launcher/launcher.go ./src/launcher/update.go
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+
 env GOARCH=arm CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o build/cosmos-arm src/*.go
 if [ $? -ne 0 ]; then
     exit 1
@@ -34,6 +43,8 @@ if [ $? -ne 0 ]; then
 fi
 
 # Compress the executable (test performance impact before using in production).
+upx -9 build/cosmos-armv6
+upx -9 build/cosmos-launcher-armv6
 upx -9 build/cosmos-arm
 upx -9 build/cosmos-launcher-arm
 upx -9 build/cosmos-arm64
@@ -48,6 +59,8 @@ cp restic-arm restic-arm64 restic build/
 
 chmod +x build/start.sh
 chmod +x build/cosmos
+chmod +x build/cosmos-armv6
+chmod +x build/cosmos-launcher-armv6
 chmod +x build/cosmos-arm
 chmod +x build/cosmos-arm64
 chmod +x build/cosmos-launcher
@@ -59,7 +72,7 @@ chmod +x build/restic-arm64
 
 cp -r static build/
 cp -r GeoLite2-Country.mmdb build/
-cp nebula-arm-cert nebula-arm64-cert nebula-cert nebula-arm nebula-arm64 nebula build/
+cp nebula-armv6-cert nebula-arm-cert nebula-arm64-cert nebula-cert nebula-armv6 nebula-arm nebula-arm64 nebula build/
 cp -r Logo.png build/
 mkdir build/images
 cp client/src/assets/images/icons/cosmos_gray.png build/cosmos_gray.png
