@@ -1,9 +1,10 @@
 name: Sync upstream fork
 
 on:
-  # Run at least daily: every 6 hours (0, 6, 12, 18 UTC)
+  # Hourly check (far more often than "at least daily"). A cheap upstream-SHA
+  # ancestor check skips the fetch/merge entirely when nothing changed.
   schedule:
-    - cron: '17 */6 * * *'
+    - cron: '17 * * * *'
   # Allow manual runs from the Actions tab
   workflow_dispatch:
 
@@ -28,27 +29,25 @@ jobs:
           ref: ${{ matrix.branch }}
           fetch-depth: 0
 
-      - name: Add upstream remote
-        run: git remote add upstream https://github.com/${{ env.UPSTREAM }}.git
-
-      - name: Fetch upstream
-        run: git fetch upstream ${{ matrix.branch }}
-
-      - name: Check for new upstream commits
-        id: check
+      - name: Check if upstream tip is already merged in
+        id: changed
         run: |
-          BEHIND=$(git rev-list --count HEAD..upstream/${{ matrix.branch }})
-          echo "behind=$BEHIND"
-          echo "behind=$BEHIND" >> "$GITHUB_ENV"
+          UPSTREAM_TIP=$(curl -s "https://api.github.com/repos/${{ env.UPSTREAM }}/commits/${{ matrix.branch }}" | jq -r .sha)
+          echo "upstream_tip=${UPSTREAM_TIP}"
+          # Already an ancestor of our local branch => nothing to do.
+          if git merge-base --is-ancestor "${UPSTREAM_TIP}" HEAD; then
+            echo "No upstream change for ${{ matrix.branch }}; already in sync."
+          else
+            echo "Upstream has new commits for ${{ matrix.branch }}."
+            echo "changed=true" >> "$GITHUB_ENV"
+          fi
 
       - name: Merge upstream into ${{ matrix.branch }} and push
-        if: env.behind != '0'
+        if: env.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/${{ env.UPSTREAM }}.git
+          git fetch upstream ${{ matrix.branch }}
           git merge --no-edit upstream/${{ matrix.branch }}
           git push origin "${{ matrix.branch }}"
-
-      - name: Report
-        if: always()
-        run: echo "${{ matrix.branch }} synced (behind=${{ env.behind }})."
