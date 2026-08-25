@@ -28,7 +28,7 @@ chmod +x build/cosmos-launcher
 
 cp -r static build/
 cp -r GeoLite2-Country.mmdb build/
-cp nebula-arm-cert nebula-cert nebula-arm nebula build/
+cp nebula-cert nebula build/
 cp -r Logo.png build/
 cp restic build/
 mkdir build/images

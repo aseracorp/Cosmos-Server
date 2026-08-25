@@ -217,12 +217,12 @@ jobs:
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos-armv7 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos-launcher-armv7 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos-launcher
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/restic-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/restic
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-armv7 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-arm
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-armv7-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-arm-cert
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos-launcher-arm64
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos-arm64
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-cert
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-armv7 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-armv7-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos-launcher-arm64
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/cosmos-arm64
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/nebula-arm64*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv7/restic-arm64
 
@@ -233,12 +233,12 @@ jobs:
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos-armv6 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos-launcher-armv6 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos-launcher
             cp ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/restic-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/restic
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-armv6 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-arm
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-armv6-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-arm-cert
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos-launcher-arm*
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos-arm*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-cert
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-armv6 ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-armv6-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos-launcher-arm*
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/cosmos-arm*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-armv7*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/nebula-arm64*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-armv6/restic-arm64
@@ -250,12 +250,12 @@ jobs:
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm
-            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm-cert
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm*
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm*
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-armv6*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-armv7*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic-arm*
