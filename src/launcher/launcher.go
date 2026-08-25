@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"io"
 	"archive/zip"
-	"runtime"
 	"path/filepath"
 	"strings"
 	// "os/exec"
@@ -136,10 +135,7 @@ func main() {
 		return
 	}
 
-	hash := v.AMDMD5
-	if runtime.GOARCH == "arm64" {
-		hash = v.ARMMD5
-	}
+	hash := v.ArchMD5()
 	
 	// check md5
 	if hash != "" {

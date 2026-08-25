@@ -8,6 +8,8 @@ ARG BINARY_NAME=cosmos
 # Set BINARY_NAME based on the TARGETPLATFORM
 RUN case "$TARGETPLATFORM" in \
     "linux/arm64") BINARY_NAME="cosmos-arm64" ;; \
+    "linux/arm/v7") BINARY_NAME="cosmos-armv7" ;; \
+    "linux/arm/v6") BINARY_NAME="cosmos-armv6" ;; \
     *) BINARY_NAME="cosmos" ;; \
     esac && echo $BINARY_NAME > /binary_name
 
@@ -27,7 +29,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # Copy the respective binary based on the BINARY_NAME
-COPY build/cosmos build/cosmos-arm64 ./
+COPY build/cosmos build/cosmos-arm64 build/cosmos-armv7 build/cosmos-armv6 ./
 
 # Copy other resources
 COPY build/* ./

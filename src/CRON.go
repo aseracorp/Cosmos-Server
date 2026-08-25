@@ -3,7 +3,6 @@ package main
 import (
 	"io/ioutil"
 	"hash/fnv"
-	"runtime"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -152,10 +151,7 @@ func checkUpdatesAvailable() {
 			if cp == -1 {
 				utils.Log("New version available: " + updates.Version)
 				
-				url := updates.AMDURL
-				if runtime.GOARCH == "arm64" {
-					url = updates.ARMURL
-				}
+				url := updates.ArchUpdateURL()
 
 				utils.Log("Downloading update from " + url)
 
