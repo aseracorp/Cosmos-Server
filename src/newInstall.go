@@ -10,23 +10,11 @@ import (
 
 	"github.com/azukaar/cosmos-server/src/configapi"
 	"github.com/azukaar/cosmos-server/src/constellation"
-	"github.com/azukaar/cosmos-server/src/docker"
 	"github.com/azukaar/cosmos-server/src/utils"
 )
 
-func waitForDB() {
-	time.Sleep(1 * time.Second)
-	err := utils.DB()
-	if err != nil {
-		utils.Debug("DB error: " + err.Error())
-		utils.Warn("DB Not ready yet")
-		waitForDB()
-	}
-}
-
 type NewInstallJSON struct {
 	MongoDBMode string `json:"mongodbMode"`
-	MongoDB string `json:"mongodb"`
 	HTTPSCertificateMode string `json:"httpsCertificateMode"`
 	TLSCert string `json:"tlsCert"`
 	TLSKey string `json:"tlsKey"`
@@ -97,48 +85,16 @@ func NewInstallRoute(w http.ResponseWriter, req *http.Request) {
 				os.RemoveAll("/config")
 				os.Mkdir("/config", 0700)
 			}
-			utils.DisconnectDB()
 			LoadConfig()
 		}
 		if(request.Step == "2") {
-			utils.Log("NewInstall: Step Database")
-			// User Management & Mongo DB
-			if(request.MongoDBMode == "DisableUserManagement") {
-				utils.Log("NewInstall: Disable User Management")
+			// there is no database to provision anymore; tolerated so older clients
+			// walking the numbered steps still succeed
+			utils.Log("NewInstall: Step Database (no-op)")
+			if request.MongoDBMode == "DisableUserManagement" {
 				newConfig.DisableUserManagement = true
 				utils.SaveConfigTofile(newConfig)
 				utils.LoadBaseMainConfig(newConfig)
-			} else if (request.MongoDBMode == "Provided") {
-				utils.Log("NewInstall: DB Provided")
-				newConfig.DisableUserManagement = false
-				newConfig.MongoDB = request.MongoDB
-				newConfig.Database.PuppetMode = false
-				utils.SaveConfigTofile(newConfig)
-				utils.LoadBaseMainConfig(newConfig)
-			} else if (request.MongoDBMode == "Create") {
-				utils.Log("NewInstall: Create DB")
-				newConfig.DisableUserManagement = false
-				newConfig.MongoDB = ""
-
-				strco, err := docker.NewDB(w, req)
-				if err != nil {
-					utils.Error("NewInstall: Error creating MongoDB", err)
-					return
-				}
-
-				newConfig.Database = strco
-				utils.SaveConfigTofile(newConfig)
-				utils.LoadBaseMainConfig(newConfig)
-				utils.Log("NewInstall: MongoDB created, waiting for it to be ready")
-				waitForDB()
-				w.WriteHeader(http.StatusOK)
-				return
-			} else {
-				utils.Log("NewInstall: Invalid MongoDBMode")
-				utils.Error("NewInstall: Invalid MongoDBMode", nil)
-				utils.HTTPError(w, "New Install: Invalid MongoDBMode",
-					http.StatusInternalServerError, "NI001")
-				return
 			}
 		} else if (request.Step == "3") {
 			// HTTPS Certificate Mode & Certs & Let's Encrypt
@@ -170,14 +126,6 @@ func NewInstallRoute(w http.ResponseWriter, req *http.Request) {
 			}
 
 			// Admin User
-			c, closeDb, errCo := utils.GetEmbeddedCollection(utils.GetRootAppId(), "users")
-  defer closeDb()
-			if errCo != nil {
-				utils.Error("Database Connect", errCo)
-				utils.HTTPError(w, "Database", http.StatusInternalServerError, "DB001")
-				return
-			}
-
 			nickname := utils.Sanitize(request.Nickname)
 			hashedPassword, err2 := bcrypt.GenerateFromPassword([]byte(request.Password), 14)
 
@@ -188,8 +136,9 @@ func NewInstallRoute(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 
-			// pre-remove every users
-			_, err4 := c.DeleteMany(nil, map[string]interface{}{})
+			// Local wipe, not a cluster op: setup means "this box starts empty".
+			// Published, the empty filter becomes an unqualified DELETE everywhere.
+			err4 := utils.DeleteAllUsersLocal()
 			if err4 != nil {
 				utils.Error("NewInstall: Error deleting users", err4)
 				utils.HTTPError(w, "New Install: Error deleting users " + err4.Error(),
@@ -197,14 +146,14 @@ func NewInstallRoute(w http.ResponseWriter, req *http.Request) {
 				return
 			}
 
-			_, err3 := c.InsertOne(nil, map[string]interface{}{
-				"Nickname": nickname,
-				"Email": request.Email,
-				"Password": hashedPassword,
-				"Role": utils.ADMIN,
-				"PasswordCycle": 0,
-				"CreatedAt": time.Now(),
-				"RegisteredAt": time.Now(),
+			err3 := utils.CreateUser(utils.User{
+				Nickname: nickname,
+				Email: request.Email,
+				Password: string(hashedPassword),
+				Role: utils.ADMIN,
+				PasswordCycle: 0,
+				CreatedAt: time.Now(),
+				RegisteredAt: time.Now(),
 			})
 
 			if err3 != nil {
@@ -229,20 +178,18 @@ func NewInstallRoute(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// noopResponseWriter discards all output — used to call docker.NewDB without streaming.
-type noopResponseWriter struct {
-	header http.Header
-}
-
-func (n *noopResponseWriter) Header() http.Header        { return n.header }
-func (n *noopResponseWriter) Write(b []byte) (int, error) { return len(b), nil }
-func (n *noopResponseWriter) WriteHeader(int)             {}
-func (n *noopResponseWriter) Flush()                      {}
-
 type SetupJSON struct {
 	// Database
 	MongoDBMode string `json:"mongodbMode"`
-	MongoDB     string `json:"mongodb"`
+
+	// Optional: point this node at a shared Postgres instead of the local SQL store
+	PostgresHost     string `json:"postgresHost,omitempty"`
+	PostgresDatabase string `json:"postgresDatabase,omitempty"`
+	PostgresUsername string `json:"postgresUsername,omitempty"`
+	PostgresPassword string `json:"postgresPassword,omitempty"`
+
+	// Optional: overrides the node column on metrics rows. Defaults to the hostname when empty, which is what a single-node install wants.
+	DatabaseNodeName string `json:"databaseNodeName,omitempty"`
 
 	// HTTPS
 	Hostname               string            `json:"hostname"`
@@ -314,50 +261,50 @@ func SetupRoute(w http.ResponseWriter, req *http.Request) {
 			os.RemoveAll("/config")
 			os.Mkdir("/config", 0700)
 		}
-		utils.DisconnectDB()
 		LoadConfig()
 	}
 
 	config := utils.GetBaseMainConfig()
 
 	// ── Step 1: Database ──────────────────────────────────────────────
-	if request.MongoDBMode == "" {
-		utils.HTTPError(w, "mongodbMode is required", http.StatusBadRequest, "SU003")
-		return
-	}
-
-	switch request.MongoDBMode {
-	case "DisableUserManagement":
+	// Monitoring runs on the local SQL store, so the only thing left to decide here
+	// is user management. Legacy mongodbMode values are accepted and ignored.
+	if request.MongoDBMode == "DisableUserManagement" {
 		utils.Log("Setup: Disable User Management")
 		config.DisableUserManagement = true
-	case "Provided":
-		utils.Log("Setup: DB Provided")
+	} else {
 		config.DisableUserManagement = false
-		config.MongoDB = request.MongoDB
-		config.Database.PuppetMode = false
-	case "Create":
-		utils.Log("Setup: Create DB")
-		config.DisableUserManagement = false
-		config.MongoDB = ""
-		noop := &noopResponseWriter{header: make(http.Header)}
-		dbConf, err := docker.NewDB(noop, req)
-		if err != nil {
-			utils.Error("Setup: Error creating MongoDB", err)
-			utils.HTTPError(w, "Error creating MongoDB: "+err.Error(), http.StatusInternalServerError, "SU004")
-			return
+	}
+
+	// Optional shared Postgres
+	pgSet := 0
+	for _, v := range []string{
+		request.PostgresHost, request.PostgresDatabase,
+		request.PostgresUsername, request.PostgresPassword,
+	} {
+		if v != "" {
+			pgSet++
 		}
-		config.Database = dbConf
-	default:
-		utils.HTTPError(w, "Invalid mongodbMode", http.StatusBadRequest, "SU003")
+	}
+	if pgSet > 0 && pgSet < 4 {
+		utils.Error("Setup: incomplete Postgres connection", nil)
+		utils.HTTPError(w, "postgresHost, postgresDatabase, postgresUsername and postgresPassword must all be provided together",
+			http.StatusBadRequest, "SU003")
 		return
+	}
+	if pgSet == 4 {
+		utils.Log("Setup: Using Postgres at " + request.PostgresHost)
+		config.Database.PostgresHost = request.PostgresHost
+		config.Database.PostgresDatabase = request.PostgresDatabase
+		config.Database.PostgresUsername = request.PostgresUsername
+		config.Database.PostgresPassword = request.PostgresPassword
+	}
+	if request.DatabaseNodeName != "" {
+		config.Database.NodeName = request.DatabaseNodeName
 	}
 
 	utils.SaveConfigTofile(config)
 	utils.LoadBaseMainConfig(config)
-
-	if !config.DisableUserManagement {
-		waitForDB()
-	}
 
 	// ── Step 1b: Licence (optional) ───────────────────────────────────
 	// Persist the licence before constellation join so the joining flow
@@ -395,14 +342,6 @@ func SetupRoute(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		c, closeDb, errCo := utils.GetEmbeddedCollection(utils.GetRootAppId(), "users")
-		defer closeDb()
-		if errCo != nil {
-			utils.Error("Setup: Database Connect", errCo)
-			utils.HTTPError(w, "Database error", http.StatusInternalServerError, "SU006")
-			return
-		}
-
 		nickname := utils.Sanitize(request.Nickname)
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(request.Password), 14)
 		if err != nil {
@@ -411,15 +350,16 @@ func SetupRoute(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		c.DeleteMany(nil, map[string]interface{}{})
-		_, err = c.InsertOne(nil, map[string]interface{}{
-			"Nickname":      nickname,
-			"Email":         request.Email,
-			"Password":      hashedPassword,
-			"Role":          utils.ADMIN,
-			"PasswordCycle": 0,
-			"CreatedAt":     time.Now(),
-			"RegisteredAt":  time.Now(),
+		// local wipe — see DeleteAllUsersLocal; setup must never empty the cluster
+		utils.DeleteAllUsersLocal()
+		err = utils.CreateUser(utils.User{
+			Nickname:      nickname,
+			Email:         request.Email,
+			Password:      string(hashedPassword),
+			Role:          utils.ADMIN,
+			PasswordCycle: 0,
+			CreatedAt:     time.Now(),
+			RegisteredAt:  time.Now(),
 		})
 		if err != nil {
 			utils.Error("Setup: Error creating admin user", err)

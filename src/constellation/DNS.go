@@ -3,6 +3,7 @@ package constellation
 import (
 	"context"
 	"time"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,24 +27,108 @@ func externalLookup(client *dns.Client, r *dns.Msg, serverAddr string) (*dns.Msg
 	return client.Exchange(rCopy, serverAddr)
 }
 
-// matchesDomain reports whether qName matches hostname exactly or on a label boundary
-func matchesDomain(qName string, hostname string) bool {
-	return qName == hostname + "." || strings.HasSuffix(qName, "." + hostname + ".")
+// isAddrQuery reports whether q asks for an address record. AAAA is claimed and
+// answered empty rather than forwarded, so a client can't bypass us over IPv6.
+func isAddrQuery(q dns.Question) bool {
+	return q.Qtype == dns.TypeA || q.Qtype == dns.TypeAAAA
 }
 
-// isBlacklisted reports whether domain or any of its parent domains is in DNSBlacklist,
-// so a blacklisted "example.com" also blocks "ads.example.com"
-func isBlacklisted(domain string) bool {
-	for {
-		if DNSBlacklist[domain] {
-			return true
-		}
-		idx := strings.Index(domain, ".")
-		if idx == -1 {
-			return false
-		}
-		domain = domain[idx+1:]
+// answerA appends an A record, skipping malformed IPs instead of packing a nil
+// RR, and skipping duplicates so overlapping hostnames only answer once
+func answerA(m *dns.Msg, name string, ip string) {
+	ip = cleanIp(ip)
+	if ip == "" {
+		utils.Error("DNS: no IP to answer " + name + " with", nil)
+		return
 	}
+
+	for _, existing := range m.Answer {
+		if a, ok := existing.(*dns.A); ok && a.Hdr.Name == name && a.A.String() == ip {
+			return
+		}
+	}
+
+	rr, err := dns.NewRR(name + " A " + ip)
+	if err != nil {
+		utils.Error("DNS: bad A record for "+name+" -> "+ip, err)
+		return
+	}
+
+	m.Answer = append(m.Answer, rr)
+}
+
+func hostOnly(host string) string {
+	return strings.Split(host, ":")[0]
+}
+
+// tunneledHostnames lists hostnames this node only serves as a tunnel backend
+// (nil on a load balancer, which answers for itself).
+func tunneledHostnames() map[string]bool {
+	if isLB, err := GetCurrentDeviceIsLoadbalancer(); err != nil || isLB {
+		return nil
+	}
+
+	config := utils.GetMainConfig()
+	tunneled := map[string]bool{}
+	local := map[string]bool{
+		hostOnly(config.HTTPConfig.Hostname): true,
+	}
+
+	for _, route := range config.HTTPConfig.ProxyConfig.Routes {
+		if !route.UseHost || !usableHost(route.Host) {
+			continue
+		}
+		if route.Tunnel == "" {
+			local[hostOnly(route.Host)] = true
+			continue
+		}
+		// overridden exit serves only TunneledHost; the origin still serves Host
+		if tunnelHostOverridden(route) {
+			local[hostOnly(route.Host)] = true
+			tunneled[hostOnly(route.TunneledHost)] = true
+			continue
+		}
+		tunneled[hostOnly(route.Host)] = true
+	}
+
+	for host := range local {
+		delete(tunneled, host)
+	}
+
+	return tunneled
+}
+
+// loadBalancerIPs returns the constellation IPs of the known load balancers,
+// deduplicated and sorted so the answer is stable across queries.
+func loadBalancerIPs() []string {
+	devices, _ := deviceCacheSnapshot()
+
+	seen := map[string]bool{}
+	ips := []string{}
+	for _, device := range devices {
+		ip := cleanIp(device.IP)
+		if !device.IsLoadBalancer || ip == "" || seen[ip] {
+			continue
+		}
+		seen[ip] = true
+		ips = append(ips, ip)
+	}
+
+	sort.Strings(ips)
+	return ips
+}
+
+// dnsAnswerIPs picks what to answer hostname with. A tunneled hostname on a
+// non-load-balancer node must point at the load balancers, which hold the
+// tunnel cache and provide rotation/failover. Falls back to this node.
+func dnsAnswerIPs(hostname string, thisIp string, tunneled map[string]bool) []string {
+	if !tunneled[hostname] {
+		return []string{thisIp}
+	}
+	if ips := loadBalancerIPs(); len(ips) > 0 {
+		return ips
+	}
+	return []string{thisIp}
 }
 
 func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
@@ -75,63 +160,84 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if !customHandled {
 		customDNSEntries := config.ConstellationConfig.CustomDNSEntries
 
-		// Overwrite local hostnames with custom entries
+		// Overwrite local hostnames with custom entries; exact entries win
+		// over wildcard ones so "*.example.com" can't shadow "app.example.com"
 		for _, q := range r.Question {
+			if !isAddrQuery(q) {
+				continue
+			}
+			matched := []utils.ConstellationDNSEntry{}
 			for _, entry := range customDNSEntries {
-				hostname := entry.Key
-				ip := entry.Value
-
-				if matchesDomain(q.Name, hostname) && q.Qtype == dns.TypeA {
-					utils.Debug("DNS Overwrite " + hostname + " with " + ip)
-					rr, _ := dns.NewRR(q.Name + " A " + ip)
-					m.Answer = append(m.Answer, rr)
-					customHandled = true
+				if matchesCustomEntry(q.Name, entry.Key) {
+					matched = append(matched, entry)
 				}
+			}
+			exact := []utils.ConstellationDNSEntry{}
+			for _, entry := range matched {
+				if !strings.ContainsAny(entry.Key, "*?") {
+					exact = append(exact, entry)
+				}
+			}
+			if len(exact) > 0 {
+				matched = exact
+			}
+			for _, entry := range matched {
+				if q.Qtype == dns.TypeA {
+					utils.Debug("DNS Overwrite " + entry.Key + " with " + entry.Value)
+					answerA(m, q.Name, entry.Value)
+				}
+				customHandled = true
 			}
 		}
 	}
 
-	// Overwrite local hostnames with their Constellation IP. Prioritize local URLs over tunnels
+	// Overwrite local hostnames with their Constellation IP. hostnames already
+	// includes the tunnel routes this node load-balances, so a server that was
+	// selected by DNS always answers for itself and keeps the request local.
 	if !customHandled {
 		thisIp, err := GetCurrentDeviceIP()
 		if err != nil {
 			utils.Error("[constellation] Failed to get current device IP for DNS handling", err)
 		} else {
+			tunneled := tunneledHostnames()
+			// an overridden TunneledHost is absent from GetAllHostnames (the exit
+			// serves it, not this node) — add it so the origin answers it with the
+			// load balancer IPs instead of forwarding the query upstream
+			for host := range tunneled {
+				hostnames = append(hostnames, host)
+			}
 			for _, q := range r.Question {
 				utils.Debug("DNS Question " + q.Name)
-				for _, hostname := range hostnames {
-					if matchesDomain(q.Name, hostname) && q.Qtype == dns.TypeA {
-						utils.Debug("DNS Overwrite " + hostname + " with " + thisIp)
-						rr, _ := dns.NewRR(q.Name + " A " + thisIp)
-						m.Answer = append(m.Answer, rr)
-						customHandled = true
-					}
+				if !isAddrQuery(q) {
+					continue
 				}
-			}
-		}
 
-		remoteTunnels := GetLocalTunnelCache()
-		currentName, err := GetCurrentDeviceName()
-		if err != nil {
-			utils.Error("[constellation] Failed to get current device name for DNS handling", err)
-		} else {
-			for _, q := range r.Question {
-				for _, tunnel := range remoteTunnels {
-					for _, target := range tunnel.Targets {
-						if target.DeviceName == currentName {
-							continue
-						}
-						destination := GetDeviceIp(target.DeviceName)
-						if destination != "" {
-							if matchesDomain(q.Name, tunnel.Route.Host) && q.Qtype == dns.TypeA {
-								utils.Debug("DNS Overwrite " + tunnel.Route.Host + " with " + destination)
-								rr, _ := dns.NewRR(q.Name + " A " + destination)
-								m.Answer = append(m.Answer, rr)
-								customHandled = true
-							}
-						}
+				// most specific match wins; on a tie local beats cluster
+				best := ""
+				for _, hostname := range hostnames {
+					if matchesDomain(q.Name, hostname) && len(hostname) > len(best) {
+						best = hostname
 					}
 				}
+				clusterBest, clusterEntry := clusterDNSLookup(q.Name)
+
+				ips := []string{}
+				if best != "" && len(best) >= len(clusterBest) {
+					ips = dnsAnswerIPs(best, thisIp, tunneled)
+				} else if clusterBest != "" {
+					best = clusterBest
+					ips = clusterEntry.IPs
+				} else {
+					continue
+				}
+
+				if q.Qtype == dns.TypeA {
+					for _, ip := range ips {
+						utils.Debug("DNS Overwrite " + best + " with " + ip)
+						answerA(m, q.Name, ip)
+					}
+				}
+				customHandled = true
 			}
 		}
 	}
@@ -141,13 +247,15 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		_, cachedNames := deviceCacheSnapshot()
 		for _, q := range r.Question {
 			utils.Debug("DNS Question " + q.Name)
+			qName := deviceQueryName(q.Name)
 			for deviceName, ip := range cachedNames {
 				procDeviceName := strings.ReplaceAll(deviceName, " ", "-")
 				
-				if matchesDomain(q.Name, procDeviceName) && q.Qtype == dns.TypeA {
-					utils.Debug("DNS Overwrite " + procDeviceName + " with its IP")
-					rr, _ := dns.NewRR(q.Name + " A " + ip)
-					m.Answer = append(m.Answer, rr)
+				if matchesDomain(qName, procDeviceName) && isAddrQuery(q) {
+					if q.Qtype == dns.TypeA {
+						utils.Debug("DNS Overwrite " + procDeviceName + " with its IP")
+						answerA(m, q.Name, ip)
+					}
 					customHandled = true
 				}
 			}
@@ -157,12 +265,11 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if !customHandled {
 		// Block blacklisted domains
 		for _, q := range r.Question {
-			noDot := strings.TrimSuffix(q.Name, ".")
+			noDot := strings.ToLower(strings.TrimSuffix(q.Name, "."))
 			if isBlacklisted(noDot) {
 				if q.Qtype == dns.TypeA {
 					utils.Debug("DNS Block " + noDot)
-					rr, _ := dns.NewRR(q.Name + " A 0.0.0.0")
-					m.Answer = append(m.Answer, rr)
+					answerA(m, q.Name, "0.0.0.0")
 				}
 				
 				customHandled = true
@@ -245,6 +352,13 @@ func StopDNS() {
 			utils.Warn("Failed to stop DNS server: " + err.Error())
 		}
 	}
+}
+
+// ReloadDNS rebinds the DNS server against the current config. Reaction of the
+// dns op-log domain, replacing the old restart-everything sync.
+func ReloadDNS() {
+	StopDNS()
+	InitDNS()
 }
 
 func InitDNS() {

@@ -115,7 +115,6 @@ definitions:
         type: string
     required:
     - deviceName
-    - nickname
     type: object
   constellation.DeviceCreateRequestJSON:
     properties:
@@ -682,8 +681,6 @@ definitions:
         type: string
       marketConfig:
         $ref: '#/definitions/utils.MarketConfig'
-      mongoDB:
-        type: string
       monitoringAlerts:
         additionalProperties:
           $ref: '#/definitions/utils.Alert'
@@ -737,8 +734,6 @@ definitions:
         type: string
       httpsCertificateMode:
         type: string
-      mongodb:
-        type: string
       mongodbMode:
         type: string
       nickname:
@@ -775,6 +770,10 @@ definitions:
       createAdminToken:
         description: 'Optional: create admin API token'
         type: boolean
+      databaseNodeName:
+        description: 'Optional: overrides the node column on metrics rows. Defaults
+          to the hostname when empty, which is what a single-node install wants.'
+        type: string
       dnsChallengeProvider:
         type: string
       email:
@@ -789,8 +788,6 @@ definitions:
           Optional: Pro licence key — stored on the lighthouse config and
           validated via utils.ProcessLicence at the end of setup.
         type: string
-      mongodb:
-        type: string
       mongodbMode:
         description: Database
         type: string
@@ -798,6 +795,16 @@ definitions:
         description: Admin
         type: string
       password:
+        type: string
+      postgresDatabase:
+        type: string
+      postgresHost:
+        description: 'Optional: point this node at a shared Postgres instead of the
+          local SQL store'
+        type: string
+      postgresPassword:
+        type: string
+      postgresUsername:
         type: string
       sslEmail:
         type: string
@@ -1596,19 +1603,17 @@ definitions:
     type: object
   utils.DatabaseConfig:
     properties:
-      configVolume:
+      nodeName:
+        description: overrides the node column on metrics rows
         type: string
-      dbVolume:
+      postgresDatabase:
         type: string
-      hostname:
+      postgresHost:
+        description: '"host" or "host:port"'
         type: string
-      password:
+      postgresPassword:
         type: string
-      puppetMode:
-        type: boolean
-      username:
-        type: string
-      version:
+      postgresUsername:
         type: string
     type: object
   utils.DockerConfig:
@@ -2061,7 +2066,7 @@ info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.22.35
+  version: 0.23.0
 paths:
   /_logs:
     get:
@@ -3694,6 +3699,36 @@ paths:
       summary: Edit the current Constellation device properties
       tags:
       - constellation
+  /api/constellation/force-reform:
+    post:
+      description: HA only. Bumps the op-log epoch, drops local JetStream state, blocks
+        the other managers and restarts NATS, leaving this node writable in formation
+        mode so replacements can be enrolled. Does not touch the CA, keys, config
+        or device data.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResult'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResult'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResult'
+      security:
+      - BearerAuth: []
+      summary: Force the constellation to re-form around this manager
+      tags:
+      - constellation
   /api/constellation/get-next-ip:
     get:
       produces:
@@ -4293,11 +4328,11 @@ paths:
         in: query
         name: search
         type: string
-      - description: BSON query as JSON string
+      - description: Filter as a JSON object
         in: query
         name: query
         type: string
-      - description: Pagination cursor (ObjectID hex string)
+      - description: Pagination cursor (event id)
         in: query
         name: page
         type: string
@@ -4309,6 +4344,10 @@ paths:
           schema:
             additionalProperties: true
             type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResult'
         "403":
           description: Forbidden
           schema:
@@ -5484,7 +5523,7 @@ paths:
   /api/notifications:
     get:
       parameters:
-      - description: Pagination cursor (ObjectID hex string for older notifications)
+      - description: Pagination cursor (notification id for older notifications)
         in: query
         name: from
         type: string
@@ -5512,7 +5551,7 @@ paths:
   /api/notifications/read:
     get:
       parameters:
-      - description: Comma-separated list of notification ObjectID hex strings
+      - description: Comma-separated list of notification ids
         in: query
         name: ids
         required: true

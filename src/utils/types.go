@@ -2,9 +2,8 @@ package utils
 
 import (
 	"os"
+	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Role int
@@ -156,7 +155,6 @@ type FileStats struct {
 }
 
 type User struct {
-	ID       primitive.ObjectID `json:"-" bson:"_id,omitempty"`
 	Nickname      string     `validate:"required" json:"nickname" bson:"Nickname"`
 	Password       string    `validate:"required" json:"-" bson:"Password"`
 	RegisterKey       string  `json:"registerKey" bson:"RegisterKey"`
@@ -177,7 +175,6 @@ type User struct {
 
 type Config struct {
 	LoggingLevel LoggingLevel `required,validate:"oneof=DEBUG INFO WARNING ERROR"`
-	MongoDB string
 	Database DatabaseConfig ``
 	DisableUserManagement bool
 	NewInstall bool `validate:"boolean"`
@@ -239,14 +236,15 @@ type SnapRAIDConfig struct {
 	CheckOnFix bool
 }
 
+// DatabaseConfig points the monitoring store at Postgres; empty PostgresHost keeps SQLite.
+// The Postgres* prefix is deliberate: pre-0.23 configs carry Hostname/Username/Password
+// from the Mongo era and must not unmarshal into these fields.
 type DatabaseConfig struct {
-	PuppetMode bool
-	Hostname string
-	DbVolume string
-	ConfigVolume string
-	Version string
-	Username string
-	Password string
+	PostgresHost     string // "host" or "host:port"
+	PostgresDatabase string
+	PostgresUsername string
+	PostgresPassword string
+	NodeName         string // overrides the node column on metrics rows
 }
 
 type HomepageConfig struct {
@@ -371,6 +369,19 @@ type ProxyRouteConfig struct {
 	Const_IsTunneled           bool                        `yaml:"-" json:"-"`
 }
 
+// LBModes are the load balancing modes implemented by TunnelLoadBalancer.Select().
+var LBModes = []string{"", "first", "round_robin", "load_based"}
+
+// IsValidLBMode reports whether mode is one of LBModes, case-insensitively.
+func IsValidLBMode(mode string) bool {
+	for _, m := range LBModes {
+		if strings.EqualFold(mode, m) {
+			return true
+		}
+	}
+	return false
+}
+
 type EmailConfig struct {
 	Enabled		 bool
 	Host       string
@@ -420,6 +431,11 @@ type ConstellationConfig struct {
 type TunnelTarget struct {
 	DeviceName string `json:"deviceName"`
 	TargetURL  string `json:"targetURL"`
+	// Latest resource sample from the advertiser's heartbeat, used by the
+	// "load_based" LB mode. Only trustworthy when MonitoringOn is true.
+	CPUPercent   float64 `json:"cpuPercent,omitempty"`
+	RAMPercent   float64 `json:"ramPercent,omitempty"`
+	MonitoringOn bool    `json:"monitoringOn,omitempty"`
 }
 
 type ConstellationTunnel struct {

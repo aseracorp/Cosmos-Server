@@ -41,18 +41,7 @@ func StatusRoute(w http.ResponseWriter, req *http.Request) {
 	if(req.Method == "GET") {
 		utils.Log("API: Status")
 		
-		if config.NewInstall {
-			if(!config.DisableUserManagement) {
-				err := utils.DB()
-				if err != nil {
-					utils.Error("Status: Database error", err)
-				}
-			} else {
-				utils.Log("Status: User management is disabled, skipping database check")
-			}
-		}
-
-		if(!docker.DockerIsConnected) {
+		if(!docker.DockerIsConnected.Load()) {
 			ed := docker.Connect()
 			if ed != nil {
 				utils.Error("Status: Docker error", ed)
@@ -89,7 +78,7 @@ func StatusRoute(w http.ResponseWriter, req *http.Request) {
 				"containerized": utils.IsInsideContainer,
 				"hostmode": utils.IsHostNetwork || !utils.IsInsideContainer || utils.GetMainConfig().DisableHostModeWarning,
 				"database": utils.DBStatus,
-				"docker": docker.DockerIsConnected,
+				"docker": docker.DockerIsConnected.Load(),
 				"backup_status": docker.ExportError,
 				"letsencrypt": utils.GetMainConfig().HTTPConfig.HTTPSCertificateMode == "LETSENCRYPT" && utils.GetMainConfig().HTTPConfig.SSLEmail == "",
 				"domain": utils.GetMainConfig().HTTPConfig.Hostname == "localhost" || utils.GetMainConfig().HTTPConfig.Hostname == "0.0.0.0",
@@ -192,7 +181,6 @@ func MemStatusRoute(w http.ResponseWriter, req *http.Request) {
 				"UpdateAvailable": getRealSizeOf(utils.UpdateAvailable),
 				"LetsEncryptErrors": getRealSizeOf(utils.LetsEncryptErrors),
 				"BannedIPs": getRealSizeOf2(utils.BannedIPs),
-				"WriteBuffer": getRealSizeOf2(utils.GetWriteBuffer()),
 				"Shield": proxy.GetShield(),
 				"ActiveProxies": getRealSizeOf2(proxy.GetActiveProxies()),
 				"Markets": getRealSizeOf(market.GetCachedMarket()),

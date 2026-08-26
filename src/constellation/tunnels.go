@@ -58,15 +58,15 @@ func designatedKVCreator() (creator string, isSelf bool) {
 		// cannot identify ourselves: claim creatorship rather than deadlock
 		return "", true
 	}
-	self := sanitizeNATSUsername(device.DeviceName)
+	self := device.DeviceName
 	creator = self
 	devices, _ := deviceCacheSnapshot()
 	for _, d := range devices {
 		if d.CosmosNode != 2 || d.DeviceName == "" {
 			continue
 		}
-		if name := sanitizeNATSUsername(d.DeviceName); name < creator {
-			creator = name
+		if d.DeviceName < creator {
+			creator = d.DeviceName
 		}
 	}
 	return creator, creator == self
@@ -97,6 +97,11 @@ func GetAllTunneledRoutes() []utils.ProxyRouteConfig {
 
 	for _, route := range routesList {
 		if route.Tunnel != "" {
+			// checked against the original target: route.Target is rewritten below
+			if !isTunnelBackendHealthy(route) {
+				continue
+			}
+
 			protocol := ""
 			port := configHostport
 
@@ -156,6 +161,8 @@ func StopHeartbeat() {
 	// only consumer in production.
 	pro.StopResourceSampler()
 
+	StopTunnelProber()
+
 	heartbeatLock.Lock()
 	defer heartbeatLock.Unlock()
 
@@ -175,7 +182,7 @@ func ClientHeartbeatInit() {
 
 	// Only managers create buckets — an agent's unsynced defaults could win
 	// the creation race with the wrong replica count; agents just wait.
-	isAgent := utils.FBL.AgentMode
+	isAgent := isAgentNode()
 
 	// Among managers, only the designated creator normally creates; the
 	// others wait, with a liveness fallback after kvCreatorFallbackAfter of
@@ -263,6 +270,9 @@ func ClientHeartbeatInit() {
 	// leader election in constellation-nodes. Must be started after
 	// pro.ClientHeartbeatInit so the deployments KV exists.
 	StartSchedulerInConstellation()
+
+	// advertise a tunneled route only while its local backend answers
+	StartTunnelProber()
 
 	UpdateLocalTunnelCache()
 
@@ -386,7 +396,7 @@ func ClientHeartbeatInit() {
 					continue
 				}
 
-				key := sanitizeNATSUsername(device.DeviceName)
+				key := device.DeviceName
 
 				// Docker is authoritative for "what is running here" — query
 				// containers labeled cosmos-deployment each tick rather than
@@ -420,6 +430,7 @@ func ClientHeartbeatInit() {
 					IsExitNode:                device.IsExitNode,
 					CosmosNode:                device.CosmosNode,
 					Tunnels:                   GetAllTunneledRoutes(),
+					Hostnames:                 localHostnames(),
 					RunningDeployments:        running,
 					RunningDeploymentVersions: runningVersions,
 					CPUPercent:                res.CPUPercent,
@@ -572,6 +583,74 @@ var heartbeatStopChan chan struct{}
 var heartbeatTicker *time.Ticker
 var heartbeatLock sync.Mutex
 
+// mergeTunnelHeartbeats collapses every advertiser's tunnel routes into one
+// entry per route name. The governing Route config is the one advertised by the
+// lowest sanitized device name (same tiebreak as designatedKVCreator): picking
+// the first seen made the effective config flap with KV iteration order.
+func mergeTunnelHeartbeats(heartbeats []NodeHeartbeat, currentDeviceName string) []utils.ConstellationTunnel {
+	byName := map[string]*utils.ConstellationTunnel{}
+	governing := map[string]string{}
+
+	for _, heartbeat := range heartbeats {
+		advertiser := heartbeat.DeviceName
+
+		for _, tunnelRoute := range heartbeat.Tunnels {
+			if tunnelRoute.Tunnel != "_ANY_" && tunnelRoute.Tunnel != currentDeviceName {
+				continue
+			}
+
+			target := utils.TunnelTarget{
+				DeviceName:   heartbeat.DeviceName,
+				TargetURL:    tunnelRoute.Target,
+				CPUPercent:   heartbeat.CPUPercent,
+				RAMPercent:   heartbeat.RAMPercent,
+				MonitoringOn: heartbeat.MonitoringOn,
+			}
+			tunnelRoute.Const_IsTunneled = true
+
+			existing, ok := byName[tunnelRoute.Name]
+			if !ok {
+				byName[tunnelRoute.Name] = &utils.ConstellationTunnel{
+					Route:   tunnelRoute,
+					Targets: []utils.TunnelTarget{target},
+				}
+				governing[tunnelRoute.Name] = advertiser
+				continue
+			}
+
+			existing.Targets = append(existing.Targets, target)
+			// an unnamed advertiser never governs, and never blocks a named one
+			if advertiser != "" && (governing[tunnelRoute.Name] == "" || advertiser < governing[tunnelRoute.Name]) {
+				existing.Route = tunnelRoute
+				governing[tunnelRoute.Name] = advertiser
+			}
+		}
+	}
+
+	tunnels := make([]utils.ConstellationTunnel, 0, len(byName))
+	for _, t := range byName {
+		// Ensure local node is always first in targets
+		for i, target := range t.Targets {
+			if target.DeviceName == currentDeviceName && i != 0 {
+				t.Targets[0], t.Targets[i] = t.Targets[i], t.Targets[0]
+				break
+			}
+		}
+		tunnels = append(tunnels, *t)
+	}
+
+	return tunnels
+}
+
+// tunnelsForNode gates serving on load-balancer status: only LBs serve tunnels,
+func tunnelsForNode(heartbeats []NodeHeartbeat, currentDeviceName string) []utils.ConstellationTunnel {
+	isLB, err := GetCurrentDeviceIsLoadbalancer()
+	if err != nil || !isLB {
+		return []utils.ConstellationTunnel{}
+	}
+	return mergeTunnelHeartbeats(heartbeats, currentDeviceName)
+}
+
 func UpdateLocalTunnelCache() {
 	if IsConstellationStandalone() {
 		return
@@ -614,7 +693,7 @@ func UpdateLocalTunnelCache() {
 		return
 	}
 
-	byName := map[string]*utils.ConstellationTunnel{}
+	heartbeats := make([]NodeHeartbeat, 0, len(keys))
 
 	for _, key := range keys {
 		entry, err := kv.Get(key)
@@ -630,37 +709,14 @@ func UpdateLocalTunnelCache() {
 			continue
 		}
 
-		for _, tunnelRoute := range heartbeat.Tunnels {
-			if tunnelRoute.Tunnel == "_ANY_" || tunnelRoute.Tunnel == currentDeviceName {
-				target := utils.TunnelTarget{
-					DeviceName: heartbeat.DeviceName,
-					TargetURL:  tunnelRoute.Target,
-				}
-				if existing, ok := byName[tunnelRoute.Name]; ok {
-					existing.Targets = append(existing.Targets, target)
-				} else {
-					tunnelRoute.Const_IsTunneled = true
-					byName[tunnelRoute.Name] = &utils.ConstellationTunnel{
-						Route:   tunnelRoute,
-						Targets: []utils.TunnelTarget{target},
-					}
-				}
-			}
-		}
+		heartbeats = append(heartbeats, heartbeat)
 	}
 	clientConfigLock.RUnlock() // Done with KV operations
 
-	tunnels := make([]utils.ConstellationTunnel, 0, len(byName))
-	for _, t := range byName {
-		// Ensure local node is always first in targets
-		for i, target := range t.Targets {
-			if target.DeviceName == currentDeviceName && i != 0 {
-				t.Targets[0], t.Targets[i] = t.Targets[i], t.Targets[0]
-				break
-			}
-		}
-		tunnels = append(tunnels, *t)
-	}
+	// every node keeps the cluster DNS map, even non load balancers
+	setClusterDNS(buildClusterDNS(heartbeats, loadBalancerIPs()))
+
+	tunnels := tunnelsForNode(heartbeats, currentDeviceName)
 
 	// Compare old and new cache using sorted copies for consistent comparison
 	sortTunnelsForComparison := func(t []utils.ConstellationTunnel) []utils.ConstellationTunnel {
@@ -696,16 +752,6 @@ func GetLocalTunnelCache() []utils.ConstellationTunnel {
 	}
 
 	if IsConstellationStandalone() {
-		return []utils.ConstellationTunnel{}
-	}
-
-	isLB, err := GetCurrentDeviceIsLoadbalancer()
-	if err != nil {
-		utils.Debug("[constellation] Failed to get current device load balancer status for tunnel cache retrieval " + err.Error())
-		return []utils.ConstellationTunnel{}
-	}
-
-	if !isLB {
 		return []utils.ConstellationTunnel{}
 	}
 

@@ -4,7 +4,7 @@
     "description": "REST API for Cosmos Cloud server management",
     "title": "Cosmos Server API",
     "contact": {},
-    "version": "0.22.35"
+    "version": "0.23.0"
   },
   "paths": {
     "/_logs": {
@@ -3113,6 +3113,62 @@
         }
       }
     },
+    "/api/constellation/force-reform": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "HA only. Bumps the op-log epoch, drops local JetStream state, blocks the other managers and restarts NATS, leaving this node writable in formation mode so replacements can be enrolled. Does not touch the CA, keys, config or device data.",
+        "tags": [
+          "constellation"
+        ],
+        "summary": "Force the constellation to re-form around this manager",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/constellation/get-next-ip": {
       "get": {
         "security": [
@@ -4240,7 +4296,7 @@
             }
           },
           {
-            "description": "BSON query as JSON string",
+            "description": "Filter as a JSON object",
             "name": "query",
             "in": "query",
             "schema": {
@@ -4248,7 +4304,7 @@
             }
           },
           {
-            "description": "Pagination cursor (ObjectID hex string)",
+            "description": "Pagination cursor (event id)",
             "name": "page",
             "in": "query",
             "schema": {
@@ -4264,6 +4320,16 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
                 }
               }
             }
@@ -6514,7 +6580,7 @@
         "summary": "Get notifications for the authenticated user",
         "parameters": [
           {
-            "description": "Pagination cursor (ObjectID hex string for older notifications)",
+            "description": "Pagination cursor (notification id for older notifications)",
             "name": "from",
             "in": "query",
             "schema": {
@@ -6570,7 +6636,7 @@
         "summary": "Mark notifications as read",
         "parameters": [
           {
-            "description": "Comma-separated list of notification ObjectID hex strings",
+            "description": "Comma-separated list of notification ids",
             "name": "ids",
             "in": "query",
             "required": true,
@@ -10675,8 +10741,7 @@
       "constellation.DeviceBlockRequestJSON": {
         "type": "object",
         "required": [
-          "deviceName",
-          "nickname"
+          "deviceName"
         ],
         "properties": {
           "block": {
@@ -11519,9 +11584,6 @@
           "marketConfig": {
             "$ref": "#/components/schemas/utils.MarketConfig"
           },
-          "mongoDB": {
-            "type": "string"
-          },
           "monitoringAlerts": {
             "type": "object",
             "additionalProperties": {
@@ -11596,9 +11658,6 @@
           "httpsCertificateMode": {
             "type": "string"
           },
-          "mongodb": {
-            "type": "string"
-          },
           "mongodbMode": {
             "type": "string"
           },
@@ -11652,6 +11711,10 @@
             "description": "Optional: create admin API token",
             "type": "boolean"
           },
+          "databaseNodeName": {
+            "description": "Optional: overrides the node column on metrics rows. Defaults to the hostname when empty, which is what a single-node install wants.",
+            "type": "string"
+          },
           "dnsChallengeProvider": {
             "type": "string"
           },
@@ -11669,9 +11732,6 @@
             "description": "Optional: Pro licence key — stored on the lighthouse config and\nvalidated via utils.ProcessLicence at the end of setup.",
             "type": "string"
           },
-          "mongodb": {
-            "type": "string"
-          },
           "mongodbMode": {
             "description": "Database",
             "type": "string"
@@ -11681,6 +11741,19 @@
             "type": "string"
           },
           "password": {
+            "type": "string"
+          },
+          "postgresDatabase": {
+            "type": "string"
+          },
+          "postgresHost": {
+            "description": "Optional: point this node at a shared Postgres instead of the local SQL store",
+            "type": "string"
+          },
+          "postgresPassword": {
+            "type": "string"
+          },
+          "postgresUsername": {
             "type": "string"
           },
           "sslEmail": {
@@ -12565,25 +12638,21 @@
       "utils.DatabaseConfig": {
         "type": "object",
         "properties": {
-          "configVolume": {
+          "nodeName": {
+            "description": "overrides the node column on metrics rows",
             "type": "string"
           },
-          "dbVolume": {
+          "postgresDatabase": {
             "type": "string"
           },
-          "hostname": {
+          "postgresHost": {
+            "description": "\"host\" or \"host:port\"",
             "type": "string"
           },
-          "password": {
+          "postgresPassword": {
             "type": "string"
           },
-          "puppetMode": {
-            "type": "boolean"
-          },
-          "username": {
-            "type": "string"
-          },
-          "version": {
+          "postgresUsername": {
             "type": "string"
           }
         }

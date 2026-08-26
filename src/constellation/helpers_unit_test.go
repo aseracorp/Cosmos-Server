@@ -2,7 +2,9 @@ package constellation
 
 import (
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/azukaar/cosmos-server/src/utils"
 )
@@ -15,6 +17,8 @@ func TestUnitMatchesDomain(t *testing.T) {
 		want     bool
 	}{
 		{"exact match", "myhost.com.", "myhost.com", true},
+		{"case insensitive", "MyHost.COM.", "myhost.com", true},
+		{"case insensitive hostname", "laptop.", "Laptop", true},
 		{"subdomain match", "a.myhost.com.", "myhost.com", true},
 		{"deep subdomain match", "a.b.myhost.com.", "myhost.com", true},
 		{"regression: suffix without label boundary", "evilmyhost.com.", "myhost.com", false},
@@ -30,6 +34,22 @@ func TestUnitMatchesDomain(t *testing.T) {
 				t.Errorf("matchesDomain(%q, %q) = %v, want %v", tt.qName, tt.hostname, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestUnitDeviceQueryName(t *testing.T) {
+	tests := map[string]string{
+		"laptop.":                   "laptop.",
+		"laptop.constellation.":     "laptop.",
+		"Laptop.Constellation.":     "Laptop.",
+		"a.laptop.constellation.":   "a.laptop.",
+		"constellation.":            "constellation.",
+		"laptop.constellation.com.": "laptop.constellation.com.",
+	}
+	for in, want := range tests {
+		if got := deviceQueryName(in); got != want {
+			t.Errorf("deviceQueryName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
@@ -85,23 +105,6 @@ func TestUnitLoadRawBlockList(t *testing.T) {
 	for _, bad := range []string{"0.0.0.0", "# comment line", "garbage", "another.commented.com"} {
 		if blacklist[bad] {
 			t.Errorf("unexpected %q in blacklist", bad)
-		}
-	}
-}
-
-func TestUnitSanitizeNATSUsername(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"my device", "my_device"},
-		{"a.b-c:d/e\\f", "a_b_c_d_e_f"},
-		{"clean_name", "clean_name"},
-		{"", ""},
-	}
-	for _, tt := range tests {
-		if got := sanitizeNATSUsername(tt.in); got != tt.want {
-			t.Errorf("sanitizeNATSUsername(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }
@@ -216,6 +219,173 @@ cstln_cosmos_node: 1
 	}
 	if !cfg.ConstellationConfig.Enabled {
 		t.Error("Enabled = false, want true")
+	}
+}
+
+// A joining node must start at the constellation's real epoch, not the default 1.
+// Asking at 1 is outranked by every stale responder — including managers revived
+// from an epoch a force-reform abandoned — and the snapshot responder can only
+// silence peers BEHIND the asker, so a replacement could be captured at a dead
+// epoch. Adoption is forward-only: a lower epoch in an enrollment bundle must
+// never walk a healthy node backwards into a log its cluster has left.
+func TestUnitConnectToExistingAdoptsEpochForwardOnly(t *testing.T) {
+	setupTestEnv(t, nil)
+
+	enroll := func(epoch string) {
+		t.Helper()
+		if _, err := ConnectToExisting([]byte("cstln_device_name: d\ncstln_oplog_epoch: "+epoch+"\n"),
+			utils.GetMainConfig()); err != nil {
+			t.Fatal("ConnectToExisting:", err)
+		}
+	}
+
+	enroll("4")
+	if got := utils.GetOplogEpoch(); got != 4 {
+		t.Fatalf("epoch = %d, want 4 — a joiner asking at the default 1 is outranked by stale peers", got)
+	}
+	// it has the epoch's name, not its contents: it must re-materialize before writing
+	if utils.IsOplogBootstrapped() {
+		t.Fatal("joiner claims materialized state for an epoch it has never seen")
+	}
+
+	if err := utils.MarkOplogBootstrapped(4); err != nil {
+		t.Fatal("MarkOplogBootstrapped:", err)
+	}
+
+	// a stale bundle must not move it back, nor discard the state it holds
+	enroll("2")
+	if got := utils.GetOplogEpoch(); got != 4 {
+		t.Fatalf("epoch = %d after a stale enrollment bundle, want 4 — adopting backwards "+
+			"walks this node into a log the cluster has abandoned", got)
+	}
+	if !utils.IsOplogBootstrapped() {
+		t.Fatal("a stale enrollment bundle cleared the bootstrapped marker")
+	}
+
+	// an equal epoch is a no-op rather than a pointless re-snapshot
+	enroll("4")
+	if !utils.IsOplogBootstrapped() {
+		t.Fatal("re-enrolling at the same epoch forced a needless re-materialization")
+	}
+
+	// and a bundle without the key at all still works (older manager, mixed versions)
+	enroll4Missing := func() {
+		if _, err := ConnectToExisting([]byte("cstln_device_name: d\n"), utils.GetMainConfig()); err != nil {
+			t.Fatal("ConnectToExisting without an epoch key:", err)
+		}
+	}
+	enroll4Missing()
+	if got := utils.GetOplogEpoch(); got != 4 {
+		t.Fatalf("epoch = %d after an enrollment bundle with no epoch key, want 4", got)
+	}
+}
+
+// stubSoftRestartHooks fills in the restart callbacks main() installs: they are
+// nil in a test binary, and ResetNebula ends in SoftRestartServer calling them
+// from a goroutine.
+func stubSoftRestartHooks(t *testing.T) {
+	t.Helper()
+
+	prev := struct {
+		waitForAllJobs       func()
+		restartConstellation func()
+		initRemoteStorage    func()
+		initBackups          func()
+		initSnapRAIDConfig   func()
+		restartCRON          func()
+	}{
+		utils.WaitForAllJobs, utils.RestartConstellation, utils.InitRemoteStorage,
+		utils.InitBackups, utils.InitSnapRAIDConfig, utils.RestartCRON,
+	}
+	// SoftRestartServer reads these from a goroutine it does not wait for, so
+	// restore only after the last one fires; if it never does, leave the inert
+	// noops installed rather than race.
+	done := make(chan struct{})
+	var once sync.Once
+	t.Cleanup(func() {
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Log("stubSoftRestartHooks: SoftRestartServer never ran, leaving the stubs installed")
+			return
+		}
+		utils.WaitForAllJobs = prev.waitForAllJobs
+		utils.RestartConstellation = prev.restartConstellation
+		utils.InitRemoteStorage = prev.initRemoteStorage
+		utils.InitBackups = prev.initBackups
+		utils.InitSnapRAIDConfig = prev.initSnapRAIDConfig
+		utils.RestartCRON = prev.restartCRON
+	})
+
+	noop := func() {}
+	utils.WaitForAllJobs = noop
+	utils.RestartConstellation = noop
+	utils.InitRemoteStorage = noop
+	utils.InitBackups = noop
+	utils.InitSnapRAIDConfig = noop
+	// last of the six, so this is the goroutine signing off
+	utils.RestartCRON = func() { once.Do(func() { close(done) }) }
+}
+
+// A reset empties the device table, so the op-log position and bootstrapped
+// marker must go with it: left behind, the epoch-tied marker makes the next
+// constellation created on this node read-only from the moment it is enabled.
+func TestUnitResetNebulaClearsOplogState(t *testing.T) {
+	setupTestEnv(t, nil)
+	stubSoftRestartHooks(t)
+
+	epoch := utils.GetOplogEpoch()
+	if err := utils.MarkOplogBootstrapped(epoch); err != nil {
+		t.Fatal("MarkOplogBootstrapped:", err)
+	}
+	if err := utils.CommitOplogSeq(42); err != nil {
+		t.Fatal("CommitOplogSeq:", err)
+	}
+	oplogStreamSeen.Store(true)
+
+	// precondition: standalone with a live constellation is the writable case,
+	// and it is read-only purely because of the marker
+	if got := oplogWriteMode(); got != oplogReadOnly {
+		t.Fatalf("oplogWriteMode() = %v before the reset, want oplogReadOnly — "+
+			"the test is no longer reproducing the state it was written for", got)
+	}
+
+	if err := ResetNebula(); err != nil {
+		t.Fatal("ResetNebula:", err)
+	}
+
+	if utils.IsOplogBootstrapped() {
+		t.Error("the reset left the bootstrapped marker behind: this node claims " +
+			"state it materialized from a log whose devices it just deleted")
+	}
+	if got := utils.GetLastAppliedSeq(); got != 0 {
+		t.Errorf("last_applied_seq = %d after a reset, want 0 — a new log at the same "+
+			"epoch restarts at seq 1, and oplogAttach subscribes from last+1, so a stale "+
+			"position means this node never sees its own ops come back", got)
+	}
+	if oplogStreamSeen.Load() {
+		t.Error("the reset left oplogStreamSeen set, which disables the formation " +
+			"direct-write path — the only writable path before a second manager enrolls")
+	}
+	if utils.IsFormationWriter() {
+		t.Error("the reset left a formation licence behind")
+	}
+	// keeping the epoch across a reset is deliberate (see ResetNebula)
+	if got := utils.GetOplogEpoch(); got != epoch {
+		t.Errorf("oplog epoch = %d after a reset, want %d unchanged", got, epoch)
+	}
+
+	// creating a constellation here again must be writable
+	config := utils.ReadConfigFromFile()
+	config.ConstellationConfig.Enabled = true
+	utils.SetBaseMainConfig(config)
+	if err := utils.SetFormationWriter(utils.GetOplogEpoch()); err != nil {
+		t.Fatal("SetFormationWriter:", err)
+	}
+
+	if got := oplogWriteMode(); got == oplogReadOnly {
+		t.Fatal("a constellation created after a reset is read-only: every device " +
+			"and user write on a brand-new install fails with ErrReadOnly")
 	}
 }
 

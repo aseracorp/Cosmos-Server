@@ -32,7 +32,6 @@ import (
 	"golang.org/x/net/publicsuffix"
 	"github.com/Masterminds/semver"
 	"golang.org/x/crypto/bcrypt"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // JSONEquals reports whether two values serialize to identical JSON. Handy for
@@ -86,8 +85,14 @@ var IsPro func() bool = func() bool { return false }
 
 var InitPremiumFeatures func()
 
-var ResyncConstellationNodes = func() {}
 var GetConstellationTunnelRoutes = func() []ProxyRouteConfig { return []ProxyRouteConfig{} }
+
+// PublishRolesOp publishes the roles config domain through the constellation
+// op-log. Wired in constellation/index.go: the pro package can't call
+// constellation.PublishDomainOp directly because constellation imports pro.
+var PublishRolesOp = func(roles map[Role]RoleConfig) error {
+	return errors.New("constellation op-log not initialised")
+}
 
 var LetsEncryptErrors = []string{}
 
@@ -367,9 +372,6 @@ func LoadBaseMainConfig(config Config) {
 	if os.Getenv("COSMOS_LOG_LEVEL") != "" {
 		main.LoggingLevel = (LoggingLevel)(os.Getenv("COSMOS_LOG_LEVEL"))
 	}
-	if os.Getenv("COSMOS_MONGODB") != "" {
-		main.MongoDB = os.Getenv("COSMOS_MONGODB")
-	}
 	if os.Getenv("COSMOS_SERVER_COUNTRY") != "" {
 		main.ServerCountry = os.Getenv("COSMOS_SERVER_COUNTRY")
 	}
@@ -483,8 +485,6 @@ func RestartServer(code int) {
 }
 
 func SoftRestartServer() {
-	DisconnectDB()
-	
 	ProcessLicence()
 
 	RestartHTTPServer()
@@ -1044,20 +1044,9 @@ func CompareSemver(v1, v2 string) (int, error) {
 func CheckPassword(nickname, password string) error {
 	time.Sleep(time.Duration(rand.Float64()*1)*time.Second)
 	
-	c, closeDb, errCo := GetEmbeddedCollection(GetRootAppId(), "users")
-	defer closeDb()
-	if errCo != nil {
-			return errCo
-	}
+	user, err3 := GetUser(nickname)
 
-	user := User{}
-
-	err3 := c.FindOne(nil, map[string]interface{}{
-		"Nickname": nickname,
-	}).Decode(&user)
-
-	
-	if err3 == mongo.ErrNoDocuments {
+	if errors.Is(err3, ErrNotFound) {
 		bcrypt.CompareHashAndPassword([]byte("$2a$14$4nzsVwEnR3.jEbMTME7kqeCo4gMgR/Tuk7ivNExvXjr73nKvLgHka"), []byte("dummyPassword"))
 		return err3
 	} else if err3 != nil {
@@ -1406,8 +1395,3 @@ func SetFileLastModifiedTime(path string, modTime int64) error {
 	return nil
 }
 
-func TouchDatabase() error {
-	dbPath := CONFIGFOLDER + "database"
-	now := time.Now()
-	return os.Chtimes(dbPath, now, now)
-}

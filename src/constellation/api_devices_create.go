@@ -4,9 +4,8 @@ import (
 	"net/http"
 	"encoding/json"
 	"errors"
-	"go.mongodb.org/mongo-driver/mongo"
+	"regexp"
 	"sync"
-	"time"
 
 	"github.com/azukaar/cosmos-server/src/utils"
 )
@@ -182,16 +181,9 @@ func DeviceCreate_API(w http.ResponseWriter, req *http.Request) {
 					"Invisible": request.Invisible,
 				},
 			})
-			
-			go func() {
-				go SendNewDBSyncMessage()
-				time.Sleep(2 * time.Second)
-				RestartNebula()
-			}()
 		} else {
 			utils.Error("DeviceCreation: Error creating device", err)
-			utils.HTTPError(w, "Device Creation Error: " + err.Error(),
-				http.StatusInternalServerError, "DC004")
+			utils.HTTPStoreError(w, err, "DC004")
 			return
 		}
 	} else {
@@ -201,48 +193,44 @@ func DeviceCreate_API(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+var deviceNameRe = regexp.MustCompile(`^[a-z0-9_-]{3,32}$`)
+
 func DeviceCreate(request DeviceCreateRequestJSON) (string, string, string, DeviceCreateRequestJSON, error) {
 	deviceCreateMutex.Lock()
 	defer deviceCreateMutex.Unlock()
 
 	nickname := utils.Sanitize(request.Nickname)
 	deviceName := utils.Sanitize(request.DeviceName)
+	// name is used raw as NATS user, subject token and KV key: no spaces, dots or wildcards
+	if !deviceNameRe.MatchString(deviceName) {
+		return "", "", "", request, errors.New("Device name must be 3-32 characters of a-z, 0-9, '-' or '_'")
+	}
 	APIKey := utils.GenerateRandomString(32)
+
+	if request.Port == "" {
+		request.Port = "4242"
+	}
 
 	utils.Log("ConstellationDeviceCreation: Creating Device " + deviceName)
 
-	c, closeDb, errCo := utils.GetEmbeddedCollection(utils.GetRootAppId(), "devices")
-	defer closeDb()
-	
-	if errCo != nil {
-		return "", "", "", DeviceCreateRequestJSON{}, errCo
-	}
-
-	device := utils.Device{}
-
 	utils.Debug("ConstellationDeviceCreation: Creating Device " + deviceName)
-	
-	err2 := c.FindOne(nil, map[string]interface{}{
-		"DeviceName": deviceName,
-		"Blocked": false,
-	}).Decode(&device)
+
+	// read-then-write pre-checks kept for their error messages; the partial
+	// unique indexes are the authority
+	_, err2 := utils.GetDeviceByName(deviceName, true)
 
 	if err2 == nil {
 		return "", "", "", DeviceCreateRequestJSON{}, errors.New("DeviceCreation: Device with this name already exists")
-	} else if err2 != mongo.ErrNoDocuments {
+	} else if !errors.Is(err2, utils.ErrNotFound) {
 		return "", "", "", DeviceCreateRequestJSON{}, err2
 	}
 
 	// Check if IP is already in use
-	ipDevice := utils.Device{}
-	errIP := c.FindOne(nil, map[string]interface{}{
-		"IP": request.IP,
-		"Blocked": false,
-	}).Decode(&ipDevice)
+	_, errIP := utils.GetDeviceByIP(request.IP)
 
 	if errIP == nil {
 		return "", "", "", DeviceCreateRequestJSON{}, errors.New("DeviceCreation: IP address is already in use")
-	} else if errIP != mongo.ErrNoDocuments {
+	} else if !errors.Is(errIP, utils.ErrNotFound) {
 		return "", "", "", DeviceCreateRequestJSON{}, errIP
 	}
 
@@ -256,7 +244,7 @@ func DeviceCreate(request DeviceCreateRequestJSON) (string, string, string, Devi
 
 		// Check cosmos node and devices limit (skipped on Pro — unlimited).
 		if !utils.IsPro() && request.CosmosNode > 0 {
-			countManagers, errCount := c.CountDocuments(nil, map[string]interface{}{
+			countManagers, errCount := utils.CountDevices(map[string]interface{}{
 				"CosmosNode": 2,
 				"Blocked": false,
 			})
@@ -265,7 +253,7 @@ func DeviceCreate(request DeviceCreateRequestJSON) (string, string, string, Devi
 				return "", "", "", DeviceCreateRequestJSON{}, errCount
 			}
 
-			countAgent, errCount := c.CountDocuments(nil, map[string]interface{}{
+			countAgent, errCount := utils.CountDevices(map[string]interface{}{
 				"CosmosNode": 1,
 				"Blocked": false,
 			})
@@ -293,7 +281,7 @@ func DeviceCreate(request DeviceCreateRequestJSON) (string, string, string, Devi
 		if !utils.IsPro() {
 			totalClientLimit := 10 * int64(utils.GetNumberUsers())
 
-			countDevices, errCountDevices := c.CountDocuments(nil, map[string]interface{}{
+			countDevices, errCountDevices := utils.CountDevices(map[string]interface{}{
 				"Blocked": false,
 			})
 
@@ -321,21 +309,21 @@ func DeviceCreate(request DeviceCreateRequestJSON) (string, string, string, Devi
 			request.IsLoadBalancer = false
 		}
 
-		_, err3 := c.InsertOne(nil, map[string]interface{}{
-			"Nickname": nickname,
-			"DeviceName": deviceName,
-			"IP": request.IP,
-			"IsLighthouse": request.IsLighthouse,
-			"CosmosNode": request.CosmosNode,
-			"IsRelay": request.IsRelay,
-			"IsExitNode": request.IsExitNode,
-			"PublicHostname": request.PublicHostname,
-			"IsLoadBalancer": request.IsLoadBalancer,
-			"Port": request.Port,
-			"Fingerprint": fingerprint,
-			"APIKey": APIKey,
-			"Blocked": false,
-			"Invisible": request.Invisible,
+		err3 := utils.CreateDevice(utils.ConstellationDevice{
+			Nickname: nickname,
+			DeviceName: deviceName,
+			IP: request.IP,
+			IsLighthouse: request.IsLighthouse,
+			CosmosNode: request.CosmosNode,
+			IsRelay: request.IsRelay,
+			IsExitNode: request.IsExitNode,
+			PublicHostname: request.PublicHostname,
+			IsLoadBalancer: request.IsLoadBalancer,
+			Port: request.Port,
+			Fingerprint: fingerprint,
+			APIKey: APIKey,
+			Blocked: false,
+			Invisible: request.Invisible,
 		})
 
 		if err3 != nil {

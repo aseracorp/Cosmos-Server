@@ -8,9 +8,11 @@ import (
 	"errors"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"bufio"
 	"gopkg.in/yaml.v2"
 	"strings"
+	"sort"
 	"io/ioutil"
 	"net"
 	"strconv"
@@ -294,11 +296,15 @@ func stop() {
 }
 
 var restartMutex sync.Mutex
+var restartQueued atomic.Bool
 
 func RestartNebula() {
 	restartMutex.Lock()
 	defer restartMutex.Unlock()
+	restartNebulaLocked()
+}
 
+func restartNebulaLocked() {
 	utils.Log("Restarting Constellation...")
 	deviceCacheMux.Lock()
 	cachedCurrentDevice = nil
@@ -310,6 +316,66 @@ func RestartNebula() {
 	Init()
 }
 
+// RequestRestartNebula coalesces reactive restarts (oplog apply, snapshot
+// install) so a burst of device writes triggers one restart, not one each.
+func RequestRestartNebula() {
+	requestRestartNebulaAfter(1 * time.Second)
+}
+
+// restartStaggerSlot must exceed a worst-case restart so at most one server
+// is down at a time during a rolling restart.
+const restartStaggerSlot = 10 * time.Second
+
+// RequestRestartNebulaStaggered delays each node by its rank in the shared
+// device table, turning a thundering-herd restart into a rolling one.
+func RequestRestartNebulaStaggered() {
+	requestRestartNebulaAfter(1*time.Second + time.Duration(restartStaggerRank())*restartStaggerSlot)
+}
+
+func requestRestartNebulaAfter(delay time.Duration) {
+	if !restartQueued.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		time.Sleep(delay)
+		restartMutex.Lock()
+		defer restartMutex.Unlock()
+		restartQueued.Store(false)
+		restartNebulaLocked()
+	}()
+}
+
+// restartStaggerRank is this node's index in the name-sorted list of cosmos
+// servers. Fails toward 0 (restart soonest): a node that cannot place itself
+// must not wait on a schedule it is not part of.
+func restartStaggerRank() int {
+	name, err := GetCurrentDeviceName()
+	if err != nil || name == "" {
+		return 0
+	}
+	devices, err := utils.ListDevices(false)
+	if err != nil {
+		return 0
+	}
+	return staggerRank(name, devices)
+}
+
+func staggerRank(self string, devices []utils.ConstellationDevice) int {
+	peers := []string{}
+	for _, d := range devices {
+		if d.CosmosNode > 0 {
+			peers = append(peers, d.DeviceName)
+		}
+	}
+	sort.Strings(peers)
+	for i, n := range peers {
+		if n == self {
+			return i
+		}
+	}
+	return 0
+}
+
 func ResetNebula() error {
 	stop()
 	utils.Log("Resetting nebula...")
@@ -319,20 +385,34 @@ func ResetNebula() error {
 	os.RemoveAll(utils.CONFIGFOLDER + "ca.key")
 	os.RemoveAll(utils.CONFIGFOLDER + "cosmos.crt")
 	os.RemoveAll(utils.CONFIGFOLDER + "cosmos.key")
-	os.RemoveAll(utils.CONFIGFOLDER + "jetstream")
+	os.RemoveAll(jetstreamDir())
 
-	// remove everything in db
-
-	c, closeDb, err := utils.GetEmbeddedCollection(utils.GetRootAppId(), "devices")
-    defer closeDb()
-	if err != nil {
-			return err
-	}
-
-	_, err = c.DeleteMany(nil, map[string]interface{}{})
+	// Wipe this node's devices LOCALLY. Deliberately not DeleteDevices: stop()
+	// above leaves the apply loop attached, so a published delete-all — empty
+	// filter, therefore an unqualified DELETE — would destroy the device registry
+	// on every node in the constellation. Leaving is a local act by definition.
+	err := utils.DeleteDevicesLocal(map[string]interface{}{})
 	if err != nil {
 		return err
 	}
+
+	// Drop any formation licence with it: this node keeps its kv epoch across a
+	// reset, so a creator that resets and later joins someone else's constellation
+	// at the same epoch number would otherwise still look licensed to write direct.
+	if err := utils.ClearFormationWriter(); err != nil {
+		return err
+	}
+
+	// Drop the op-log position too: a stale bootstrapped marker would make the
+	// next constellation created here read-only, and a stale seq means this
+	// node's own first ops are never delivered back to it.
+	if err := utils.SetOplogState(utils.GetOplogEpoch(), 0); err != nil {
+		return err
+	}
+
+	// In-memory flag survives SoftRestartServer (no re-exec); clear it so the
+	// next constellation keeps the formation direct-write path.
+	oplogStreamSeen.Store(false)
 
 	config := utils.ReadConfigFromFile()
 	config.ConstellationConfig.Enabled = false
@@ -341,6 +421,7 @@ func ResetNebula() error {
 	config.ConstellationConfig.ThisDeviceName = ""
 	config.ConstellationConfig.IPRange = ""
 	config.ConstellationConfig.ConstellationHostname = strings.Join(GetDefaultHostnames(), ",")
+	config.AgentMode = false
 
 	if config.Licence == "" {
 		config.ServerToken = ""
@@ -362,21 +443,8 @@ func ResetNebula() error {
 }
 
 func GetAllDevicesEvenBlocked() ([]utils.ConstellationDevice, error) {
-	c, closeDb, err := utils.GetEmbeddedCollection(utils.GetRootAppId(), "devices")
-    defer closeDb()
+	devices, err := utils.ListDevices(true)
 	if err != nil {
-		return []utils.ConstellationDevice{}, err
-	}
-
-	var devices []utils.ConstellationDevice
-
-	cursor, err := c.Find(nil, map[string]interface{}{})
-	if err != nil {
-		return []utils.ConstellationDevice{}, err
-	}
-	defer cursor.Close(nil)
-
-	if err := cursor.All(nil, &devices); err != nil {
 		return []utils.ConstellationDevice{}, err
 	}
 
@@ -384,23 +452,8 @@ func GetAllDevicesEvenBlocked() ([]utils.ConstellationDevice, error) {
 }
 
 func GetAllDevices() ([]utils.ConstellationDevice, error) {
-	c, closeDb, err := utils.GetEmbeddedCollection(utils.GetRootAppId(), "devices")
-    defer closeDb()
+	devices, err := utils.ListDevices(false)
 	if err != nil {
-		return []utils.ConstellationDevice{}, err
-	}
-
-	var devices []utils.ConstellationDevice
-
-	cursor, err := c.Find(nil, map[string]interface{}{
-		"Blocked": false,
-	})
-	if err != nil {
-		return []utils.ConstellationDevice{}, err
-	}
-	defer cursor.Close(nil)
-
-	if err := cursor.All(nil, &devices); err != nil {
 		return []utils.ConstellationDevice{}, err
 	}
 
@@ -408,24 +461,11 @@ func GetAllDevices() ([]utils.ConstellationDevice, error) {
 }
 
 func GetAllLightHouses() ([]utils.ConstellationDevice, error) {
-	c, closeDb, err := utils.GetEmbeddedCollection(utils.GetRootAppId(), "devices")
-    defer closeDb()
-	if err != nil {
-		return []utils.ConstellationDevice{}, err
-	}
-
-	var devices []utils.ConstellationDevice
-
-	cursor, err := c.Find(nil, map[string]interface{}{
+	devices, err := utils.FindDevices(map[string]interface{}{
 		"IsLighthouse": true,
 		"Blocked": false,
 	})
 	if err != nil {
-		return []utils.ConstellationDevice{}, err
-	}
-	defer cursor.Close(nil)
-
-	if err := cursor.All(nil, &devices); err != nil {
 		return []utils.ConstellationDevice{}, err
 	}
 
@@ -586,6 +626,18 @@ func getYAMLClientConfig(name, configPath, capki, cert, key, APIKey string, devi
 		}
 	}
 	configMap["cstln_nats_managers"] = seedManagers
+
+	// The live op-log epoch, so a joining node starts where the constellation
+	// actually is instead of at the default 1.
+	//
+	// This is a fence, not a convenience. The snapshot responder can only silence
+	// peers BEHIND the asker, so a node asking at epoch 1 is outranked by every
+	// stale responder — including managers revived from an epoch a force-reform
+	// abandoned. Those answer, and whoever replies first wins, so a replacement
+	// enrolled after a reform could be captured at the dead epoch and sit
+	// read-only re-asking until it happened to reach a current peer. Seeded with
+	// the real epoch it outranks them, and they decline.
+	configMap["cstln_oplog_epoch"] = utils.GetOplogEpoch()
 
 	if getLicence && device.CosmosNode == 0 {
 		// get client licence
@@ -1199,12 +1251,18 @@ func GetCurrentDevice() (utils.ConstellationDevice, error) {
 			}
 		}
 
+		// Unreadable role means server, never 0: a node given the plain-device NATS
+		// permissions can't run the constellation, and this path only runs before
+		// the first sync. Agent, not manager, to keep the guess least-privilege.
+		device.CosmosNode = 1
 		if v, exists := configMap["cstln_cosmos_node"]; exists {
 			if cosmosNode, ok := v.(int); ok {
 				device.CosmosNode = cosmosNode
 			} else {
-				utils.Warn("GetCurrentDevice: cstln_cosmos_node is not an int, skipping")
+				utils.Warn("GetCurrentDevice: cstln_cosmos_node is not an int, assuming agent")
 			}
+		} else {
+			utils.Warn("GetCurrentDevice: cstln_cosmos_node missing, assuming agent")
 		}
 
 		if v, exists := configMap["cstln_is_exit_node"]; exists {

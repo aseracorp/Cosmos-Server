@@ -3,8 +3,119 @@ package configapi
 import (
 	"net/http"
 	"encoding/json"
+	"reflect"
+	"github.com/azukaar/cosmos-server/src/constellation"
 	"github.com/azukaar/cosmos-server/src/utils"
 )
+
+// publishReplicatedDomains publishes only the domains this PUT changed, so a
+// node without a writable op-log can still save node-local settings.
+func publishReplicatedDomains(request utils.Config, current utils.Config) error {
+	newDNS := dnsPayloadOf(request)
+	if !reflect.DeepEqual(newDNS, dnsPayloadOf(current)) {
+		if err := constellation.PublishDomainOp(constellation.DomainDNS, newDNS); err != nil {
+			return err
+		}
+	}
+	if !sameRoles(request.Roles, current.Roles) {
+		if err := constellation.PublishDomainOp(constellation.DomainRoles, request.Roles); err != nil {
+			return err
+		}
+	}
+	if !sameOpenIDClients(request.OpenIDClients, current.OpenIDClients) {
+		if err := constellation.PublishDomainOp(constellation.DomainOpenIDClients, request.OpenIDClients); err != nil {
+			return err
+		}
+	}
+	// caller restored the real password; publishing earlier would replicate "***"
+	newDB := dbPayloadOf(request)
+	if !reflect.DeepEqual(newDB, dbPayloadOf(current)) {
+		return constellation.PublishDomainOp(constellation.DomainDatabase, newDB)
+	}
+	return nil
+}
+
+// slices are normalized to nil so a UI []-for-null round-trip never looks like a change
+func dnsPayloadOf(c utils.Config) constellation.DNSPayload {
+	cc := c.ConstellationConfig
+	blocklists := cc.DNSAdditionalBlocklists
+	if len(blocklists) == 0 {
+		blocklists = nil
+	}
+	entries := cc.CustomDNSEntries
+	if len(entries) == 0 {
+		entries = nil
+	}
+	return constellation.DNSPayload{
+		DNSPort:                 cc.DNSPort,
+		DNSFallback:             cc.DNSFallback,
+		DNSBlockBlacklist:       cc.DNSBlockBlacklist,
+		DNSAdditionalBlocklists: blocklists,
+		CustomDNSEntries:        entries,
+	}
+}
+
+func dbPayloadOf(c utils.Config) constellation.DatabasePayload {
+	return constellation.DatabasePayload{
+		PostgresHost:     c.Database.PostgresHost,
+		PostgresDatabase: c.Database.PostgresDatabase,
+		PostgresUsername: c.Database.PostgresUsername,
+		PostgresPassword: c.Database.PostgresPassword,
+	}
+}
+
+// nil and empty are the same thing here: JSON round-trips blur them
+func sameRoles(a, b map[utils.Role]utils.RoleConfig) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, ra := range a {
+		rb, ok := b[k]
+		if !ok || ra.Name != rb.Name || !samePermissions(ra.Permissions, rb.Permissions) {
+			return false
+		}
+	}
+	return true
+}
+
+func samePermissions(a, b []utils.Permission) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameOpenIDClients(a, b []utils.OpenIDClient) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+// restoreReplicatedDomains takes the replicated fields from the freshly applied
+// config rather than from the request, so the local write can never roll back
+// what the apply loop just installed. Same treatment the auth keypair and API
+// tokens already get. Every OTHER ConstellationConfig field (Enabled, IPRange,
+// ThisDeviceName, DNSDisabled...) stays node-local from the request by design.
+func restoreReplicatedDomains(request *utils.Config, config utils.Config) {
+	request.ConstellationConfig.DNSPort = config.ConstellationConfig.DNSPort
+	request.ConstellationConfig.DNSFallback = config.ConstellationConfig.DNSFallback
+	request.ConstellationConfig.DNSBlockBlacklist = config.ConstellationConfig.DNSBlockBlacklist
+	request.ConstellationConfig.DNSAdditionalBlocklists = config.ConstellationConfig.DNSAdditionalBlocklists
+	request.ConstellationConfig.CustomDNSEntries = config.ConstellationConfig.CustomDNSEntries
+	request.Roles = config.Roles
+	request.OpenIDClients = config.OpenIDClients
+	// Database.NodeName stays node-local from the request, like the ConstellationConfig fields above
+	request.Database.PostgresHost = config.Database.PostgresHost
+	request.Database.PostgresDatabase = config.Database.PostgresDatabase
+	request.Database.PostgresUsername = config.Database.PostgresUsername
+	request.Database.PostgresPassword = config.Database.PostgresPassword
+}
 
 // ConfigApiSet godoc
 // @Summary Update server configuration
@@ -43,6 +154,15 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 			return 
 		}
 
+		// this PUT writes routes wholesale: validate before any write, including the op-log publish
+		for _, route := range request.HTTPConfig.ProxyConfig.Routes {
+			if msg := validateRoute(route); msg != "" {
+				utils.Error("SettingsUpdate: "+msg, nil)
+				utils.HTTPError(w, msg, http.StatusBadRequest, "UC005")
+				return
+			}
+		}
+
 		// restore fields that are never sent to the client or are masked with ***
 		config := utils.ReadConfigFromFile()
 		request.HTTPConfig.AuthPrivateKey = config.HTTPConfig.AuthPrivateKey
@@ -61,9 +181,6 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 		}
 
 		// restore credential fields if they were masked (sent as "***")
-		if request.MongoDB == "***" {
-			request.MongoDB = config.MongoDB
-		}
 		if request.EmailConfig.Password == "***" {
 			request.EmailConfig.Password = config.EmailConfig.Password
 		}
@@ -73,11 +190,8 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 		if request.EmailConfig.Host == "***" {
 			request.EmailConfig.Host = config.EmailConfig.Host
 		}
-		if request.Database.Password == "***" {
-			request.Database.Password = config.Database.Password
-		}
-		if request.Database.Username == "***" {
-			request.Database.Username = config.Database.Username
+		if request.Database.PostgresPassword == "***" {
+			request.Database.PostgresPassword = config.Database.PostgresPassword
 		}
 		if request.Licence == "***" {
 			request.Licence = config.Licence
@@ -100,8 +214,23 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
+		// Replicated domains go through the op-log, never straight to disk, and are
+		// published BEFORE the local write so a read-only node fails with nothing
+		// written. ConfigLock must NOT be held — the apply loop takes it.
+		if err := publishReplicatedDomains(request, config); err != nil {
+			utils.HTTPStoreError(w, err, "UC004")
+			return
+		}
+
+		// The local write is the node-local half. Under the lock so it cannot
+		// interleave with an apply-loop domain install, and re-reading here picks up
+		// the state that loop just applied.
+		utils.ConfigLock.Lock()
+		config = utils.ReadConfigFromFile()
+		restoreReplicatedDomains(&request, config)
 		utils.SetBaseMainConfig(request)
-		
+		utils.ConfigLock.Unlock()
+
 		utils.TriggerEvent(
 			"cosmos.settings",
 			"Settings updated",

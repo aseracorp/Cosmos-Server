@@ -1,9 +1,7 @@
 package constellation
 
 import (
-	"encoding/json"
 	"errors"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -67,16 +65,16 @@ func TestUnitDesignatedKVCreator(t *testing.T) {
 	t.Run("self is lowest", func(t *testing.T) {
 		seedDeviceCache(t, manager("node-b"), manager("node-c"), manager("node-d"))
 		creator, isSelf := designatedKVCreator()
-		if creator != "node_b" || !isSelf {
-			t.Errorf("designatedKVCreator() = (%q, %v), want (node_b, true)", creator, isSelf)
+		if creator != "node-b" || !isSelf {
+			t.Errorf("designatedKVCreator() = (%q, %v), want (node-b, true)", creator, isSelf)
 		}
 	})
 
 	t.Run("another manager is lowest", func(t *testing.T) {
 		seedDeviceCache(t, manager("node-a"), manager("node-b"), manager("node-c"))
 		creator, isSelf := designatedKVCreator()
-		if creator != "node_a" || isSelf {
-			t.Errorf("designatedKVCreator() = (%q, %v), want (node_a, false)", creator, isSelf)
+		if creator != "node-a" || isSelf {
+			t.Errorf("designatedKVCreator() = (%q, %v), want (node-a, false)", creator, isSelf)
 		}
 	})
 
@@ -84,8 +82,8 @@ func TestUnitDesignatedKVCreator(t *testing.T) {
 		agent := utils.ConstellationDevice{DeviceName: "node-a", IP: "192.168.201.9", CosmosNode: 1}
 		seedDeviceCache(t, agent, manager("node-b"))
 		creator, isSelf := designatedKVCreator()
-		if creator != "node_b" || !isSelf {
-			t.Errorf("designatedKVCreator() = (%q, %v), want (node_b, true)", creator, isSelf)
+		if creator != "node-b" || !isSelf {
+			t.Errorf("designatedKVCreator() = (%q, %v), want (node-b, true)", creator, isSelf)
 		}
 	})
 }
@@ -260,23 +258,3 @@ func TestUnitRefreshDeviceCacheInvalidatesStaleCurrentDevice(t *testing.T) {
 	}
 }
 
-func TestUnitSyncPayloadNoRestartWireCompat(t *testing.T) {
-	// payloads from old builds lack the field and must decode to restart (false)
-	var legacy SyncPayload
-	if err := json.Unmarshal([]byte(`{"database":"","lastEdited":1}`), &legacy); err != nil {
-		t.Fatal(err)
-	}
-	if legacy.NoRestart {
-		t.Error("legacy payload decoded NoRestart = true, want false (restart)")
-	}
-
-	// the flag round-trips when set, and omitempty keeps default payloads unchanged
-	on, _ := json.Marshal(SyncPayload{NoRestart: true})
-	if !strings.Contains(string(on), `"noRestart":true`) {
-		t.Errorf("NoRestart=true not serialized: %s", on)
-	}
-	off, _ := json.Marshal(SyncPayload{})
-	if strings.Contains(string(off), "noRestart") {
-		t.Errorf("default payload should omit noRestart: %s", off)
-	}
-}

@@ -110,6 +110,12 @@ func checkVersion() {
 		return
 	}
 
+	// never notify about a prerelease/unstable build unless the user opted into beta updates
+	if latest.Prerelease() != "" && !utils.GetMainConfig().BetaUpdates {
+		utils.Log("Latest version " + check.Latest + " is a prerelease, ignoring (not on beta updates)")
+		return
+	}
+
 	// only notify on a major or minor bump, ignore patches
 	if current.Compare(latest) == -1 && (current.Major() != latest.Major() || current.Minor() != latest.Minor()) {
 		utils.Log("New version available: " + check.Latest)
@@ -243,8 +249,7 @@ func CRON() {
 		s.Every(1).Hours().Do(proxy.CleanUpSocket)
 		s.Every(1).Hours().Do(docker.CleanupExitedDeploymentContainers)
 		s.Every(1).Day().At("2:00").Do(func() {
-			utils.CleanupByDate("notifications")
-			utils.CleanupByDate("events")
+			utils.RunDatabaseRetention()
 			imageCleanUp()
 			checkCerts()
 			checkUpdatesAvailable()
