@@ -190,7 +190,7 @@ const ServApps = ({stack}) => {
       if(stackMain == app.Names[0].replace('/', '') || !acc[stackName].app) {
         acc[stackName].app = app;
       }
-    } else if (!stack || (stack && (app.Labels['cosmos-stack'] === stack || app.Labels['cosmos.stack'] === stack || app.Labels['com.docker.compose.project'] === stack))){
+    } else if (!stack || (stack && (app.Labels['cosmos.stack'] === stack || app.Labels['com.docker.compose.project'] === stack))){
       // else add to default stack
       acc[app.Names[0]] = {
         type: 'app',
