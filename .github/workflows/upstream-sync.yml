@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # required to dispatch the build workflow
 
 jobs:
   sync-branch:
@@ -29,10 +30,15 @@ jobs:
           ref: ${{ matrix.branch }}
           fetch-depth: 0
 
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream https://github.com/${{ env.UPSTREAM }}.git
+          git fetch upstream ${{ matrix.branch }}
+
       - name: Check if upstream tip is already merged in
         id: changed
         run: |
-          UPSTREAM_TIP=$(curl -s "https://api.github.com/repos/${{ env.UPSTREAM }}/commits/${{ matrix.branch }}" | jq -r .sha)
+          UPSTREAM_TIP=$(git rev-parse "upstream/${{ matrix.branch }}")
           echo "upstream_tip=${UPSTREAM_TIP}"
           # Already an ancestor of our local branch => nothing to do.
           if git merge-base --is-ancestor "${UPSTREAM_TIP}" HEAD; then
@@ -40,14 +46,23 @@ jobs:
           else
             echo "Upstream has new commits for ${{ matrix.branch }}."
             echo "changed=true" >> "$GITHUB_ENV"
+            echo "upstream-tip=${UPSTREAM_TIP}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Merge upstream into ${{ matrix.branch }} and push
+        id: merge
         if: env.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/${{ env.UPSTREAM }}.git
-          git fetch upstream ${{ matrix.branch }}
           git merge --no-edit upstream/${{ matrix.branch }}
           git push origin "${{ matrix.branch }}"
+
+      # Pushes made with GITHUB_TOKEN do NOT re-trigger 'on: push' workflows
+      # (build.yml), so we explicitly dispatch the build when we actually merged.
+      - name: Dispatch build after successful merge
+        if: env.changed == 'true'
+        run: |
+          gh workflow run build.yml --ref "${{ matrix.branch }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
