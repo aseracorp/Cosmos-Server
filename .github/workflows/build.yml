@@ -90,8 +90,8 @@ jobs:
       - name: Rename ARM Nebula Binary
         if: steps.cache-nebula.outputs.cache-hit != 'true'
         run: |
-            mv nebula nebula-arm
-            mv nebula-cert nebula-arm-cert
+            mv nebula nebula-arm64
+            mv nebula-cert nebula-arm64-cert
 
       - name: Download and Extract Nebula Binary
         if: steps.cache-nebula.outputs.cache-hit != 'true'
@@ -176,8 +176,7 @@ jobs:
             cp -r build/* ${{ env.PKG_NAME }}-${{ env.VERSION }}/
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/cosmos-launcher-arm64
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/cosmos-arm64
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm
-            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/nebula-arm64*
             rm ${{ env.PKG_NAME }}-${{ env.VERSION }}/restic-arm
       - name: Prepare ARM64 package structure      
         run: |
@@ -186,6 +185,11 @@ jobs:
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/cosmos-launcher
             mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic-arm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64 ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula
+            mv ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-arm64-cert ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/nebula-cert
+            rm ${{ env.PKG_NAME }}-${{ env.VERSION }}-arm64/restic
 
       - name: Create .zip packages       
         run: |
