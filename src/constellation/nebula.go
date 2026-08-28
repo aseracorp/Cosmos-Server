@@ -33,16 +33,10 @@ var (
 )
 
 func binaryToRun() string {
-	if runtime.GOARCH == "arm" || runtime.GOARCH == "arm64" {
-		return "./nebula-arm"
-	}
 	return "./nebula"
 }
 
 func certBinaryToRun() string {
-	if runtime.GOARCH == "arm" || runtime.GOARCH == "arm64" {
-		return "./nebula-arm-cert"
-	}
 	return "./nebula-cert"
 }
 
