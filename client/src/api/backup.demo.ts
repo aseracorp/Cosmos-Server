@@ -449,39 +449,7 @@ function listFolders(name: string, snapshot: string, path?: string) {
             "type": "file",
             "uid": 1000
           },
-          {
-            "atime": "2025-02-20T09:44:24.1670615Z",
-            "ctime": "2025-02-20T09:44:24.1670615Z",
-            "gid": 1000,
-            "inode": 9570149208794444,
-            "message_type": "node",
-            "mode": 511,
-            "mtime": "2025-02-20T09:44:24.1670615Z",
-            "name": "nebula-arm",
-            "path": "/mnt/e/work/Cosmos-Server/build/nebula-arm",
-            "permissions": "-rwxrwxrwx",
-            "size": 17814937,
-            "struct_type": "node",
-            "type": "file",
-            "uid": 1000
-          },
-          {
-            "atime": "2025-02-20T09:44:24.0332778Z",
-            "ctime": "2025-02-20T09:44:24.0332778Z",
-            "gid": 1000,
-            "inode": 9288674232083784,
-            "message_type": "node",
-            "mode": 511,
-            "mtime": "2025-02-20T09:44:24.0332778Z",
-            "name": "nebula-arm-cert",
-            "path": "/mnt/e/work/Cosmos-Server/build/nebula-arm-cert",
-            "permissions": "-rwxrwxrwx",
-            "size": 7263711,
-            "struct_type": "node",
-            "type": "file",
-            "uid": 1000
-          },
-          {
+                              {
             "atime": "2025-02-20T09:44:24.1067802Z",
             "ctime": "2025-02-20T09:44:24.1067802Z",
             "gid": 1000,
