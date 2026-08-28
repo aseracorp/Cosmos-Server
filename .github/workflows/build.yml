@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: nebula*
-          key: ${{ runner.os }}-nebula
+          key: ${{ runner.os }}-nebula-canonical
 
       - name: Download and Extract ARM Nebula Binary
         if: steps.cache-nebula.outputs.cache-hit != 'true'
