@@ -2062,8 +2062,6 @@ definitions:
         type: string
       nickname:
         type: string
-      registerKey:
-        type: string
       registerKeyExp:
         type: string
       registeredAt:
@@ -2078,7 +2076,7 @@ info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.23.2-unstable001
+  version: 0.23.2-unstable002
 paths:
   /_logs:
     get:
