@@ -137,6 +137,26 @@ export function createClient({ baseUrl, token }) {
       });
     },
 
+    ping: (url) => {
+      return apiFetch('/cosmos/api/ping?q=' + encodeURIComponent(url), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }).then(async (response) => {
+        let rep;
+        try {
+          rep = await response.json();
+        } catch {
+          return { status: 'ERROR', data: { reachable: false, httpStatus: 0 } };
+        }
+        if (response.status == 200) {
+          return rep;
+        }
+        return { status: 'ERROR', data: { reachable: false, httpStatus: response.status } };
+      });
+    },
+
     uploadImage: (file, name) => {
       const formData = new FormData();
       formData.append('image', file);
@@ -348,6 +368,26 @@ let getDNS = (host) => {
   });
 }
 
+let ping = (url) => {
+  return defaultFetch('/cosmos/api/ping?q=' + encodeURIComponent(url), {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  }).then(async (response) => {
+    let rep;
+    try {
+      rep = await response.json();
+    } catch {
+      return { status: 'ERROR', data: { reachable: false, httpStatus: 0 } };
+    }
+    if (response.status == 200) {
+      return rep;
+    }
+    return { status: 'ERROR', data: { reachable: false, httpStatus: response.status } };
+  });
+}
+
 let uploadImage = (file, name) => {
   const formData = new FormData();
   formData.append('image', file);
@@ -408,6 +448,7 @@ if(isDemo) {
   isOnline = indexDemo.isOnline;
   checkHost = indexDemo.checkHost;
   getDNS = indexDemo.getDNS;
+  ping = indexDemo.ping;
   uploadImage = indexDemo.uploadImage;
   restartServer = indexDemo.restartServer;
   terminal = indexDemo.terminal;
@@ -430,6 +471,7 @@ export {
   isOnline,
   checkHost,
   getDNS,
+  ping,
   metrics,
   uploadImage,
   storage,

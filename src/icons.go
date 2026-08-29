@@ -299,6 +299,12 @@ func PingURL(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if req.Method != "GET" {
+		utils.Error("Ping: Method not allowed" + req.Method, nil)
+		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
+		return
+	}
+
 	// get url from query string
 	escsiteurl := req.URL.Query().Get("q")
 	isServappMode := req.URL.Query().Get("servapp")
@@ -314,7 +320,7 @@ func PingURL(w http.ResponseWriter, req *http.Request) {
 	if !utils.IsInsideContainer || utils.IsHostNetwork && isServappMode != "" {
 		parsedURL, err := url.Parse(siteurl)
 		if err != nil {
-			utils.Error("Favicon: URL parse", err)
+			utils.Error("Ping: URL parse", err)
 			utils.HTTPError(w, "URL parse", http.StatusInternalServerError, "FA001")
 			return
 		}
@@ -327,32 +333,37 @@ func PingURL(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if(req.Method == "GET") { 
-		utils.Log("Ping for " + siteurl)
+	utils.Log("Ping for " + siteurl)
 
-		resp, err := httpGetWithTimeout(siteurl)
-		if err != nil {
-			utils.Error("Ping", err)
-			utils.HTTPError(w, "URL decode", http.StatusInternalServerError, "PI0001")
-			return
-		}
-		
-		if resp.StatusCode >= 500 {
-			utils.Error("Ping", err)
-			utils.HTTPError(w, "URL decode", http.StatusInternalServerError, "PI0002")
-			return
-		}
-
+	resp, err := httpGetWithTimeout(siteurl)
+	if err != nil {
+		utils.Error("Ping", err)
+		// Reachability probe only: report the failure as a non-throwing error so
+		// the UI can show a red dot without spamming the user with API error
+		// toasts. HTTP 200 keeps the API contract stable.
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "OK",
+			"status": "ERROR",
 			"data": map[string]interface{}{
+				"reachable": false,
+				"httpStatus": 0,
 			},
 		})
-	} else {
-		utils.Error("Favicon: Method not allowed" + req.Method, nil)
-		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
 		return
 	}
+	defer resp.Body.Close()
+
+	// A 4xx/5xx response means the app is reachable at the network level but
+	// not healthy (e.g. the proxy returns 502 when the downstream port is
+	// wrong). Report the real status so the UI can distinguish "ok" from
+	// "error" instead of masking everything into a generic 500.
+	reachable := resp.StatusCode < 400
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": map[bool]string{true: "OK", false: "ERROR"}[reachable],
+		"data": map[string]interface{}{
+			"reachable": reachable,
+			"httpStatus": resp.StatusCode,
+		},
+	})
 }
 
 // SendLogo godoc
