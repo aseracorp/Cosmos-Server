@@ -258,6 +258,19 @@ func NewProxy(targetHost string, AcceptInsecureHTTPSTarget bool, DisableHeaderHa
 			resp.Header.Del("Cross-Origin-Resource-Policy")
 			resp.Header.Del("Cross-Origin-Embedder-Policy")
 			resp.Header.Del("Cross-Origin-Opener-Policy")
+		} else if resp.Request.Method == http.MethodHead {
+			// Header hardening is disabled, so the backend's headers are kept
+			// for normal traffic. But HostChip checks availability with a
+			// cross-origin HEAD request (no-cors) from the Cosmos UI. A HEAD
+			// response has no body, yet a backend-sent
+			// "Cross-Origin-Resource-Policy: same-origin" still makes the
+			// browser block it, so the status probe fails. Since there is no
+			// body to protect, we relax CORP to "cross-origin" on head
+			// responses only - a precise whitelist for the UI's reachability
+			// probe that does not weaken the app's real responses.
+			if resp.Header.Get("Cross-Origin-Resource-Policy") != "" {
+				resp.Header.Set("Cross-Origin-Resource-Policy", "cross-origin")
+			}
 		}
 		
 		// if 502
