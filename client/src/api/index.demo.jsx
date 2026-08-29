@@ -83,21 +83,6 @@ export const checkHost = (host) => {
   });
 }
 
-export const ping = (url) => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      resolve({
-        "status": "OK",
-        "data": {
-          "reachable": true,
-          "httpStatus": 200
-        }
-      })},
-      100
-    );
-  });
-}
-
 export const uploadImage = (file) => {
   return new Promise((resolve, reject) => {
     setTimeout(() => {

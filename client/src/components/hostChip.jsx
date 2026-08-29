@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { getOrigin, getFullOrigin } from "../utils/routes";
 import { useTheme } from '@mui/material/styles';
 import StatusDot from "./statusDot";
-import * as API from '../api';
 
 const HostChip = ({route, settings, container, style, ellipsis}) => {
   const theme = useTheme();
@@ -30,20 +29,17 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
   }
   const containerRunning = !container || containerState === 'running';
 
-  // Probe reachability through the same-origin Cosmos proxy. A direct
-  // cross-origin fetch in "no-cors" mode returns an opaque response whose
-  // status can never be read, so the dot would stay green even when the proxy
-  // answers 502 (e.g. a wrong downstream port). Going through /api/ping lets
-  // the server do the request and report the real HTTP status (5xx/4xx => red,
-  // <400 => green, unreachable => red).
   useEffect(() => {
     if (!containerRunning) {
       setIsOnline(null);
       return;
     }
-    API.ping(getFullOrigin(route)).then((rep) => {
-      setIsOnline(!!(rep && rep.data && rep.data.reachable));
-    }).catch(() => {
+    fetch(getFullOrigin(route), {
+      method: 'HEAD',
+      mode: 'no-cors',
+    }).then((res) => {
+      setIsOnline(true);
+    }).catch((err) => {
       setIsOnline(false);
     });
   }, [url, containerRunning]);
