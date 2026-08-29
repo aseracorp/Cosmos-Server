@@ -194,6 +194,26 @@ func PublicCORS(next http.Handler) http.Handler {
 	})
 }
 
+// HeadProbeCORS lets the browser read the status of a cross-origin HEAD
+// probe (used by HostChip) by echoing the exact requesting origin. It is
+// intentionally narrow: only HEAD (no body to leak), only when the request
+// actually carries an Origin header, and the specific origin is echoed rather
+// than a wildcard. Any response - including an auth-gate redirect to login -
+// gets the header, so the browser can tell "reachable (maybe behind login)"
+// apart from a real failure such as a proxied 502.
+func HeadProbeCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func AcceptHeader(accept string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
