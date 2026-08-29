@@ -5,13 +5,35 @@ import { getOrigin, getFullOrigin } from "../utils/routes";
 import { useTheme } from '@mui/material/styles';
 import StatusDot from "./statusDot";
 
-const HostChip = ({route, settings, style, ellipsis}) => {
+const HostChip = ({route, settings, container, style, ellipsis}) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const [isOnline, setIsOnline] = useState(null);
   const url = getOrigin(route)
 
+  // Only probe reachability when the container is actually running. When it is
+  // stopped, paused, exited, ... there is nothing to reach, so show a neutral
+  // (grey) dot instead of pinging and reporting a bogus state.
+  // Resolve the raw run state from either the summary shape (State is a
+  // string, used by the servapps list) or the inspect shape (State.Status,
+  // used by the container overview). We deliberately use the raw run state
+  // rather than the display status so that a healthy container (State.Status
+  // "running" with a healthcheck) is still treated as running.
+  let containerState = '';
+  if (container) {
+    if (typeof container.State === 'object' && container.State !== null) {
+      containerState = container.State.Status || '';
+    } else if (typeof container.State === 'string') {
+      containerState = container.State;
+    }
+  }
+  const containerRunning = !container || containerState === 'running';
+
   useEffect(() => {
+    if (!containerRunning) {
+      setIsOnline(null);
+      return;
+    }
     fetch(getFullOrigin(route), {
       method: 'HEAD',
       mode: 'no-cors',
@@ -20,7 +42,7 @@ const HostChip = ({route, settings, style, ellipsis}) => {
     }).catch((err) => {
       setIsOnline(false);
     });
-  }, [url]);
+  }, [url, containerRunning]);
 
   return <Chip
     label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
