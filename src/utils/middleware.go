@@ -194,22 +194,48 @@ func PublicCORS(next http.Handler) http.Handler {
 	})
 }
 
+// headProbeWriter wraps http.ResponseWriter so that for a cross-origin HEAD
+// probe the Access-Control-Allow-Origin emitted is always the requesting
+// origin, regardless of what inner middleware (e.g. the per-route
+// CORSHeader) may have set to the app's own host. Without this the browser
+// would compare the UI origin against the app host and block the status.
+type headProbeWriter struct {
+	http.ResponseWriter
+	origin     string
+	wrote      bool
+}
+
+func (h *headProbeWriter) WriteHeader(code int) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	h.ResponseWriter.WriteHeader(code)
+}
+
+func (h *headProbeWriter) Write(b []byte) (int, error) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	return h.ResponseWriter.Write(b)
+}
+
 // HeadProbeCORS lets the browser read the status of a cross-origin HEAD
-// probe (used by HostChip) by echoing the exact requesting origin. It is
-// intentionally narrow: only HEAD (no body to leak), only when the request
-// actually carries an Origin header, and the specific origin is echoed rather
-// than a wildcard. Any response - including an auth-gate redirect to login -
-// gets the header, so the browser can tell "reachable (maybe behind login)"
-// apart from a real failure such as a proxied 502.
+// probe (used by HostChip) by guaranteeing the requesting origin is the only
+// ACAO value on the wire. Narrow: only HEAD (no body to leak), only when a
+// browser Origin header is present, exact origin echoed (no wildcard).
 func HeadProbeCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
 			if origin := r.Header.Get("Origin"); origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
+				h := &headProbeWriter{ResponseWriter: w, origin: origin}
+				next.ServeHTTP(h, r)
+				return
 			}
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }
