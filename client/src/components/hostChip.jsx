@@ -39,9 +39,14 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
     // wrong downstream port) would still resolve and the dot would stay green.
     // The proxy adds Access-Control-Allow-Origin for HEAD requests (and
     // relaxes CORP), so the status is readable: <400 reachable, 4xx/5xx not.
+    //
+    // cache: 'no-store' forces the browser to bypass any cached HEAD response
+    // (a stale pre-fix response without the right CORS headers could otherwise
+    // be served from cache and surface as an intermittent CORS error).
     fetch(getFullOrigin(route), {
       method: 'HEAD',
       mode: 'cors',
+      cache: 'no-store',
     }).then((res) => {
       setIsOnline(res.status >= 200 && res.status < 400);
     }).catch(() => {
