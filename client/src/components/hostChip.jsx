@@ -34,12 +34,17 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
       setIsOnline(null);
       return;
     }
+    // Client-side probe: mode 'cors' (not no-cors) so the browser exposes the
+    // real status. A no-cors response is opaque, so a proxied 502 (e.g. a
+    // wrong downstream port) would still resolve and the dot would stay green.
+    // The proxy adds Access-Control-Allow-Origin for HEAD requests (and
+    // relaxes CORP), so the status is readable: <400 reachable, 4xx/5xx not.
     fetch(getFullOrigin(route), {
       method: 'HEAD',
-      mode: 'no-cors',
+      mode: 'cors',
     }).then((res) => {
-      setIsOnline(true);
-    }).catch((err) => {
+      setIsOnline(res.status >= 200 && res.status < 400);
+    }).catch(() => {
       setIsOnline(false);
     });
   }, [url, containerRunning]);
