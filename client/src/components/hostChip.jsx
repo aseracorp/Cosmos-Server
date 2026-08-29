@@ -1,7 +1,7 @@
 import { SettingOutlined } from "@ant-design/icons";
 import { Chip } from "@mui/material";
 import { useEffect, useState } from "react";
-import { getOrigin, getFullOrigin } from "../utils/routes";
+import { getOrigin, getFullOrigin, IsRouteSocketProxy } from "../utils/routes";
 import { useTheme } from '@mui/material/styles';
 import StatusDot from "./statusDot";
 
@@ -29,9 +29,18 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
   }
   const containerRunning = !container || containerState === 'running';
 
+  // Raw TCP/UDP socket proxies (e.g. 0.0.0.0:32400) have no HTTP layer to
+  // probe, so an HTTP HEAD is meaningless. For these, "online" simply means
+  // the container is running - show green instead of firing a bogus fetch.
+  const isSocketProxy = route && IsRouteSocketProxy(route);
+
   useEffect(() => {
     if (!containerRunning) {
       setIsOnline(null);
+      return;
+    }
+    if (isSocketProxy) {
+      setIsOnline(true);
       return;
     }
     // Client-side probe: mode 'cors' (not no-cors) so the browser exposes the
@@ -47,12 +56,21 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
       method: 'HEAD',
       mode: 'cors',
       cache: 'no-store',
+      // Do not follow redirects. A reachability dot only needs to know the
+      // server answered; following redirects can fail CORS (e.g. an app that
+      // redirects to a login page, or worse to a data: URL, which the browser
+      // rejects as "CORS request was not http"). With redirect: 'manual', a
+      // 3xx (including an opaqueredirect for cross-origin redirects) resolves
+      // here instead of being followed, and counts as reachable.
+      redirect: 'manual',
     }).then((res) => {
-      setIsOnline(res.status >= 200 && res.status < 400);
+      const ok = res.type === 'opaqueredirect' ||
+        (res.status >= 200 && res.status < 400);
+      setIsOnline(ok);
     }).catch(() => {
       setIsOnline(false);
     });
-  }, [url, containerRunning]);
+  }, [url, containerRunning, isSocketProxy]);
 
   return <Chip
     label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
