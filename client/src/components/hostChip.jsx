@@ -5,13 +5,32 @@ import { getOrigin, getFullOrigin } from "../utils/routes";
 import { useTheme } from '@mui/material/styles';
 import StatusDot from "./statusDot";
 
-const HostChip = ({route, settings, style, ellipsis}) => {
+const HostChip = ({route, settings, container, style, ellipsis}) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const [isOnline, setIsOnline] = useState(null);
   const url = getOrigin(route)
 
+  // Only probe reachability when the container is actually running. When it is
+  // stopped, paused, exited, ... there is nothing to reach, so show a neutral
+  // (grey) dot instead of pinging and reporting a bogus state. Resolves the raw
+  // run state from either the summary shape (State is a string) or the inspect
+  // shape (State.Status).
+  let containerState = '';
+  if (container) {
+    if (typeof container.State === 'object' && container.State !== null) {
+      containerState = container.State.Status || '';
+    } else if (typeof container.State === 'string') {
+      containerState = container.State;
+    }
+  }
+  const containerRunning = !container || containerState === 'running';
+
   useEffect(() => {
+    if (!containerRunning) {
+      setIsOnline(null);
+      return;
+    }
     // Client-side probe: mode 'cors' (not no-cors) so the browser exposes the
     // real status; no-store bypasses stale cached responses; redirect 'manual'
     // keeps 3xx (login redirects etc.) from being followed into a CORS failure.
@@ -33,7 +52,7 @@ const HostChip = ({route, settings, style, ellipsis}) => {
     }).catch(() => {
       setIsOnline(false);
     });
-  }, [url]);
+  }, [url, containerRunning]);
 
   return <Chip
     label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
