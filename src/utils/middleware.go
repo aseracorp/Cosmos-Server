@@ -171,12 +171,46 @@ func SetCosmosHeader(next http.Handler) http.Handler {
 	})
 }
 
+// originsUnderDomain returns true if the request Origin is the Cosmos hostname
+// itself or one of its subdomains. Host-based app routes (app.subdomain.com) are
+// reached cross-origin from the Cosmos UI, so the CORS header must allow the
+// UI's origin - but only origins under the Cosmos domain, never arbitrary
+// third-party sites.
+func originUnderDomain(reqOrigin string, hostname string) bool {
+	if reqOrigin == "" || hostname == "" {
+		return false
+	}
+	// reqOrigin is like "https://plurality.kalavallerie.ch"; strip scheme+port.
+	h := strings.TrimPrefix(strings.TrimPrefix(reqOrigin, "https://"), "http://")
+	if i := strings.Index(h, "/"); i >= 0 {
+		h = h[:i]
+	}
+	if i := strings.Index(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	hostname = strings.TrimPrefix(strings.TrimPrefix(hostname, "https://"), "http://")
+	if i := strings.Index(hostname, ":"); i >= 0 {
+		hostname = hostname[:i]
+	}
+	return h == hostname || strings.HasSuffix(h, "."+hostname)
+}
+
 func CORSHeader(origin string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 			if origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
+				hostname := GetMainConfig().HTTPConfig.Hostname
+				reqOrigin := r.Header.Get("Origin")
+				// If the request comes from the Cosmos UI (its hostname or a
+				// subdomain), allow that exact origin so the browser can read
+				// the app response. This is what makes host-based app routes
+				// (app.*.com) usable from a Cosmos UI on another subdomain.
+				if reqOrigin != "" && originUnderDomain(reqOrigin, hostname) {
+					w.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Add("Vary", "Origin")
 			}
