@@ -259,14 +259,22 @@ func (h *headProbeWriter) Write(b []byte) (int, error) {
 	return h.ResponseWriter.Write(b)
 }
 
-// HeadProbeCORS lets the browser read the status of a cross-origin HEAD
-// probe (used by HostChip) by guaranteeing the requesting origin is the only
-// ACAO value on the wire. Narrow: only HEAD (no body to leak), only when a
-// browser Origin header is present, exact origin echoed (no wildcard).
+// HeadProbeCORS lets the Cosmos UI read responses from host-based app routes
+// (app.*.com) that live on a different origin. It originally covered only the
+// HEAD availability probe; it now applies to any request that carries a
+// browser Origin under the Cosmos domain (e.g. an auth-gate 302 to OpenID
+// login, which is produced inside tokenMiddleware before the per-route
+// CORSHeader runs, and would otherwise carry no Access-Control-Allow-Origin).
+//
+// Safe by construction: the origin is only echoed when it is the configured
+// Cosmos hostname or one of its subdomains (originUnderDomain). Third-party
+// origins are ignored. The wrapper re-asserts ACAO at write time so no inner
+// middleware can clobber it.
 func HeadProbeCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodHead {
-			if origin := r.Header.Get("Origin"); origin != "" {
+		if origin := r.Header.Get("Origin"); origin != "" {
+			hostname := GetMainConfig().HTTPConfig.Hostname
+			if originUnderDomain(origin, hostname) {
 				h := &headProbeWriter{ResponseWriter: w, origin: origin}
 				next.ServeHTTP(h, r)
 				return
