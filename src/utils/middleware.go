@@ -171,12 +171,45 @@ func SetCosmosHeader(next http.Handler) http.Handler {
 	})
 }
 
+// originUnderDomain reports whether reqOrigin (e.g. "https://sub.example.com")
+// is the Cosmos hostname itself or one of its subdomains. Host-based app routes
+// (app.sub.example.com) are reached cross-origin from the Cosmos UI, so the CORS
+// header must allow the UI's origin - but only origins under the Cosmos domain,
+// never arbitrary third-party sites.
+func originUnderDomain(reqOrigin string, hostname string) bool {
+	if reqOrigin == "" || hostname == "" {
+		return false
+	}
+	h := strings.TrimPrefix(strings.TrimPrefix(reqOrigin, "https://"), "http://")
+	if i := strings.Index(h, "/"); i >= 0 {
+		h = h[:i]
+	}
+	if i := strings.Index(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	hostname = strings.TrimPrefix(strings.TrimPrefix(hostname, "https://"), "http://")
+	if i := strings.Index(hostname, ":"); i >= 0 {
+		hostname = hostname[:i]
+	}
+	return h == hostname || strings.HasSuffix(h, "."+hostname)
+}
+
 func CORSHeader(origin string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 			if origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
+				hostname := GetMainConfig().HTTPConfig.Hostname
+				reqOrigin := r.Header.Get("Origin")
+				// If the request comes from the Cosmos UI (its hostname or a
+				// subdomain), allow that exact origin so the browser can read the
+				// app response. This makes host-based app routes usable from a
+				// Cosmos UI on another subdomain.
+				if reqOrigin != "" && originUnderDomain(reqOrigin, hostname) {
+					w.Header().Set("Access-Control-Allow-Origin", reqOrigin)
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Add("Vary", "Origin")
 			}
@@ -192,6 +225,59 @@ func PublicCORS(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Add("Vary", "Origin")
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+// headProbeWriter wraps http.ResponseWriter so that for a cross-origin HEAD
+// probe the Access-Control-Allow-Origin emitted is always the requesting
+// origin, regardless of what inner middleware (e.g. the per-route CORSHeader)
+// may have set to the app's own host. Without this the browser would compare
+// the UI origin against the app host and block the status.
+type headProbeWriter struct {
+	http.ResponseWriter
+	origin     string
+	wrote      bool
+}
+
+func (h *headProbeWriter) WriteHeader(code int) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	h.ResponseWriter.WriteHeader(code)
+}
+
+func (h *headProbeWriter) Write(b []byte) (int, error) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	return h.ResponseWriter.Write(b)
+}
+
+// HeadProbeCORS lets the Cosmos UI read responses from host-based app routes
+// (app.*.com) that live on a different origin. It applies to any request that
+// carries a browser Origin under the Cosmos domain - including an auth-gate 302
+// to OpenID login, which is produced inside tokenMiddleware before the per-route
+// CORSHeader runs and would otherwise carry no Access-Control-Allow-Origin.
+//
+// Safe by construction: the origin is only echoed when it is the configured
+// Cosmos hostname or one of its subdomains (originUnderDomain). Third-party
+// origins are ignored. The wrapper re-asserts ACAO at write time so no inner
+// middleware can clobber it.
+func HeadProbeCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" {
+			hostname := GetMainConfig().HTTPConfig.Hostname
+			if originUnderDomain(origin, hostname) {
+				h := &headProbeWriter{ResponseWriter: w, origin: origin}
+				next.ServeHTTP(h, r)
+				return
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }
