@@ -1,7 +1,7 @@
 import { SettingOutlined } from "@ant-design/icons";
 import { Chip } from "@mui/material";
 import { useEffect, useState } from "react";
-import { getOrigin, getFullOrigin, IsRouteSocketProxy } from "../utils/routes";
+import { getOrigin, getFullOrigin } from "../utils/routes";
 import { isContainerRunning } from "../utils/container-status";
 import StatusDot from "./statusDot";
 
@@ -21,17 +21,10 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
   const [isOnline, setIsOnline] = useState(null);
   const url = getOrigin(route);
 
-  // Socket proxies (e.g. 0.0.0.0:32400) have no HTTP layer to probe: show
-  // green whenever the container runs, instead of firing a meaningless fetch.
-  const isSocketProxy = route && IsRouteSocketProxy(route);
-
   useEffect(() => {
+    // Container not running: grey dot, nothing to probe.
     if (!isContainerRunning(container)) {
-      setIsOnline(null); // container not running: grey, nothing to probe
-      return;
-    }
-    if (isSocketProxy) {
-      setIsOnline(true);
+      setIsOnline(null);
       return;
     }
     // HEAD + cors exposes the real status; no-store bypasses stale caches.
@@ -47,7 +40,7 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
     }).catch(() => {
       setIsOnline(false);
     });
-  }, [url, container, isSocketProxy]);
+  }, [url, container]);
 
   return <Chip
     label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}

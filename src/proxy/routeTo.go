@@ -258,37 +258,41 @@ func NewProxy(targetHost string, AcceptInsecureHTTPSTarget bool, DisableHeaderHa
 			resp.Header.Del("Cross-Origin-Resource-Policy")
 			resp.Header.Del("Cross-Origin-Embedder-Policy")
 			resp.Header.Del("Cross-Origin-Opener-Policy")
+		} else if resp.Request.Method == http.MethodHead {
+			// Header hardening is disabled, so the backend's headers are kept
+			// for normal traffic. But HostChip checks availability with a
+			// cross-origin HEAD request (no-cors) from the Cosmos UI. A HEAD
+			// response has no body, yet a backend-sent
+			// "Cross-Origin-Resource-Policy: same-origin" still makes the
+			// browser block it, so the status probe fails. Since there is no
+			// body to protect, we relax CORP to "cross-origin" on head
+			// responses only - a precise whitelist for the UI's reachability
+			// probe that does not weaken the app's real responses.
+			if resp.Header.Get("Cross-Origin-Resource-Policy") != "" {
+				resp.Header.Set("Cross-Origin-Resource-Policy", "cross-origin")
+			}
 		}
-		
+
 		if resp.Request.Method == http.MethodHead {
-			// HostChip checks availability with a cross-origin HEAD request
-			// (mode: 'cors') from the Cosmos UI, and needs to read the response
+			// HostChip probes availability with a cross-origin HEAD request
+			// (mode: 'cors') from the Cosmos UI and needs to read the response
 			// status to tell a healthy app apart from a 502 (wrong downstream
 			// port) or 404. A HEAD response has no body, yet without a matching
-			// Access-Control-Allow-Origin the browser hides the status
-			// entirely. The regular CORSHeader middleware may not cover this:
-			// it echoes the route host, which differs from the UI origin when
-			// an app lives on another subdomain, and it is skipped entirely
-			// when header hardening is disabled.
-			//
-			// This is intentionally narrow: only HEAD (no body to leak), only
-			// when the browser actually sent an Origin header, and the exact
-			// requesting origin is echoed rather than a wildcard, so an
-			// arbitrary third-party site cannot read anything that requires
-			// credentials or cookies.
+			// Access-Control-Allow-Origin the browser hides the status entirely.
+			// Narrow by design: HEAD only (no body to leak), only when the
+			// browser sent an Origin header, and the exact requesting origin is
+			// echoed - never a wildcard.
 			if origin := resp.Request.Header.Get("Origin"); origin != "" {
 				resp.Header.Set("Access-Control-Allow-Origin", origin)
 				resp.Header.Set("Vary", "Origin")
 			}
 			// A backend-sent "Cross-Origin-Resource-Policy: same-origin" would
-			// also block the cross-origin probe, so relax it to cross-origin on
-			// HEAD responses only - there is no body to protect and this does
-			// not weaken the app's real responses.
+			// also block the cross-origin probe; relax it on HEAD only.
 			if resp.Header.Get("Cross-Origin-Resource-Policy") != "" {
 				resp.Header.Set("Cross-Origin-Resource-Policy", "cross-origin")
 			}
 		}
-		
+
 		// if 502
 		if resp.StatusCode == 502 {
 			// set body

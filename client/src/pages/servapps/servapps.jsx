@@ -138,7 +138,7 @@ const ServApps = ({stack}) => {
     // if has label cosmos-stack, add to stack
     if(!stack && (app.Labels['cosmos-stack'] || app.Labels['cosmos.stack'] || app.Labels['com.docker.compose.project'])) {
       let stackName = app.Labels['cosmos-stack'] || app.Labels['cosmos.stack'] || app.Labels['com.docker.compose.project'];
-      let stackMain = app.Labels['cosmos-stack-main'] || app.Labels['cosmos.stack.main'] || (app.Labels['com.docker.compose.container-number'] == '1' && app.Names[0].replace('/', ''));
+      let stackMain = app.Labels['cosmos-stack-main'] ||  app.Labels['cosmos.stack.main'] || (app.Labels['com.docker.compose.container-number'] == '1' && app.Names[0].replace('/', ''));
       
       if(!acc[stackName]) {
         acc[stackName] = {
