@@ -12,12 +12,25 @@ const HostChip = ({route, settings, style, ellipsis}) => {
   const url = getOrigin(route)
 
   useEffect(() => {
+    // Client-side probe: mode 'cors' (not no-cors) so the browser exposes the
+    // real status; no-store bypasses stale cached responses; redirect 'manual'
+    // keeps 3xx (login redirects etc.) from being followed into a CORS failure.
     fetch(getFullOrigin(route), {
       method: 'HEAD',
-      mode: 'no-cors',
+      mode: 'cors',
+      cache: 'no-store',
+      redirect: 'manual',
     }).then((res) => {
-      setIsOnline(true);
-    }).catch((err) => {
+      // Green: 2xx/3xx (incl. opaqueredirect) and 401/403/405/407/429/511
+      // (the reverse proxy answered while refusing this caller - host is up).
+      // Red: everything else (404, 408, 5xx, ...) and network errors.
+      setIsOnline(
+        res.type === 'opaqueredirect' ||
+        (res.status >= 200 && res.status < 400) ||
+        res.status === 401 || res.status === 403 || res.status === 405 ||
+        res.status === 407 || res.status === 429 || res.status === 511
+      );
+    }).catch(() => {
       setIsOnline(false);
     });
   }, [url]);
@@ -28,7 +41,6 @@ const HostChip = ({route, settings, style, ellipsis}) => {
     variant="outlined"
     style={{
       paddingRight: '4px',
-      // textDecoration: isOnline ? 'none' : 'underline wavy red',
       ...style,
       ...(ellipsis ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '250px' } : {})
     }}
