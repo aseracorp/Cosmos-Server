@@ -25,7 +25,7 @@ import { useTheme } from '@mui/material/styles';
 import { useTranslation } from 'react-i18next';
 import PermissionGuard from '../../components/permissionGuard';
 import { PERM_RESOURCES, PERM_CREDENTIALS_READ } from '../../utils/permissions';
-import { getContainerDisplayStatus, rankDisplayStatus } from '../../utils/container-status';
+import { getContainerDisplayStatus, rankDisplayStatus, isContainerRunning } from '../../utils/container-status';
 
 const Item = styled(Paper)(({ theme }) => ({
   backgroundColor: theme.palette.mode === 'dark' ? 'rgba(20,24,35,0.7)' : 'rgba(255,255,255)',
@@ -131,19 +131,6 @@ const ServApps = ({stack}) => {
     } else {
       return getFaviconURL('');
     }
-  }
-
-  // Resolve the raw Docker run state (used for actions/editing gates) from
-  // either the summary shape (State is a string, from the servapps list) or
-  // the inspect shape (State.Status, from the container overview). We must not
-  // use the display status here: a healthy container reports 'healthy' but is
-  // still running and its settings (e.g. auto-update) must stay editable.
-  const isContainerRunning = (app) => {
-    const raw = app && app.app ? app.app.State : null;
-    if (typeof raw === 'object' && raw !== null) {
-      return raw.Status === 'running';
-    }
-    return raw === 'running';
   }
 
   const servAppsStacked = servApps && servApps.reduce((acc, app) => {
@@ -442,7 +429,7 @@ const ServApps = ({stack}) => {
                     <Checkbox
                       checked={app.labels['cosmos-auto-update'] === 'true' ||
                         (selfName && app.name.replace('/', '') == selfName && config.AutoUpdate)}
-                      disabled={app.type == "stack" || !isContainerRunning(app)}
+                      disabled={app.type == "stack" || !isContainerRunning(app.app)}
                       onChange={(e) => {
                         const name = app.name.replace('/', '');
                         setIsUpdatingId(name, true);

@@ -90,3 +90,12 @@ const STATUS_RANK = {
 export function rankDisplayStatus(status) {
   return Object.prototype.hasOwnProperty.call(STATUS_RANK, status) ? STATUS_RANK[status] : 100;
 }
+
+// Whether the container is actually running (raw Docker run state). Accepts
+// both the summary shape (State is a string) and the inspect shape
+// (State.Status). Uses the raw state, not the display status, so a healthy
+// container (healthcheck reports "healthy" but state is "running") counts as
+// running.
+export function isContainerRunning(container) {
+  return stateFromContainer(container) === 'running';
+}

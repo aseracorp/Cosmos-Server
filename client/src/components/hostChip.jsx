@@ -2,98 +2,52 @@ import { SettingOutlined } from "@ant-design/icons";
 import { Chip } from "@mui/material";
 import { useEffect, useState } from "react";
 import { getOrigin, getFullOrigin, IsRouteSocketProxy } from "../utils/routes";
-import { useTheme } from '@mui/material/styles';
+import { isContainerRunning } from "../utils/container-status";
 import StatusDot from "./statusDot";
 
-// Classify a probe response. The dot only has two meaningful states: the host
-// is reachable (green) or it is not (red).
-//
-//   Green: 2xx/3xx (incl. opaqueredirect for cross-origin login redirects),
-//   plus the 4xx codes that only mean "the reverse proxy answered but refused
-//   this particular caller/method" - 401 Unauthorized, 403 Forbidden,
-//   405 Method Not Allowed, 407 Proxy Auth Required, 429 Too Many Requests,
-//   511 Network Auth Required. Those all imply the service is up.
-//
-//   Red:   everything else - 404 Not Found, 408 Request Timeout, 500/502/503
-//   app errors, etc. No orange/uncertain bucket: anything that is not
-//   explicitly known-good is treated as not available.
+// Green: 2xx/3xx (incl. opaqueredirect for cross-origin login redirects) and
+// the 4xx codes that mean the reverse proxy answered while refusing this
+// caller/method (401, 403, 405, 407, 429, 511) - the service is up.
+// Red: everything else (404, 408, 5xx, ...) and network errors.
 function classifyProbeStatus(res) {
-  if (res.type === 'opaqueredirect') {
-    return true; // 3xx: the server answered (login redirect, etc.)
-  }
+  if (res.type === 'opaqueredirect') return true;
   const s = res.status;
   if (s >= 200 && s < 400) return true;
-  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511) {
-    return true; // reverse proxy answered; the service is up, just refused this caller
-  }
+  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511) return true;
   return false;
 }
 
 const HostChip = ({route, settings, container, style, ellipsis}) => {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === 'dark';
   const [isOnline, setIsOnline] = useState(null);
-  const url = getOrigin(route)
+  const url = getOrigin(route);
 
-  // Only probe reachability when the container is actually running. When it is
-  // stopped, paused, exited, ... there is nothing to reach, so show a neutral
-  // (grey) dot instead of pinging and reporting a bogus state.
-  // Resolve the raw run state from either the summary shape (State is a
-  // string, used by the servapps list) or the inspect shape (State.Status,
-  // used by the container overview). We deliberately use the raw run state
-  // rather than the display status so that a healthy container (State.Status
-  // "running" with a healthcheck) is still treated as running.
-  let containerState = '';
-  if (container) {
-    if (typeof container.State === 'object' && container.State !== null) {
-      containerState = container.State.Status || '';
-    } else if (typeof container.State === 'string') {
-      containerState = container.State;
-    }
-  }
-  const containerRunning = !container || containerState === 'running';
-
-  // Raw TCP/UDP socket proxies (e.g. 0.0.0.0:32400) have no HTTP layer to
-  // probe, so an HTTP HEAD is meaningless. For these, "online" simply means
-  // the container is running - show green instead of firing a bogus fetch.
+  // Socket proxies (e.g. 0.0.0.0:32400) have no HTTP layer to probe: show
+  // green whenever the container runs, instead of firing a meaningless fetch.
   const isSocketProxy = route && IsRouteSocketProxy(route);
 
   useEffect(() => {
-    if (!containerRunning) {
-      setIsOnline(null);
+    if (!isContainerRunning(container)) {
+      setIsOnline(null); // container not running: grey, nothing to probe
       return;
     }
     if (isSocketProxy) {
       setIsOnline(true);
       return;
     }
-    // Client-side probe: mode 'cors' (not no-cors) so the browser exposes the
-    // real status. A no-cors response is opaque, so a proxied 502 (e.g. a
-    // wrong downstream port) would still resolve and the dot would stay green.
-    // The proxy adds Access-Control-Allow-Origin for HEAD requests (and
-    // relaxes CORP), so the status is readable: <400 reachable, 4xx/5xx not.
-    //
-    // cache: 'no-store' forces the browser to bypass any cached HEAD response
-    // (a stale pre-fix response without the right CORS headers could otherwise
-    // be served from cache and surface as an intermittent CORS error).
+    // HEAD + cors exposes the real status; no-store bypasses stale caches.
+    // redirect: 'manual' keeps 3xx (incl. login redirects) from being followed
+    // into a CORS failure (e.g. a data: URL).
     fetch(getFullOrigin(route), {
       method: 'HEAD',
       mode: 'cors',
       cache: 'no-store',
-      // Do not follow redirects. A reachability dot only needs to know the
-      // server answered; following redirects can fail CORS (e.g. an app that
-      // redirects to a login page, or worse to a data: URL, which the browser
-      // rejects as "CORS request was not http"). With redirect: 'manual', a
-      // 3xx (including an opaqueredirect for cross-origin redirects) resolves
-      // here instead of being followed, and counts as reachable.
       redirect: 'manual',
     }).then((res) => {
-      // classifyProbeStatus is binary: true -> green, false -> red.
       setIsOnline(classifyProbeStatus(res));
     }).catch(() => {
       setIsOnline(false);
     });
-  }, [url, containerRunning, isSocketProxy]);
+  }, [url, container, isSocketProxy]);
 
   return <Chip
     label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
@@ -101,7 +55,6 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
     variant="outlined"
     style={{
       paddingRight: '4px',
-      // textDecoration: isOnline ? 'none' : 'underline wavy red',
       ...style,
       ...(ellipsis ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '250px' } : {})
     }}
