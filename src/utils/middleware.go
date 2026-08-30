@@ -178,6 +178,7 @@ func CORSHeader(origin string) func(next http.Handler) http.Handler {
 			if origin != "" {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				w.Header().Add("Vary", "Origin")
 			}
 
 			next.ServeHTTP(w, r)
@@ -189,6 +190,7 @@ func PublicCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Add("Vary", "Origin")
 
 		next.ServeHTTP(w, r)
 	})

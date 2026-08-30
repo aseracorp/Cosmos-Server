@@ -250,7 +250,27 @@ func NewProxy(targetHost string, AcceptInsecureHTTPSTarget bool, DisableHeaderHa
 			resp.Header.Del("Content-Security-Policy")
 			resp.Header.Del("X-XSS-Protection")
 		}
-		
+
+		if resp.Request.Method == http.MethodHead {
+			// HostChip probes availability with a cross-origin HEAD request
+			// (mode: 'cors') from the Cosmos UI and needs to read the response
+			// status to tell a healthy app apart from a 502 (wrong downstream
+			// port) or 404. A HEAD response has no body, yet without a matching
+			// Access-Control-Allow-Origin the browser hides the status entirely.
+			// Narrow by design: HEAD only (no body to leak), only when the
+			// browser sent an Origin header, and the exact requesting origin is
+			// echoed - never a wildcard.
+			if origin := resp.Request.Header.Get("Origin"); origin != "" {
+				resp.Header.Set("Access-Control-Allow-Origin", origin)
+				resp.Header.Set("Vary", "Origin")
+			}
+			// A backend-sent "Cross-Origin-Resource-Policy: same-origin" would
+			// also block the cross-origin probe; relax it on HEAD only.
+			if resp.Header.Get("Cross-Origin-Resource-Policy") != "" {
+				resp.Header.Set("Cross-Origin-Resource-Policy", "cross-origin")
+			}
+		}
+
 		// if 502
 		if resp.StatusCode == 502 {
 			// set body
