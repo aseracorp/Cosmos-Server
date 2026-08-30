@@ -5,24 +5,28 @@ import { getOrigin, getFullOrigin, IsRouteSocketProxy } from "../utils/routes";
 import { useTheme } from '@mui/material/styles';
 import StatusDot from "./statusDot";
 
-// Classify a probe response into one of three states:
-//   true  -> reachable (green): 2xx, 3xx, or 4xx codes that only mean "you are
-//           not allowed / method not supported" (401 Unauthorized, 405 Method
-//           Not Allowed) - the host is clearly up and answering.
-//   false -> not reachable (red): 404 Not Found and 408 Request Timeout mean
-//           there is no service answering at that path/port.
-//   'unknown' -> everything else (4xx/5xx). We cannot tell for sure whether it
-//           is up (e.g. 403 blocked, 429 rate-limited, 500/502/503 app error),
-//           so signal an uncertain state (orange) instead of guessing.
+// Classify a probe response. The dot only has two meaningful states: the host
+// is reachable (green) or it is not (red).
+//
+//   Green: 2xx/3xx (incl. opaqueredirect for cross-origin login redirects),
+//   plus the 4xx codes that only mean "the reverse proxy answered but refused
+//   this particular caller/method" - 401 Unauthorized, 403 Forbidden,
+//   405 Method Not Allowed, 407 Proxy Auth Required, 429 Too Many Requests,
+//   511 Network Auth Required. Those all imply the service is up.
+//
+//   Red:   everything else - 404 Not Found, 408 Request Timeout, 500/502/503
+//   app errors, etc. No orange/uncertain bucket: anything that is not
+//   explicitly known-good is treated as not available.
 function classifyProbeStatus(res) {
   if (res.type === 'opaqueredirect') {
     return true; // 3xx: the server answered (login redirect, etc.)
   }
   const s = res.status;
   if (s >= 200 && s < 400) return true;
-  if (s === 401 || s === 405) return true; // auth required / method not allowed => up
-  if (s === 404 || s === 408) return false; // not found / timeout => not available
-  return 'unknown';
+  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511) {
+    return true; // reverse proxy answered; the service is up, just refused this caller
+  }
+  return false;
 }
 
 const HostChip = ({route, settings, container, style, ellipsis}) => {
@@ -84,16 +88,15 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
       // here instead of being followed, and counts as reachable.
       redirect: 'manual',
     }).then((res) => {
-      const result = classifyProbeStatus(res);
-      // true -> green, false -> red, 'unknown' -> orange (via warning)
-      setIsOnline(result === true ? true : result === false ? false : 'unknown');
+      // classifyProbeStatus is binary: true -> green, false -> red.
+      setIsOnline(classifyProbeStatus(res));
     }).catch(() => {
       setIsOnline(false);
     });
   }, [url, containerRunning, isSocketProxy]);
 
   return <Chip
-    label={<><StatusDot status={isOnline == null ? "unknown" : isOnline === true ? "success" : isOnline === false ? "error" : "warning"} size={8} style={{ marginRight: 6 }} />{url}</>}
+    label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
     color="primary"
     variant="outlined"
     style={{
