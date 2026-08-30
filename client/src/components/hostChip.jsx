@@ -2,57 +2,45 @@ import { SettingOutlined } from "@ant-design/icons";
 import { Chip } from "@mui/material";
 import { useEffect, useState } from "react";
 import { getOrigin, getFullOrigin } from "../utils/routes";
-import { useTheme } from '@mui/material/styles';
+import { isContainerRunning } from "../utils/container-status";
 import StatusDot from "./statusDot";
 
-const HostChip = ({route, settings, container, style, ellipsis}) => {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === 'dark';
-  const [isOnline, setIsOnline] = useState(null);
-  const url = getOrigin(route)
+// Green: 2xx/3xx (incl. opaqueredirect for cross-origin login redirects) and
+// the 4xx codes that mean the reverse proxy answered while refusing this
+// caller/method (401, 403, 405, 407, 429, 511) - the service is up.
+// Red: everything else (404, 408, 5xx, ...) and network errors.
+function classifyProbeStatus(res) {
+  if (res.type === 'opaqueredirect') return true;
+  const s = res.status;
+  if (s >= 200 && s < 400) return true;
+  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511) return true;
+  return false;
+}
 
-  // Only probe reachability when the container is actually running. When it is
-  // stopped, paused, exited, ... there is nothing to reach, so show a neutral
-  // (grey) dot instead of pinging and reporting a bogus state. Resolves the raw
-  // run state from either the summary shape (State is a string) or the inspect
-  // shape (State.Status).
-  let containerState = '';
-  if (container) {
-    if (typeof container.State === 'object' && container.State !== null) {
-      containerState = container.State.Status || '';
-    } else if (typeof container.State === 'string') {
-      containerState = container.State;
-    }
-  }
-  const containerRunning = !container || containerState === 'running';
+const HostChip = ({route, settings, container, style, ellipsis}) => {
+  const [isOnline, setIsOnline] = useState(null);
+  const url = getOrigin(route);
 
   useEffect(() => {
-    if (!containerRunning) {
+    // Container not running: grey dot, nothing to probe.
+    if (!isContainerRunning(container)) {
       setIsOnline(null);
       return;
     }
-    // Client-side probe: mode 'cors' (not no-cors) so the browser exposes the
-    // real status; no-store bypasses stale cached responses; redirect 'manual'
-    // keeps 3xx (login redirects etc.) from being followed into a CORS failure.
+    // HEAD + cors exposes the real status; no-store bypasses stale caches.
+    // redirect: 'manual' keeps 3xx (incl. login redirects) from being followed
+    // into a CORS failure (e.g. a data: URL).
     fetch(getFullOrigin(route), {
       method: 'HEAD',
       mode: 'cors',
       cache: 'no-store',
       redirect: 'manual',
     }).then((res) => {
-      // Green: 2xx/3xx (incl. opaqueredirect) and 401/403/405/407/429/511
-      // (the reverse proxy answered while refusing this caller - host is up).
-      // Red: everything else (404, 408, 5xx, ...) and network errors.
-      setIsOnline(
-        res.type === 'opaqueredirect' ||
-        (res.status >= 200 && res.status < 400) ||
-        res.status === 401 || res.status === 403 || res.status === 405 ||
-        res.status === 407 || res.status === 429 || res.status === 511
-      );
+      setIsOnline(classifyProbeStatus(res));
     }).catch(() => {
       setIsOnline(false);
     });
-  }, [url, containerRunning]);
+  }, [url, container]);
 
   return <Chip
     label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
