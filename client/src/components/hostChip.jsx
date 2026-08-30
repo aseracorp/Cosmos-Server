@@ -5,6 +5,26 @@ import { getOrigin, getFullOrigin, IsRouteSocketProxy } from "../utils/routes";
 import { useTheme } from '@mui/material/styles';
 import StatusDot from "./statusDot";
 
+// Classify a probe response into one of three states:
+//   true  -> reachable (green): 2xx, 3xx, or 4xx codes that only mean "you are
+//           not allowed / method not supported" (401 Unauthorized, 405 Method
+//           Not Allowed) - the host is clearly up and answering.
+//   false -> not reachable (red): 404 Not Found and 408 Request Timeout mean
+//           there is no service answering at that path/port.
+//   'unknown' -> everything else (4xx/5xx). We cannot tell for sure whether it
+//           is up (e.g. 403 blocked, 429 rate-limited, 500/502/503 app error),
+//           so signal an uncertain state (orange) instead of guessing.
+function classifyProbeStatus(res) {
+  if (res.type === 'opaqueredirect') {
+    return true; // 3xx: the server answered (login redirect, etc.)
+  }
+  const s = res.status;
+  if (s >= 200 && s < 400) return true;
+  if (s === 401 || s === 405) return true; // auth required / method not allowed => up
+  if (s === 404 || s === 408) return false; // not found / timeout => not available
+  return 'unknown';
+}
+
 const HostChip = ({route, settings, container, style, ellipsis}) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
@@ -64,16 +84,16 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
       // here instead of being followed, and counts as reachable.
       redirect: 'manual',
     }).then((res) => {
-      const ok = res.type === 'opaqueredirect' ||
-        (res.status >= 200 && res.status < 400);
-      setIsOnline(ok);
+      const result = classifyProbeStatus(res);
+      // true -> green, false -> red, 'unknown' -> orange (via warning)
+      setIsOnline(result === true ? true : result === false ? false : 'unknown');
     }).catch(() => {
       setIsOnline(false);
     });
   }, [url, containerRunning, isSocketProxy]);
 
   return <Chip
-    label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
+    label={<><StatusDot status={isOnline == null ? "unknown" : isOnline === true ? "success" : isOnline === false ? "error" : "warning"} size={8} style={{ marginRight: 6 }} />{url}</>}
     color="primary"
     variant="outlined"
     style={{
