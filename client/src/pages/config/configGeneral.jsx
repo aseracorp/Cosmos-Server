@@ -229,7 +229,7 @@ const ConfigGeneral = ({ formik, config, status, isAdmin }) => {
             formik={formik}
             multiline
             autoComplete="off"
-            inputProps={{ 'data-1p-ignore': true, 'data-lpignore': 'true', 'data-bwignore': true, style: { fontFamily: 'monospace' } }}
+            inputProps={{ 'data-1p-ignore': true, 'data-lpignore': 'true', 'data-bwignore': true, style: { fontFamily: 'monospace', whiteSpace: 'nowrap', overflowX: 'auto' } }}
             onChange={(e) => {
               formik.setFieldValue("ServerToken", "");
             }}
