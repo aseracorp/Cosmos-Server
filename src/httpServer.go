@@ -619,6 +619,14 @@ func InitServer() *mux.Router {
 
 	router.Use(utils.BlockBannedIPs)
 
+	// Cross-origin HEAD probes from the Cosmos UI (HostChip) need to read the
+	// response status to color the dot. Echo the request Origin on HEAD so the
+	// browser can read whatever the route returns (a proxied 502, or an
+	// auth-gate redirect to login) and, more importantly, so a blocked status
+	// does not surface as a CORS error. This is applied at the top level so it
+	// covers every route before any auth/redirect middleware.
+	router.Use(utils.HeadProbeCORS)
+
 	router.Use(utils.Logger)
 
 	if config.BlockedCountries != nil && len(config.BlockedCountries) > 0 {
