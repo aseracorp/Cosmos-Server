@@ -1,3 +1,4 @@
+import React from 'react';
 import { Stack } from '@mui/material';
 import DOMPurify from 'dompurify';
 
@@ -7,7 +8,7 @@ function decodeUnicode(str) {
   });
 }
 
-const LogLine = ({ message, docker, isMobile }) => {
+const LogLine = React.memo(({ message, docker, isMobile }) => {
   let html = decodeUnicode(message)
     .replace('\u0001\u0000\u0000\u0000\u0000\u0000\u0000', '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -19,7 +20,6 @@ const LogLine = ({ message, docker, isMobile }) => {
   // Process color codes
   let colorStack = [];
   html = html.replace(/\x1b\[([0-9]{1,2}(?:;[0-9]{1,2})*)?m/g, (match, p1) => {
-    console.log(p1)
     if (!p1 || p1 === '0') {
       // Reset code
       let i = colorStack.length;
@@ -61,7 +61,7 @@ const LogLine = ({ message, docker, isMobile }) => {
   }
    
   return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
-};
+});
 
 const getColor = (code) => {
   switch (code) {
