@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"strconv"
 	"os"
+	"io"
 	"io/ioutil"
 	"os/user"
 	"errors"
@@ -521,18 +522,28 @@ func CreateServiceRoute(w http.ResponseWriter, req *http.Request) {
 				return 
 		}
 
-		decoder := json.NewDecoder(req.Body)
+		// Read the raw body once: json.Decode consumes the stream, and we need
+		// the bytes both for Decode and to extract the optional "$$raw" member
+		// (the literal HJSON text the user typed, comments included). The
+		// client sends it alongside the parsed JSON so comments survive the
+		// JSON round-trip and can be stored in the initial-config label.
+		rawBody, err := io.ReadAll(req.Body)
+		if err != nil {
+			utils.Error("CreateService - read body - ", err)
+			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
+			return
+		}
 		var serviceRequest DockerServiceCreateRequest
-		err := decoder.Decode(&serviceRequest)
+		err = json.Unmarshal(rawBody, &serviceRequest)
 		if err != nil {
 			utils.Error("CreateService - decode - ", err)
-			fmt.Fprintf(w, "[OPERATION FAILED] Bad request: "+err.Error(), http.StatusBadRequest, "DS003")
-			flusher.Flush()
 			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
 			return
 		}
 
-		CreateService(serviceRequest, 
+		rawConfig := extractRawConfig(rawBody)
+
+		CreateService(serviceRequest, rawConfig,
 			func (msg string) {
 				fmt.Fprintf(w, msg)
 				flusher.Flush()
@@ -564,7 +575,7 @@ func generatePorts(portRangeStr string) []string {
 	return ports
 }
 
-func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)) error {
+func CreateService(serviceRequest DockerServiceCreateRequest, rawConfig string, OnLog func(string)) error {
 	utils.ConfigLock.Lock()
 	defer utils.ConfigLock.Unlock()
 	
@@ -806,6 +817,18 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			if labErr := SetInitialConfigLabel(containerConfig, initialSnapshot); labErr != nil {
 				utils.Error("CreateService: cannot store initial config for "+container.Name, labErr)
 			}
+		}
+
+		// Store the literal editor text (HJSON, comments included) alongside
+		// the structured snapshot so the compose editor can show the exact
+		// original document on reload. Only present when the client sent
+		// "$$raw" (i.e. the compose editor); external API clients that POST
+		// plain JSON get no raw label and keep the toHjson rendering.
+		if rawConfig != "" {
+			if containerConfig.Labels == nil {
+				containerConfig.Labels = make(map[string]string)
+			}
+			containerConfig.Labels[initialConfigRawLabel] = rawConfig
 		}
 
 		// Tag multi-service compose stacks with cosmos.stack (+ .main) so the

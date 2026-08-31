@@ -25,6 +25,55 @@ import (
 // shape the compose editor (HJSON view) reads and writes.
 const initialConfigLabel = "cosmos.initial-config"
 
+// initialConfigRawLabel holds the literal HJSON/JSON text the user had in
+// the compose editor at save time (comments included). It is optional: only
+// set when the client sent "$$raw" alongside the parsed config. When present,
+// the compose editor shows this exact text instead of re-rendering the
+// parsed object, so // # and /* */ comments survive round-trips.
+const initialConfigRawLabel = "cosmos.initial-config-raw"
+
+// SetInitialConfigRawLabel stores the original editor text (HJSON with
+// comments) on the container config being created.
+func SetInitialConfigRawLabel(conf *conttype.Config, raw string) {
+	if conf == nil || raw == "" {
+		return
+	}
+	if conf.Labels == nil {
+		conf.Labels = make(map[string]string)
+	}
+	conf.Labels[initialConfigRawLabel] = raw
+}
+
+// GetInitialConfigRaw returns the stored original editor text, or "" when
+// the container has none (created before this feature, or saved from a client
+// that did not send raw text).
+func GetInitialConfigRaw(conf *conttype.Config) string {
+	if conf == nil || conf.Labels == nil {
+		return ""
+	}
+	return conf.Labels[initialConfigRawLabel]
+}
+
+// jsonDecode is a thin wrapper over json.Unmarshal kept for tests.
+func jsonDecode(data []byte, v interface{}) error {
+	return json.Unmarshal(data, v)
+}
+
+// extractRawConfig pulls the optional "$$raw" member (literal HJSON text the
+// user typed, comments included) out of a CreateService request body. The
+// member is a client-side convention of the compose editor; regular API
+// clients that POST plain JSON simply have no "$$raw" and get "".
+func extractRawConfig(rawBody []byte) string {
+	var bodyMap map[string]interface{}
+	if err := json.Unmarshal(rawBody, &bodyMap); err != nil {
+		return ""
+	}
+	if raw, ok := bodyMap["$$raw"].(string); ok {
+		return raw
+	}
+	return ""
+}
+
 // SetInitialConfigLabel stores the user-submitted service definition on the
 // container config being created. The stored payload must be the *original*
 // request, before Cosmos rewrites labels (cosmos.stack, depends_on,
@@ -69,19 +118,22 @@ func GetInitialConfig(conf *conttype.Config) (ContainerCreateRequestContainer, b
 	return svc, true
 }
 
-// StripInitialConfigLabel removes the internal initial-config label from a
-// labels map without mutating the input. The label is an internal detail:
-// the compose editor shows the decoded service definition, not the label.
+// StripInitialConfigLabel removes the internal initial-config labels (both
+// the structured snapshot and the raw editor text) from a labels map without
+// mutating the input. They are internal details: the compose editor shows the
+// decoded service definition (or the raw text), not the labels themselves.
 func StripInitialConfigLabel(labels map[string]string) map[string]string {
 	if labels == nil {
 		return nil
 	}
-	if _, ok := labels[initialConfigLabel]; !ok {
+	_, hasSnapshot := labels[initialConfigLabel]
+	_, hasRaw := labels[initialConfigRawLabel]
+	if !hasSnapshot && !hasRaw {
 		return labels
 	}
-	out := make(map[string]string, len(labels)-1)
+	out := make(map[string]string, len(labels))
 	for k, v := range labels {
-		if k == initialConfigLabel {
+		if k == initialConfigLabel || k == initialConfigRawLabel {
 			continue
 		}
 		out[k] = v

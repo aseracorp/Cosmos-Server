@@ -117,11 +117,12 @@ func ExportContainerRoute(w http.ResponseWriter, req *http.Request) {
 		var service ContainerCreateRequestContainer
 		var err error
 		stored := false
+		raw := ""
 
 		if from == "runtime" {
 			service, err = ExportContainer(containerID)
 		} else {
-			service, stored, err = ExportContainerInitial(containerID)
+			service, stored, raw, err = ExportContainerInitial(containerID)
 		}
 
 		if err != nil {
@@ -134,6 +135,7 @@ func ExportContainerRoute(w http.ResponseWriter, req *http.Request) {
 			"status": "OK",
 			"data": service,
 			"stored": stored,
+			"raw": raw,
 		})
 	} else {
 		utils.Error("exportContainer: Method not allowed " + req.Method, nil)
