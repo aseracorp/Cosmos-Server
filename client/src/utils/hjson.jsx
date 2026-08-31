@@ -8,16 +8,16 @@ import Hjson from 'hjson';
 // superset of JSON, every valid JSON document is already valid HJSON, so the
 // backend never notices the difference: we only convert at the edges of the UI.
 //
-// NOTE on quotes: we always quote string values ("value"), so the output
-// reads unambiguously and matches JSON conventions for values — the HJSON
-// sugar (comments, unquoted keys, relaxed formatting) is what stays.
+// NOTE on quotes: we use quotes: 'min' so strings that could be mistaken for
+// numbers / booleans / null (e.g. "2", "true", "01", "0x1F") are kept quoted.
+// This keeps the HJSON output semantically identical to the original JSON.
 
 // Render a JS object as pretty HJSON.
 export const toHjson = (obj) => {
   try {
     return Hjson.stringify(obj, {
       space: 2,
-      quotes: 'always',
+      quotes: 'min',
       separator: false,
       bracesSameLine: true,
     });

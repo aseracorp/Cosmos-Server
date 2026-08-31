@@ -3,17 +3,20 @@ import Prism from 'prismjs/components/prism-core';
 // ==============================|| HJSON GRAMMAR ||============================== //
 //
 // Cosmos displays compose/JSON payloads as HJSON (see utils/hjson.jsx): keys
-// are unquoted, values may be relaxed. Prism's stock `json` grammar only
-// recognizes *quoted* keys, so unquoted HJSON keys fall through untokenized
-// (rendering white). This grammar extends JSON with HJSON's unquoted keys so
-// keys keep their property color (red) and values keep their string color
-// (green), exactly like the previous raw-JSON view.
+// are unquoted and, with quotes: 'min', many string *values* are also
+// unquoted. Prism's stock `json` grammar only colors *quoted* keys, so HJSON
+// would render mostly white. This grammar extends JSON with HJSON's unquoted
+// keys AND unquoted string values, keeping the familiar color scheme:
+//   - keys                                    -> property  (red/Okaidia)
+//   - string values (quoted or unquoted)      -> string    (green)
+//   - numbers / booleans / null               -> number/boolean/null
+//   - comments (# //)                          -> comment   (grey)
 //
-// We register it as `hjson`, and override the `json` language with it so the
-// compose editor's Prism-based highlighting picks it up transparently.
+// We register it as `hjson` and override the `json` grammar so the compose
+// editor (which resolves the 'json' language) picks it up transparently.
 
 const hjsonProperty = {
-  // Quoted key: identical to JSON's property rule.
+  // Quoted key - identical to JSON's property rule.
   pattern: /(^|[^\\])"(?:\\.|[^\\"\r\n])*"(?=\s*:)/,
   lookbehind: true,
   greedy: true,
@@ -21,16 +24,34 @@ const hjsonProperty = {
 
 const hjsonUnquotedProperty = {
   // Unquoted HJSON key: starts after a line start, brace/bracket or comma
-  // (plus indentation), extends to the ':' that begins the value. The value
-  // is left to the value tokens (string/number/boolean/etc).
+  // (plus indentation), extends to the ':' that begins the value.
   pattern: /(?<=^|[\r\n{[,])\s*[^:#\[\]{}"',\r\n\s][^:#\[\]{}"',\r\n]*(?=\s*:)/,
   greedy: true,
   alias: 'property',
 };
 
+const hjsonUnquotedValue = {
+  // Unquoted string value right after 'key: ' (HJSON 'min' emits one space).
+  // Negative lookahead keeps numbers / booleans / null their own colors.
+  pattern: /(?<=:\s)(?!true\b|false\b|null\b|-?\b\d[\d.e+-]*\b)[^#"',{}\[\]\r\n]+/,
+  greedy: true,
+  alias: 'string',
+};
+
+const hjsonArrayElement = {
+  // Unquoted string element inside [ ... ] (own line after [, or ,).
+  // The (?!\s) guard stops whitespace-only (closing-bracket) lines from
+  // being painted as string.
+  pattern: /(?<=[\r\n,\[])\s*(?!\s|true\b|false\b|null\b|-?\b\d[\d.e+-]*\b)[^#"',{}\[\]\r\n]+/,
+  greedy: true,
+  alias: 'string',
+};
+
 const hjsonGrammar = {
   'unquoted-property': hjsonUnquotedProperty,
   property: hjsonProperty,
+  'unquoted-string': hjsonUnquotedValue,
+  'array-string': hjsonArrayElement,
 
   string: {
     pattern: /(^|[^\\])"(?:\\.|[^\\"\r\n])*"(?!\s*:)/,
