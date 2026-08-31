@@ -22,6 +22,9 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
   // env, internal cosmos.* labels), so it is opt-in.
   const [showRuntime, setShowRuntime] = React.useState(false);
   const [hasStoredConfig, setHasStoredConfig] = React.useState(true);
+  // Bumped after a successful save so the editor re-fetches the (now updated)
+  // stored config instead of keeping the stale pre-save export.
+  const [reloadTick, setReloadTick] = React.useState(0);
 
   React.useEffect(() => {
     if (!hasPermission(PERM_CREDENTIALS_READ)) return;
@@ -33,10 +36,11 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
         }
       });
     });
-  }, [Name, showRuntime]);
+  }, [Name, showRuntime, reloadTick]);
 
   let refreshAll = refresh ? (() => refresh().then(() => {
     setIsUpdating(false);
+    setReloadTick((t) => t + 1);
   })) : (() => {setIsUpdating(false);});
 
   if (!hasPermission(PERM_CREDENTIALS_READ)) {

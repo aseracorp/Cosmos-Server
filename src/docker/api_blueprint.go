@@ -204,17 +204,17 @@ func (g GPURequests) MarshalJSON() ([]byte, error) {
 type ContainerCreateRequestContainer struct {
 	Name 			string            `json:"container_name"`
 	Image       string            `json:"image" validate:"required"`
-	Environment []string `json:"environment"`
-	Labels      map[string]string `json:"labels"`
-	Ports       []string          `json:"ports"`
-	Volumes     []CosmosMount          `json:"volumes"`
-	Networks    map[string]ContainerCreateRequestServiceNetwork `json:"networks"`
-	Routes 			[]utils.ProxyRouteConfig          `json:"routes"`
+	Environment []string `json:"environment,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Ports       []string          `json:"ports,omitempty"`
+	Volumes     []CosmosMount          `json:"volumes,omitempty"`
+	Networks    map[string]ContainerCreateRequestServiceNetwork `json:"networks,omitempty"`
+	Routes 			[]utils.ProxyRouteConfig          `json:"routes,omitempty"`
 	Links       []string  `json:"links,omitempty"`
 
 	RestartPolicy  string            `json:"restart,omitempty"`
-	Devices        []string          `json:"devices"`
-	Expose 		     []string          `json:"expose"`
+	Devices        []string          `json:"devices,omitempty"`
+	Expose 		     []string          `json:"expose,omitempty"`
 	DependsOn      map[string]ContainerCreateRequestContainerDependsOnCont `json:"depends_on,omitempty"`
 	Tty            bool              `json:"tty,omitempty"`
 	StdinOpen      bool              `json:"stdin_open,omitempty"`
@@ -233,7 +233,7 @@ type ContainerCreateRequestContainer struct {
 	NetworkMode string `json:"network_mode,omitempty"`
 	StopSignal string `json:"stop_signal,omitempty"`
 	StopGracePeriod int `json:"stop_grace_period,omitempty"`
-	HealthCheck ContainerCreateRequestContainerHealthcheck `json:"healthcheck,omitempty"`
+	HealthCheck *ContainerCreateRequestContainerHealthcheck `json:"healthcheck,omitempty"`
 	DNS []string `json:"dns,omitempty"`
 	DNSSearch []string `json:"dns_search,omitempty"`
 	ExtraHosts []string `json:"extra_hosts,omitempty"`
@@ -1272,7 +1272,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		}		
 
 		// For Healthcheck
-		if len(container.HealthCheck.Test) > 0 {
+		if container.HealthCheck != nil && len(container.HealthCheck.Test) > 0 {
 			interval, intervalErr := container.HealthCheck.Interval.ParseDuration()
 			if intervalErr != nil {
 				utils.Error("CreateService: Invalid healthcheck interval", intervalErr)
