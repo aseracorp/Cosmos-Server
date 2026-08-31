@@ -56,29 +56,3 @@ export const parseJsonOrHjson = (text) => {
     throw new Error(err && err.message ? err.message : 'Invalid JSON/HJSON input');
   }
 };
-
-// True when the text contains HJSON-specific syntax that would be lost in a
-// plain JSON round-trip: // # or /* */ comments, unquoted keys (a bare
-// identifier before ':'), or single-quoted strings. Plain JSON documents
-// (machine-generated, no comments) return false so callers can skip the
-// "$$raw" payload entirely and keep the request byte-identical to a JSON one.
-export const hasHjsonSyntax = (text) => {
-  const trimmed = text == null ? '' : String(text);
-  if (!trimmed) return false;
-  // Quick reject: if JSON.parse succeeds there can be no comments/unquoted
-  // keys, so it is plain JSON regardless of single quotes (JSON forbids
-  // those, so a success means no HJSON-only tokens outside strings).
-  try {
-    JSON.parse(trimmed);
-    return false;
-  } catch (e) {
-    // fall through
-  }
-  // HJSON-only markers: comments, unquoted keys, single-quoted strings.
-  // ':' followed by a value on unquoted keys is the strongest signal, but
-  // comments are the common one users type. Use a conservative check so we
-  // only skip $$raw when definitely plain JSON.
-  return (
-    /\/\/|#|(?:\/[*])|(?:\r?\n\s*[A-Za-z_$][\w$.-]*(?=\s*:))/.test(trimmed)
-  );
-};

@@ -118,40 +118,16 @@ const NewDockerService = ({service, refresh, edit, rawText}) => {
     setLog([
       'Creating Service...                              ',
     ])
-    // Batch incoming log lines: the server flushes per line, but re-rendering
-    // the whole <pre> on every single line is wasteful (Docker pull progress
-    // can emit many short lines per second). We collect chunks in a local
-    // buffer and flush on the next animation frame, so the UI stays
-    // responsive while the log still appears live.
-    let pending = [];
-    let rafId = null;
-    const flush = () => {
-      rafId = null;
-      if (pending.length) {
-        const batch = pending;
-        pending = [];
-        setLog((old) => batch.reduce(smartDockerLogConcat, old));
-        if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
+    API.docker.createService(parseJsonOrHjson(dockerCompose), (newlog) => {
+      setLog((old) => smartDockerLogConcat(old, newlog));
+      preRef.current.scrollTop = preRef.current.scrollHeight;
+      if (newlog.includes('[OPERATION SUCCEEDED]')) {
+        setIsDone(true);
+        
+        needsRestart && setOpenModal(true);
+        refresh && refresh();
       }
-    };
-    const enqueue = (line) => {
-      pending.push(line);
-      if (rafId === null) {
-        rafId = requestAnimationFrame(flush);
-      }
-      // Terminal state must be reflected immediately, not deferred a frame.
-      if (line.includes('[OPERATION SUCCEEDED]') || line.includes('[OPERATION FAILED]')) {
-        const succeeded = line.includes('[OPERATION SUCCEEDED]');
-        if (rafId !== null) { cancelAnimationFrame(rafId); }
-        flush();
-        setIsDone(succeeded);
-        if (succeeded) {
-          needsRestart && setOpenModal(true);
-          refresh && refresh();
-        }
-      }
-    };
-    API.docker.createService(parseJsonOrHjson(dockerCompose), enqueue, dockerCompose);
+    }, dockerCompose);
   }
 
   let isJSON = false;
