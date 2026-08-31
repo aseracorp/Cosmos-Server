@@ -25,7 +25,9 @@ const hjsonProperty = {
 const hjsonUnquotedProperty = {
   // Unquoted HJSON key (services:, my-app:): starts after a line start,
   // brace/bracket or comma (plus indentation), extends to the ':'.
-  pattern: /(?<=^|[\r\n{[,])\s*[^:#\[\]{}"',\r\n\s][^:#\[\]{}"',\r\n]*(?=\s*:)/,
+  // '/' is excluded as the *first* char so comment lines (//, /*) can never
+  // be misread as keys; '/' inside a key (my/app:) is still fine.
+  pattern: /(?<=^|[\r\n{[,])\s*[^:#\[\]{}"',\r\n\s/][^:#\[\]{}"',\r\n]*(?=\s*:)/,
   greedy: true,
   alias: 'property',
 };
@@ -56,9 +58,10 @@ const hjsonGrammar = {
       pattern: /\/\*[\s\S]*?(?:\*\/|$)/,
       greedy: true,
     },
-    // # and // line comments (to end of line).
+    // # and // line comments (to end of line). No /m or $: with Prism's
+    // greedy engine, /m + $ made # comments not match.
     {
-      pattern: /(?:\/\/.*|#.*$)/m,
+      pattern: /(?:\/\/.*|#[^\r\n]*)/,
       greedy: true,
     },
   ],
