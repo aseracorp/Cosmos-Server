@@ -22,6 +22,7 @@ import { LoadingButton } from '@mui/lab';
 import LogLine from '../../../components/logLine';
 import Highlighter from '../../../components/third-party/Highlighter';
 import { useTranslation } from 'react-i18next';
+import { toHjson, parseJsonOrHjson } from '../../../utils/hjson';
 
 import Editor from 'react-simple-code-editor';
 import { highlight, languages } from 'prismjs/components/prism-core';
@@ -75,7 +76,7 @@ const NewDockerService = ({service, refresh, edit}) => {
   delete service['cosmos-installer'];
   delete service['x-cosmos-installer'];
 
-  const [dockerCompose, setDockerCompose] = React.useState(JSON.stringify(service, null, 2));
+  const [dockerCompose, setDockerCompose] = React.useState(toHjson(service));
 
 
   const refreshConfig = () => {
@@ -96,7 +97,7 @@ const NewDockerService = ({service, refresh, edit}) => {
     setLog([
       'Creating Service...                              ',
     ])
-    API.docker.createService(JSON.parse(dockerCompose), (newlog) => {
+    API.docker.createService(parseJsonOrHjson(dockerCompose), (newlog) => {
       setLog((old) => smartDockerLogConcat(old, newlog));
       preRef.current.scrollTop = preRef.current.scrollHeight;
       if (newlog.includes('[OPERATION SUCCEEDED]')) {

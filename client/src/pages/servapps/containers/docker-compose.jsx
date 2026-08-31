@@ -24,6 +24,7 @@ import { useEffect, useState } from 'react';
 import ResponsiveButton from '../../../components/responseiveButton';
 import UploadButtons from '../../../components/fileUpload';
 import NewDockerService from './newService';
+import { parseJsonOrHjson } from '../../../utils/hjson';
 import yaml from 'js-yaml';
 import { CosmosCollapse, CosmosFormDivider, CosmosInputPassword, CosmosInputText, CosmosSelect } from '../../config/users/formShortcuts';
 import VolumeContainerSetup from './volumes';
@@ -727,7 +728,7 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
 
       let jsoned;
       if(isJson) {
-        jsoned = JSON.parse(rendered);
+        jsoned = parseJsonOrHjson(rendered);
       } else {
         jsoned = convertDockerCompose(config, serviceName, rendered, setYmlError);
         console.log('jsoned', jsoned);
