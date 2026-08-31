@@ -2,47 +2,44 @@ import Prism from 'prismjs/components/prism-core';
 
 // ==============================|| HJSON GRAMMAR ||============================== //
 //
-// Cosmos displays compose/JSON payloads as HJSON (see utils/hjson.jsx): keys
-// are unquoted and, with quotes: 'min', many string *values* are also
-// unquoted. Prism's stock `json` grammar only colors *quoted* keys, so HJSON
-// would render mostly white. This grammar extends JSON with HJSON's unquoted
-// keys AND unquoted string values, keeping the familiar color scheme:
-//   - keys                                    -> property  (red/Okaidia)
-//   - string values (quoted or unquoted)      -> string    (green)
-//   - numbers / booleans / null               -> number/boolean/null
-//   - comments (# //)                          -> comment   (grey)
+// Cosmos displays compose/JSON payloads as HJSON (see utils/hjson.jsx) with
+// quotes: 'always' (all strings quoted) and separator: true (trailing commas).
+// Prism's stock `json` grammar only colors *quoted* keys, so HJSON's unquoted
+// keys (`services:`) would render white. This grammar extends JSON with
+// HJSON's unquoted keys and keeps the familiar color scheme:
+//   - keys (quoted or unquoted)            -> property  (red/Okaidia)
+//   - string values                        -> string    (green)
+//   - numbers / booleans / null            -> number/boolean/null
+//   - comments (# // /* */)                 -> comment   (grey)
+//   - multiline strings (''' ... ''')       -> string    (green)
 //
-// We register it as `hjson` and override the `json` grammar so the compose
+// Register it as `hjson` and override the `json` grammar so the compose
 // editor (which resolves the 'json' language) picks it up transparently.
 
 const hjsonProperty = {
-  // Quoted key - identical to JSON's property rule.
-  pattern: /(^|[^\\])"(?:\\.|[^\\"\r\n])*"(?=\s*:)/,
-  lookbehind: true,
+  // Quoted key - 'key': value, handles escaped quotes inside.
+  pattern: /"(?:\\.|[^"\\])*"(?=\s*:)/,
   greedy: true,
 };
 
 const hjsonUnquotedProperty = {
-  // Unquoted HJSON key: starts after a line start, brace/bracket or comma
-  // (plus indentation), extends to the ':' that begins the value.
+  // Unquoted HJSON key (services:, my-app:): starts after a line start,
+  // brace/bracket or comma (plus indentation), extends to the ':'.
   pattern: /(?<=^|[\r\n{[,])\s*[^:#\[\]{}"',\r\n\s][^:#\[\]{}"',\r\n]*(?=\s*:)/,
   greedy: true,
   alias: 'property',
 };
 
-const hjsonUnquotedValue = {
-  // Unquoted string value right after 'key: ' (HJSON 'min' emits one space).
-  // Negative lookahead keeps numbers / booleans / null their own colors.
-  pattern: /(?<=:\s)(?!true\b|false\b|null\b|-?\b\d[\d.e+-]*\b)[^#"',{}\[\]\r\n]+/,
+const hjsonString = {
+  // Quoted string value - handles escaped quotes (\" or \\), plus any of
+  // #, //, : inside. The (?!\s*:) excludes quoted keys (handled above).
+  pattern: /"(?:\\.|[^"\\])*"(?!\s*:)/,
   greedy: true,
-  alias: 'string',
 };
 
-const hjsonArrayElement = {
-  // Unquoted string element inside [ ... ] (own line after [, or ,).
-  // The (?!\s) guard stops whitespace-only (closing-bracket) lines from
-  // being painted as string.
-  pattern: /(?<=[\r\n,\[])\s*(?!\s|true\b|false\b|null\b|-?\b\d[\d.e+-]*\b)[^#"',{}\[\]\r\n]+/,
+const hjsonMlString = {
+  // HJSON multiline string ''' ... ''' (may span lines).
+  pattern: /'''[\s\S]*?'''/,
   greedy: true,
   alias: 'string',
 };
@@ -50,19 +47,21 @@ const hjsonArrayElement = {
 const hjsonGrammar = {
   'unquoted-property': hjsonUnquotedProperty,
   property: hjsonProperty,
-  'unquoted-string': hjsonUnquotedValue,
-  'array-string': hjsonArrayElement,
+  'ml-string': hjsonMlString,
+  string: hjsonString,
 
-  string: {
-    pattern: /(^|[^\\])"(?:\\.|[^\\"\r\n])*"(?!\s*:)/,
-    lookbehind: true,
-    greedy: true,
-  },
-
-  comment: {
-    pattern: /(?:\/\/.*|\/\*[\s\S]*?(?:\*\/|$)|#.*$)/m,
-    greedy: true,
-  },
+  comment: [
+    // /* ... */ block comments (multiline). Tried first so they span lines.
+    {
+      pattern: /\/\*[\s\S]*?(?:\*\/|$)/,
+      greedy: true,
+    },
+    // # and // line comments (to end of line).
+    {
+      pattern: /(?:\/\/.*|#.*$)/m,
+      greedy: true,
+    },
+  ],
 
   number: /-?\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/i,
 
