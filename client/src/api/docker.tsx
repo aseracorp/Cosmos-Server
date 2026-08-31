@@ -1,4 +1,5 @@
 import wrap, { type ApiResponse, type ApiFetch } from './wrap';
+import { hasHjsonSyntax } from '../utils/hjson';
 
 export interface ContainerState {
   Status: string;
@@ -246,12 +247,13 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
   }
 
   function createService(serviceData: any, onProgress: (line: string) => void, rawText?: string): Promise<ReadableStream> {
-    // The compose editor sends the literal HJSON text (comments included) as
-    // "$$raw" alongside the parsed object. The server stores it in the
-    // cosmos.initial-config-raw label so comments survive the JSON round-trip.
-    // The JSON parser on the server ignores the unknown "$$raw" key for
-    // clients that don't send it (docker-compose.jsx etc).
-    const body = rawText ? { ...serviceData, '$$raw': rawText } : serviceData;
+    // The compose editor sends the literal editor text (comments included) as
+    // "$$raw" alongside the parsed object only when it actually contains
+    // HJSON-specific syntax. Plain JSON payloads skip it so the request body
+    // stays byte-identical to a plain JSON one. The server stores $$raw in
+    // the cosmos.initial-config-raw label so comments survive round-trips.
+    const needsRaw = rawText ? hasHjsonSyntax(rawText) : false;
+    const body = needsRaw ? { ...serviceData, '$$raw': rawText } : serviceData;
     const requestOptions: RequestInit = {
       method: 'POST',
       headers: {
