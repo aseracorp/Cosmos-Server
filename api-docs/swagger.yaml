@@ -6310,6 +6310,11 @@ paths:
         name: containerId
         required: true
         type: string
+      - description: "Export source: 'initial' (stored initial config, default) or 'runtime' (live Docker state)"
+        in: query
+        name: from
+        required: false
+        type: string
       produces:
       - application/json
       responses:

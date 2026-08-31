@@ -8125,6 +8125,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Export source: 'initial' (stored initial config, default) or 'runtime' (live Docker state)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

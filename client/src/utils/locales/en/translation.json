@@ -1221,5 +1221,9 @@
 	"sudo.description": "You are about to enable admin privileges. Please enter your password to continue. This will expire after 2h of inactivity.",
 	"sudo.required": "Enable Admin privileges with the button on the top right to use this function",
 	"mgmt.servapps.compose.credentialsRequired": "The Compose editor requires access to container credentials (environment variables, secrets). Please enable Admin privileges using the button on the top right to view and edit the Compose configuration.",
-	"mgmt.servapps.compose.credentialsDenied": "The Compose editor requires access to container credentials (environment variables, secrets). Your current role does not have permission to view credentials."
+	"mgmt.servapps.compose.credentialsDenied": "The Compose editor requires access to container credentials (environment variables, secrets). Your current role does not have permission to view credentials.",
+	"mgmt.servapps.compose.initialValuesHint": "Showing the settings from when this service was created/edited. Docker runtime values are hidden to avoid showing settings you never configured.",
+	"mgmt.servapps.compose.runtimeValuesHint": "Showing the live Docker runtime values. These may include defaults and values you did not explicitly configure.",
+	"mgmt.servapps.compose.showRuntimeValues": "Show current runtime values",
+	"mgmt.servapps.compose.noStoredConfig": "No stored initial configuration found for this container — showing the current runtime values instead. Saving will store the current settings as the new initial configuration."
 }

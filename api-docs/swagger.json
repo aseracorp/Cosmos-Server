@@ -6694,6 +6694,13 @@
                         "name": "containerId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Export source: 'initial' (stored initial config, default) or 'runtime' (live Docker state)",
+                        "in": "query",
+                        "name": "from",
+                        "required": false,
+                        "type": "string"
                     }
                 ],
                 "responses": {

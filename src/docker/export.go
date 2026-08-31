@@ -85,32 +85,74 @@ func FormatDuration(d time.Duration) string {
 }
 
 func ExportContainer(containerID string) (ContainerCreateRequestContainer, error)  {
-		// Fetch detailed info of each container
-		detailedInfo, err := DockerClient.ContainerInspect(DockerContext, containerID)
-		if err != nil {
-			ExportError = "Export Docker - Cannot inspect container" + containerID + " - " + err.Error()
-			return ContainerCreateRequestContainer{}, errors.New(ExportError)
-		}
+	// Fetch detailed info of each container
+	detailedInfo, err := DockerClient.ContainerInspect(DockerContext, containerID)
+	if err != nil {
+		ExportError = "Export Docker - Cannot inspect container" + containerID + " - " + err.Error()
+		return ContainerCreateRequestContainer{}, errors.New(ExportError)
+	}
 
-		// Map the detailedInfo to your ContainerCreateRequestContainer struct
-		// Here's a simplified example, you'd need to handle all the fields
-		service := ContainerCreateRequestContainer{
-			Name:         strings.TrimPrefix(detailedInfo.Name, "/"),
-			Image:        detailedInfo.Config.Image,
-			Environment:  detailedInfo.Config.Env,
-			Labels:       detailedInfo.Config.Labels,
-			Command:      strslice.StrSlice(detailedInfo.Config.Cmd),
-			Entrypoint:   strslice.StrSlice(detailedInfo.Config.Entrypoint),
-			WorkingDir:   detailedInfo.Config.WorkingDir,
-			User:         detailedInfo.Config.User,
-			Tty:          detailedInfo.Config.Tty,
-			StdinOpen:    detailedInfo.Config.OpenStdin,
-			Hostname:     func () string { 
-				if string(detailedInfo.HostConfig.NetworkMode) == "bridge" || string(detailedInfo.HostConfig.NetworkMode) == "default" {
-					return detailedInfo.Config.Hostname
-				}
-				return ""
-			}(),
+	return exportFromInspect(detailedInfo)
+}
+
+// ExportContainerInitial exports the service definition the way the user
+// originally configured it (stored in the cosmos.initial-config label at
+// create/edit time), rather than the live Docker runtime state. The runtime
+// state externalizes settings the user never set — daemon defaults,
+// image-provided env vars, internal cosmos.* labels, normalized values — so
+// showing it as the "current config" makes it look like the user configured
+// things they did not.
+//
+// The second return value is true when a stored snapshot was used, false when
+// the container has no snapshot (created before this feature, or created
+// outside Cosmos) and we fell back to the runtime-derived export.
+func ExportContainerInitial(containerID string) (ContainerCreateRequestContainer, bool, error) {
+	// Fetch detailed info of each container
+	detailedInfo, err := DockerClient.ContainerInspect(DockerContext, containerID)
+	if err != nil {
+		ExportError = "Export Docker - Cannot inspect container" + containerID + " - " + err.Error()
+		return ContainerCreateRequestContainer{}, false, errors.New(ExportError)
+	}
+
+	if detailedInfo.Config != nil {
+		if svc, ok := GetInitialConfig(detailedInfo.Config); ok {
+			// Align the exported snapshot with the CURRENT container name: the
+			// compose editor keys the services map by the container's present
+			// name, so a stale stored name (container renamed / recreated
+			// outside the editor) would otherwise round-trip into creating a
+			// differently-named container.
+			svc.Name = strings.TrimPrefix(detailedInfo.Name, "/")
+			svc.Labels = StripInitialConfigLabel(svc.Labels)
+			return svc, true, nil
+		}
+	}
+
+	svc, err := exportFromInspect(detailedInfo)
+	return svc, false, err
+}
+
+// exportFromInspect maps a Docker ContainerJSON into a
+// ContainerCreateRequestContainer (the compose-editor / HJSON shape).
+func exportFromInspect(detailedInfo types.ContainerJSON) (ContainerCreateRequestContainer, error) {
+	// Map the detailedInfo to your ContainerCreateRequestContainer struct
+	// Here's a simplified example, you'd need to handle all the fields
+	service := ContainerCreateRequestContainer{
+		Name:         strings.TrimPrefix(detailedInfo.Name, "/"),
+		Image:        detailedInfo.Config.Image,
+		Environment:  detailedInfo.Config.Env,
+		Labels:       detailedInfo.Config.Labels,
+		Command:      strslice.StrSlice(detailedInfo.Config.Cmd),
+		Entrypoint:   strslice.StrSlice(detailedInfo.Config.Entrypoint),
+		WorkingDir:   detailedInfo.Config.WorkingDir,
+		User:         detailedInfo.Config.User,
+		Tty:          detailedInfo.Config.Tty,
+		StdinOpen:    detailedInfo.Config.OpenStdin,
+		Hostname:     func () string { 
+			if string(detailedInfo.HostConfig.NetworkMode) == "bridge" || string(detailedInfo.HostConfig.NetworkMode) == "default" {
+				return detailedInfo.Config.Hostname
+			}
+			return ""
+		}(),
 			Domainname:   detailedInfo.Config.Domainname,
 			MacAddress:   detailedInfo.NetworkSettings.MacAddress,
 			// Normalize container/service refs to stable container:<name>: the
@@ -327,6 +369,8 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 
 		// hide the internal depends_on label; the field is the source of truth
 		service.Labels = stripInternalDependsOnLabel(service.Labels)
+		// hide the internal initial-config label; the field is the source of truth
+		service.Labels = StripInitialConfigLabel(service.Labels)
 
 		return service, nil
 }

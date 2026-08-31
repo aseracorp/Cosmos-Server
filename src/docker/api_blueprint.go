@@ -792,6 +792,22 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			OpenStdin:    container.StdinOpen,
 		}
 
+		// Persist the service definition exactly as the user submitted it
+		// (after benign normalization: container name defaulting, resolved
+		// cosmos-network-name), BEFORE Cosmos rewrites labels for its own
+		// bookkeeping (cosmos.stack, depends_on, cosmos-force-network-mode,
+		// TZ env injection). This is the "initial settings" snapshot shown in
+		// the compose editor — the alternative (reading live Docker inspect
+		// data at display time) externalizes settings the user never set,
+		// such as daemon defaults, image-provided env vars and internal
+		// labels. Deep-copy via JSON so later mutation of container.Labels
+		// (shared with containerConfig.Labels) cannot corrupt the snapshot.
+		if initialSnapshot, snapErr := deepCopyServiceRequest(container); snapErr == nil {
+			if labErr := SetInitialConfigLabel(containerConfig, initialSnapshot); labErr != nil {
+				utils.Error("CreateService: cannot store initial config for "+container.Name, labErr)
+			}
+		}
+
 		// Tag multi-service compose stacks with cosmos.stack (+ .main) so the
 		// UI groups them and the dependents cascade can scope by stack. Single
 		// services stay untagged.
