@@ -1225,5 +1225,5 @@
 	"mgmt.servapps.compose.initialValuesHint": "Showing the settings from when this service was created/edited. Docker runtime values are hidden to avoid showing settings you never configured.",
 	"mgmt.servapps.compose.runtimeValuesHint": "Showing the live Docker runtime values. These may include defaults and values you did not explicitly configure.",
 	"mgmt.servapps.compose.showRuntimeValues": "Show current runtime values",
-	"mgmt.servapps.compose.noStoredConfig": "No stored initial configuration found for this container — showing the current runtime values instead. Saving will store the current settings as the new initial configuration."
+	"mgmt.servapps.compose.noStoredConfig": "No stored initial configuration found for this container (created before this feature or outside Cosmos). Showing current runtime values — switch shows no difference until you save. Saving stores these settings as the new initial configuration."
 }
