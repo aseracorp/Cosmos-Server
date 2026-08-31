@@ -85,19 +85,14 @@ const NewDockerService = ({service, refresh, edit, rawText}) => {
   // runtime values). useState only captures the initial value, so sync the
   // editor content whenever a *different* service object arrives. The JSON
   // key comparison avoids clobbering in-progress edits on unrelated re-renders.
-  const serviceKey = React.useMemo(() => (rawText || '') + '|' + JSON.stringify(service), [service, rawText]);
+  const serviceKey = React.useMemo(() => rawText + '|' + JSON.stringify(service), [service, rawText]);
   const serviceKeyRef = React.useRef(serviceKey);
   React.useEffect(() => {
-    // Only sync the editor content while the log is not streaming: once the
-    // create/edit progress log is shown the Editor is unmounted and there is
-    // nothing to update — re-initializing state here would add pointless
-    // renders (and could fight with the user's in-progress edits when the
-    // parent re-derives the service object in the form flow).
-    if (log.length === 0 && serviceKeyRef.current !== serviceKey) {
+    if (serviceKeyRef.current !== serviceKey) {
       serviceKeyRef.current = serviceKey;
       setDockerCompose(rawText || toHjson(service));
     }
-  }, [serviceKey, service, rawText, log.length]);
+  }, [serviceKey, service, rawText]);
 
 
   const refreshConfig = () => {
