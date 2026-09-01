@@ -110,16 +110,12 @@ func extractRawConfig(rawBody []byte) string {
 // network_mode or injects defaults — otherwise the "initial settings" shown
 // in the compose editor would drift towards the runtime state on every edit.
 //
-// Routes are deliberately excluded: they are a Cosmos proxy concept, not a
-// Docker property, and are stored in the HTTP config (ProxyConfig.Routes),
-// never on the container. Persisting them in the label would duplicate
-// proxy-only data onto the Docker config.
+// serialized is a cheap way to avoid re-marshaling when the caller already
+// produced the JSON (e.g. from the create request).
 func SetInitialConfigLabel(conf *conttype.Config, svc ContainerCreateRequestContainer) error {
 	if conf == nil {
 		return nil
 	}
-	// Routes never belong on the container config — clear them before storing.
-	svc.Routes = nil
 	raw, err := json.Marshal(svc)
 	if err != nil {
 		return err
