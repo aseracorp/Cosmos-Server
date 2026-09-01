@@ -159,6 +159,8 @@ func exportFromInspect(detailedInfo types.ContainerJSON) (ContainerCreateRequest
 			// inspect may report a container ID that goes stale on recreate.
 			NetworkMode:  ContainerRefToName(string(detailedInfo.HostConfig.NetworkMode)),
 			StopSignal:   detailedInfo.Config.StopSignal,
+			HealthCheck:  ContainerCreateRequestContainerHealthcheck {
+			},
 			DNS:              detailedInfo.HostConfig.DNS,
 			DNSSearch:        detailedInfo.HostConfig.DNSSearch,
 			Runtime:		  detailedInfo.HostConfig.Runtime,
@@ -338,13 +340,11 @@ func exportFromInspect(detailedInfo types.ContainerJSON) (ContainerCreateRequest
 
 		// healthcheck
 		if detailedInfo.Config.Healthcheck != nil {
-			service.HealthCheck = &ContainerCreateRequestContainerHealthcheck{
-				Test:        detailedInfo.Config.Healthcheck.Test,
-				Interval:    DurationStr(FormatDuration(detailedInfo.Config.Healthcheck.Interval)),
-				Timeout:     DurationStr(FormatDuration(detailedInfo.Config.Healthcheck.Timeout)),
-				Retries:     detailedInfo.Config.Healthcheck.Retries,
-				StartPeriod: DurationStr(FormatDuration(detailedInfo.Config.Healthcheck.StartPeriod)),
-			}
+			service.HealthCheck.Test = detailedInfo.Config.Healthcheck.Test
+			service.HealthCheck.Interval = DurationStr(FormatDuration(detailedInfo.Config.Healthcheck.Interval))
+			service.HealthCheck.Timeout = DurationStr(FormatDuration(detailedInfo.Config.Healthcheck.Timeout))
+			service.HealthCheck.Retries = detailedInfo.Config.Healthcheck.Retries
+			service.HealthCheck.StartPeriod = DurationStr(FormatDuration(detailedInfo.Config.Healthcheck.StartPeriod))
 		}
 
 		// user UID/GID

@@ -80,20 +80,6 @@ const NewDockerService = ({service, refresh, edit}) => {
 
   const [dockerCompose, setDockerCompose] = React.useState(toHjson(service));
 
-  // The service prop can change after mount (the Compose editor re-fetches the
-  // exported definition when the user toggles between initial settings and
-  // runtime values). useState only captures the initial value, so sync the
-  // editor content whenever a *different* service object arrives. The JSON
-  // key comparison avoids clobbering in-progress edits on unrelated re-renders.
-  const serviceKey = React.useMemo(() => JSON.stringify(service), [service]);
-  const serviceKeyRef = React.useRef(serviceKey);
-  React.useEffect(() => {
-    if (serviceKeyRef.current !== serviceKey) {
-      serviceKeyRef.current = serviceKey;
-      setDockerCompose(toHjson(service));
-    }
-  }, [serviceKey, service]);
-
 
   const refreshConfig = () => {
     API.config.get().then((res) => {
