@@ -403,14 +403,25 @@ func ExportContainerRuntime(containerID string) (ContainerCreateRequestContainer
 	}
 
 	// Labels: keep only labels not in the image, then drop Cosmos-internal ones.
+	// The image-inheritance filter only applies to *user* labels: cosmos.*
+	// labels are Cosmos bookkeeping that can never be a Dockerfile default
+	// (e.g. cosmos.stack, cosmos.stack.main) and must always be shown, while
+	// com.docker.compose.* labels are recomputed from the compose fields and
+	// kept hidden.
 	if len(imgConfig.Labels) > 0 {
 		filtered := map[string]string{}
 		for k, v := range service.Labels {
-			if imgV, present := imgConfig.Labels[k]; present && imgV == v {
-				continue // inherited from image
+			// Cosmos-managed labels are never image defaults — always expose.
+			if strings.HasPrefix(k, "cosmos.") {
+				filtered[k] = v
+				continue
 			}
-			// drop Cosmos bookkeeping labels
-			if strings.HasPrefix(k, "cosmos.") || strings.HasPrefix(k, "com.docker.compose.") {
+			// Internal compose bookkeeping is recomputed from fields — hide.
+			if strings.HasPrefix(k, "com.docker.compose.") {
+				continue
+			}
+			// inherited from image → not user-set
+			if imgV, present := imgConfig.Labels[k]; present && imgV == v {
 				continue
 			}
 			filtered[k] = v
