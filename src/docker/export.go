@@ -332,12 +332,12 @@ func ExportContainerRuntime(containerID string) (ContainerCreateRequestContainer
 	containerCmd := strings.Join(detailedInfo.Config.Cmd, " ")
 	imgCmd := strings.Join(imgConfig.Cmd, " ")
 	if containerCmd != "" && containerCmd == imgCmd {
-		service.Command = ""
+		service.Command = nil
 	}
 	containerEntry := strings.Join(detailedInfo.Config.Entrypoint, " ")
 	imgEntry := strings.Join(imgConfig.Entrypoint, " ")
 	if containerEntry != "" && containerEntry == imgEntry {
-		service.Entrypoint = ""
+		service.Entrypoint = nil
 	}
 
 	// WorkingDir / User / StopSignal / Hostname / Domainname / MacAddress.
