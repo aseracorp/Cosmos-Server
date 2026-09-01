@@ -1,6 +1,5 @@
 import React from 'react';
 import { Alert, Checkbox, Chip, CircularProgress, FormControlLabel, Stack, Switch, Typography, useMediaQuery } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
 import MainCard from '../../../components/MainCard';
 import * as API from '../../../api';
 import NewDockerService from './newService';
@@ -9,7 +8,6 @@ import { useClientInfos } from '../../../utils/hooks';
 import { useTranslation } from 'react-i18next';
 
 const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable, selfName }) => {
-  const theme = useTheme();
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'));
   const [isUpdating, setIsUpdating] = React.useState(false);
   const { hasPermission, hasRolePermission } = useClientInfos();
@@ -74,43 +72,9 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
               onChange={(e) => setShowRuntime(e.target.checked)}
               size="small"
               disabled={!hasStoredConfig && !showRuntime}
-              sx={{
-                '& .MuiSwitch-switchBase.Mui-checked': {
-                  color: theme.palette.primary.main,
-                  '&:hover': { backgroundColor: theme.palette.primary.main + '22' },
-                },
-                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                  backgroundColor: theme.palette.primary.main,
-                  opacity: 1,
-                },
-                '& .MuiSwitch-track': {
-                  backgroundColor: theme.palette.mode === 'dark'
-                    ? theme.palette.grey[600]
-                    : theme.palette.grey[400],
-                  opacity: 1,
-                },
-                '& .MuiSwitch-switchBase.Mui-disabled': {
-                  '+ .MuiSwitch-track': {
-                    backgroundColor: theme.palette.mode === 'dark'
-                      ? theme.palette.grey[700]
-                      : theme.palette.grey[300],
-                    opacity: 1,
-                  },
-                  '& .MuiSwitch-thumb': {
-                    color: theme.palette.mode === 'dark'
-                      ? theme.palette.grey[500]
-                      : theme.palette.grey[400],
-                  },
-                },
-              }}
             />
           }
-          label={
-            <Typography variant="body2" sx={{ color: theme.palette.text.primary }}>
-              {t('mgmt.servapps.compose.showRuntimeValues')}
-            </Typography>
-          }
-          sx={{ '& .MuiFormControlLabel-label': { color: theme.palette.text.primary } }}
+          label={t('mgmt.servapps.compose.showRuntimeValues')}
         />
       </Stack>
       {!showRuntime && !hasStoredConfig && (
