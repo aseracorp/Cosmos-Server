@@ -181,7 +181,7 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
     }))
   }
 
-  function exportContainer(containerId: string, from?: 'initial' | 'runtime'): Promise<ApiResponse & { stored?: boolean; raw?: string }> {
+  function exportContainer(containerId: string, from?: 'initial' | 'runtime'): Promise<ApiResponse & { stored?: boolean }> {
     return wrap(apiFetch(`/cosmos/api/servapps/${containerId}/export?from=${from || 'initial'}`, {
       method: 'GET',
       headers: {
@@ -245,19 +245,13 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
     return createWs('/cosmos/api/servapps/' + containerId + '/terminal/new');
   }
 
-  function createService(serviceData: any, onProgress: (line: string) => void, rawText?: string): Promise<ReadableStream> {
-    // The compose editor sends the literal HJSON text (comments included) as
-    // "$$raw" alongside the parsed object. The server stores it in the
-    // cosmos.initial-config-raw label so comments survive the JSON round-trip.
-    // The JSON parser on the server ignores the unknown "$$raw" key for
-    // clients that don't send it (docker-compose.jsx etc).
-    const body = rawText ? { ...serviceData, '$$raw': rawText } : serviceData;
+  function createService(serviceData: any, onProgress: (line: string) => void): Promise<ReadableStream> {
     const requestOptions: RequestInit = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(serviceData)
     };
 
     return apiFetch('/cosmos/api/docker-service', requestOptions)

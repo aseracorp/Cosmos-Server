@@ -106,12 +106,12 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 // The second return value is true when a stored snapshot was used, false when
 // the container has no snapshot (created before this feature, or created
 // outside Cosmos) and we fell back to the runtime-derived export.
-func ExportContainerInitial(containerID string) (ContainerCreateRequestContainer, bool, string, error) {
+func ExportContainerInitial(containerID string) (ContainerCreateRequestContainer, bool, error) {
 	// Fetch detailed info of each container
 	detailedInfo, err := DockerClient.ContainerInspect(DockerContext, containerID)
 	if err != nil {
 		ExportError = "Export Docker - Cannot inspect container" + containerID + " - " + err.Error()
-		return ContainerCreateRequestContainer{}, false, "", errors.New(ExportError)
+		return ContainerCreateRequestContainer{}, false, errors.New(ExportError)
 	}
 
 	if detailedInfo.Config != nil {
@@ -123,12 +123,12 @@ func ExportContainerInitial(containerID string) (ContainerCreateRequestContainer
 			// differently-named container.
 			svc.Name = strings.TrimPrefix(detailedInfo.Name, "/")
 			svc.Labels = StripInitialConfigLabel(svc.Labels)
-			return svc, true, GetInitialConfigRaw(detailedInfo.Config), nil
+			return svc, true, nil
 		}
 	}
 
 	svc, err := exportFromInspect(detailedInfo)
-	return svc, false, "", err
+	return svc, false, err
 }
 
 // exportFromInspect maps a Docker ContainerJSON into a

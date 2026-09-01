@@ -62,7 +62,7 @@ const preStyle = {
   opacity: '1',
 }
 
-const NewDockerService = ({service, refresh, edit, rawText}) => {
+const NewDockerService = ({service, refresh, edit}) => {
   const { t, i18n } = useTranslation();
   const { containerName } = useParams();
   const [container, setContainer] = React.useState(null);
@@ -78,21 +78,21 @@ const NewDockerService = ({service, refresh, edit, rawText}) => {
   delete service['cosmos-installer'];
   delete service['x-cosmos-installer'];
 
-  const [dockerCompose, setDockerCompose] = React.useState(rawText || toHjson(service));
+  const [dockerCompose, setDockerCompose] = React.useState(toHjson(service));
 
   // The service prop can change after mount (the Compose editor re-fetches the
   // exported definition when the user toggles between initial settings and
   // runtime values). useState only captures the initial value, so sync the
   // editor content whenever a *different* service object arrives. The JSON
   // key comparison avoids clobbering in-progress edits on unrelated re-renders.
-  const serviceKey = React.useMemo(() => rawText + '|' + JSON.stringify(service), [service, rawText]);
+  const serviceKey = React.useMemo(() => JSON.stringify(service), [service]);
   const serviceKeyRef = React.useRef(serviceKey);
   React.useEffect(() => {
     if (serviceKeyRef.current !== serviceKey) {
       serviceKeyRef.current = serviceKey;
-      setDockerCompose(rawText || toHjson(service));
+      setDockerCompose(toHjson(service));
     }
-  }, [serviceKey, service, rawText]);
+  }, [serviceKey, service]);
 
 
   const refreshConfig = () => {
@@ -122,7 +122,7 @@ const NewDockerService = ({service, refresh, edit, rawText}) => {
         needsRestart && setOpenModal(true);
         refresh && refresh();
       }
-    }, dockerCompose);
+    });
   }
 
   let isJSON = false;

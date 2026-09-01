@@ -16,7 +16,6 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
   const { Name } = containerInfo;
 
   const [exportedCompose, setExportedCompose] = React.useState(null);
-  const [exportedRaw, setExportedRaw] = React.useState('');
   // false = show the stored initial settings (what the user originally
   // configured), true = show the live Docker runtime values. The runtime view
   // externalizes settings the user never set (daemon defaults, image-provided
@@ -36,7 +35,6 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
           [Name.replace('/', '')]: res.data
         }
       });
-      setExportedRaw(res.raw || '');
     });
   }, [Name, showRuntime, reloadTick]);
 
@@ -82,7 +80,7 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
           {t('mgmt.servapps.compose.noStoredConfig')}
         </Alert>
       )}
-      {exportedCompose && <NewDockerService edit service={exportedCompose} refresh={refreshAll} rawText={exportedRaw} />}
+      {exportedCompose && <NewDockerService edit service={exportedCompose} refresh={refreshAll} />}
     </div>
   );
 };
