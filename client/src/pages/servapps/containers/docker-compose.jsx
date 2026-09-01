@@ -88,7 +88,7 @@ const cleanUpStore = (service) => {
   return newService;
 }
 
-// Remove top-level install-metadata (cosmos-installer / x-cosmos-installer
+// Remove top-level cosmos-installer / x-cosmos-installer blocks from a
 // rendered compose document, preserving everything else — including comments
 // and formatting in the services. This is a textual strip (brace-matched), so
 // it never parses/re-serializes the document and therefore never drops the
@@ -97,7 +97,7 @@ const cleanUpStore = (service) => {
 const stripRawInstaller = (text) => {
   if (!text || typeof text !== 'string' || text.trim() === '') return text;
   let out = text;
-  ['cosmos-installer', 'x-cosmos-installer', 'minVersion'].forEach((key) => {
+  ['cosmos-installer', 'x-cosmos-installer'].forEach((key) => {
     // Match a top-level key: optional quotes, key, colon. We look for the
     // key at the start of a line (possibly indented) so we never match a
     // nested service named the same.
