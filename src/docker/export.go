@@ -170,7 +170,50 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			
 		// }
 
+		// Hide the internal initial-config label; the compose editor reads the
+		// stored snapshot via ExportContainerInitial, not through the exported
+		// labels (which would leak cosmos bookkeeping into backups/UI).
+		service.Labels = StripInitialConfigLabel(service.Labels)
+
 		return service, nil
+}
+
+// ExportContainerInitial exports the service definition the way the user
+// originally configured it (stored in the cosmos.initial-config label at
+// create/edit time), rather than the live Docker runtime state. The runtime
+// state externalizes settings the user never set — daemon defaults,
+// image-provided env vars, internal cosmos.* labels, normalized values — so
+// showing it as the "current config" makes it look like the user configured
+// things they did not.
+//
+// The second return value is true when a stored snapshot was used, false when
+// the container has no snapshot (created before this feature, or created
+// outside Cosmos) and we fell back to the runtime-derived export.
+// The third return value is the stored raw editor text (HJSON with comments,
+// from the cosmos.initial-config-raw label) or "" when none is stored.
+func ExportContainerInitial(containerID string) (ContainerCreateRequestContainer, bool, string, error) {
+	// Fetch detailed info of each container
+	detailedInfo, err := DockerClient.ContainerInspect(DockerContext, containerID)
+	if err != nil {
+		ExportError = "Export Docker - Cannot inspect container" + containerID + " - " + err.Error()
+		return ContainerCreateRequestContainer{}, false, "", errors.New(ExportError)
+	}
+
+	if detailedInfo.Config != nil {
+		if svc, ok := GetInitialConfig(detailedInfo.Config); ok {
+			// Align the exported snapshot with the CURRENT container name: the
+			// compose editor keys the services map by the container's present
+			// name, so a stale stored name (container renamed / recreated
+			// outside the editor) would otherwise round-trip into creating a
+			// differently-named container.
+			svc.Name = strings.TrimPrefix(detailedInfo.Name, "/")
+			svc.Labels = StripInitialConfigLabel(svc.Labels)
+			return svc, true, GetInitialConfigRaw(detailedInfo.Config), nil
+		}
+	}
+
+	svc, err := ExportContainer(containerID)
+	return svc, false, "", err
 }
 
 func ExportDocker() {

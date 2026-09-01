@@ -80,7 +80,22 @@ func ExportContainerRoute(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		service, err := ExportContainer(containerID)
+		from := req.URL.Query().Get("from")
+		if from == "" {
+			from = "initial"
+		}
+
+		var service ContainerCreateRequestContainer
+		var err error
+		stored := false
+		raw := ""
+
+		if from == "runtime" {
+			service, err = ExportContainer(containerID)
+		} else {
+			service, stored, raw, err = ExportContainerInitial(containerID)
+		}
+
 		if err != nil {
 			utils.Error("exportContainer: Error while exporting container", err)
 			utils.HTTPError(w, "Container Export Error: "+err.Error(), http.StatusInternalServerError, "EC002")
@@ -90,6 +105,8 @@ func ExportContainerRoute(w http.ResponseWriter, req *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "OK",
 			"data": service,
+			"stored": stored,
+			"raw": raw,
 		})
 	} else {
 		utils.Error("exportContainer: Method not allowed " + req.Method, nil)

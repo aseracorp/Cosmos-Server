@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"os"
 	"io/ioutil"
+	"io"
 	"os/user"
 	"errors"
 	"github.com/docker/go-connections/nat"
@@ -254,18 +255,28 @@ func CreateServiceRoute(w http.ResponseWriter, req *http.Request) {
 				return 
 		}
 
-		decoder := json.NewDecoder(req.Body)
+		// Read the raw body once: json.Decode consumes the stream, and we need
+		// the bytes both for Decode and to extract the optional "$$raw" member
+		// (the literal HJSON/JSON text the user typed, comments included). The
+		// compose editor sends it alongside the parsed JSON so comments survive
+		// the JSON round-trip and can be stored in the initial-config-raw label.
+		rawBody, err := io.ReadAll(req.Body)
+		if err != nil {
+			utils.Error("CreateService - read body - ", err)
+			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
+			return
+		}
 		var serviceRequest DockerServiceCreateRequest
-		err := decoder.Decode(&serviceRequest)
+		err = json.Unmarshal(rawBody, &serviceRequest)
 		if err != nil {
 			utils.Error("CreateService - decode - ", err)
-			fmt.Fprintf(w, "[OPERATION FAILED] Bad request: "+err.Error(), http.StatusBadRequest, "DS003")
-			flusher.Flush()
 			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
 			return
 		}
 
-		CreateService(serviceRequest, 
+		rawConfig := extractRawConfig(rawBody)
+
+		CreateService(serviceRequest, rawConfig,
 			func (msg string) {
 				fmt.Fprintf(w, msg)
 				flusher.Flush()
@@ -297,7 +308,7 @@ func generatePorts(portRangeStr string) []string {
 	return ports
 }
 
-func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)) error {
+func CreateService(serviceRequest DockerServiceCreateRequest, rawConfig string, OnLog func(string)) error {
 	utils.ConfigLock.Lock()
 	defer utils.ConfigLock.Unlock()
 	
@@ -523,6 +534,38 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			StopTimeout:  &container.StopGracePeriod,
 			Tty:          container.Tty,
 			OpenStdin:    container.StdinOpen,
+		}
+
+		// Persist the service definition exactly as the user submitted it
+		// (after benign normalization done above), BEFORE Cosmos rewrites
+		// labels for its own bookkeeping (cosmos.stack, depends_on,
+		// cosmos-force-network-mode, TZ env injection). This is the "initial
+		// settings" snapshot shown in the compose editor — the alternative
+		// (reading live Docker inspect data at display time) externalizes
+		// settings the user never set, such as daemon defaults, image-provided
+		// env vars and internal labels. Deep-copy via JSON so later mutation of
+		// container.Labels (shared with containerConfig.Labels) cannot corrupt
+		// the snapshot.
+		if initialSnapshot, snapErr := deepCopyServiceRequest(container); snapErr == nil {
+			if labErr := SetInitialConfigLabel(containerConfig, initialSnapshot); labErr != nil {
+				utils.Error("CreateService: cannot store initial config for "+container.Name, labErr)
+			}
+		}
+
+		// Store the literal editor text (HJSON, comments included) alongside
+		// the structured snapshot so the compose editor can show the exact
+		// original document on reload. Only present when the client sent
+		// "$$raw" (i.e. the compose editor); external API clients that POST
+		// plain JSON get no raw label and keep the toHjson rendering.
+		// For multi-service stacks the raw doc covers ALL services; storing it
+		// verbatim on every container would duplicate the whole stack into each
+		// label. Only persist the raw text for single-service stacks, where it
+		// already scopes to exactly this container.
+		if scopedRaw := RawConfigForService(serviceName, rawConfig, len(serviceRequest.Services)); scopedRaw != "" {
+			if containerConfig.Labels == nil {
+				containerConfig.Labels = make(map[string]string)
+			}
+			containerConfig.Labels[initialConfigRawLabel] = scopedRaw
 		}
 
 		// check if there's an empty TZ env, if so, replace it with the host's TZ
