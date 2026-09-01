@@ -31,11 +31,11 @@ type ContainerCreateRequestServiceNetwork struct {
 }
 
 type ContainerCreateRequestContainerHealthcheck struct {
-	Test        []string `json:"test"`
-	Interval DurationStr `json:"interval"`
-	Timeout DurationStr `json:"timeout"`
-	Retries int `json:"retries"`
-	StartPeriod DurationStr `json:"start_period"`
+	Test        []string `json:"test,omitempty"`
+	Interval DurationStr `json:"interval,omitempty"`
+	Timeout DurationStr `json:"timeout,omitempty"`
+	Retries int `json:"retries,omitempty"`
+	StartPeriod DurationStr `json:"start_period,omitempty"`
 }
 
 type ContainerCreateRequestContainerDependsOnCont struct {
@@ -204,17 +204,17 @@ func (g GPURequests) MarshalJSON() ([]byte, error) {
 type ContainerCreateRequestContainer struct {
 	Name 			string            `json:"container_name"`
 	Image       string            `json:"image" validate:"required"`
-	Environment []string `json:"environment"`
-	Labels      map[string]string `json:"labels"`
-	Ports       []string          `json:"ports"`
-	Volumes     []CosmosMount          `json:"volumes"`
-	Networks    map[string]ContainerCreateRequestServiceNetwork `json:"networks"`
-	Routes 			[]utils.ProxyRouteConfig          `json:"routes"`
+	Environment []string `json:"environment,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Ports       []string          `json:"ports,omitempty"`
+	Volumes     []CosmosMount          `json:"volumes,omitempty"`
+	Networks    map[string]ContainerCreateRequestServiceNetwork `json:"networks,omitempty"`
+	Routes 			[]utils.ProxyRouteConfig          `json:"routes,omitempty"`
 	Links       []string  `json:"links,omitempty"`
 
 	RestartPolicy  string            `json:"restart,omitempty"`
-	Devices        []string          `json:"devices"`
-	Expose 		     []string          `json:"expose"`
+	Devices        []string          `json:"devices,omitempty"`
+	Expose 		     []string          `json:"expose,omitempty"`
 	DependsOn      map[string]ContainerCreateRequestContainerDependsOnCont `json:"depends_on,omitempty"`
 	Tty            bool              `json:"tty,omitempty"`
 	StdinOpen      bool              `json:"stdin_open,omitempty"`
@@ -233,7 +233,7 @@ type ContainerCreateRequestContainer struct {
 	NetworkMode string `json:"network_mode,omitempty"`
 	StopSignal string `json:"stop_signal,omitempty"`
 	StopGracePeriod int `json:"stop_grace_period,omitempty"`
-	HealthCheck ContainerCreateRequestContainerHealthcheck `json:"healthcheck,omitempty"`
+	HealthCheck *ContainerCreateRequestContainerHealthcheck `json:"healthcheck,omitempty"`
 	DNS []string `json:"dns,omitempty"`
 	DNSSearch []string `json:"dns_search,omitempty"`
 	ExtraHosts []string `json:"extra_hosts,omitempty"`
@@ -1255,23 +1255,24 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			hostConfig.Runtime = strings.Join(strings.Fields(container.Runtime), " ")
 		}		
 
-		// For Healthcheck
-		if len(container.HealthCheck.Test) > 0 {
-			interval, intervalErr := container.HealthCheck.Interval.ParseDuration()
+		// For Healthcheck (nil means the image's default was kept, nothing to set)
+		if container.HealthCheck != nil && len(container.HealthCheck.Test) > 0 {
+			hc := container.HealthCheck
+			interval, intervalErr := hc.Interval.ParseDuration()
 			if intervalErr != nil {
 				utils.Error("CreateService: Invalid healthcheck interval", intervalErr)
 				OnLog(utils.DoErr("Invalid healthcheck interval: %s\n", intervalErr.Error()))
 				Rollback(rollbackActions, OnLog)
 				return intervalErr
 			}
-			timeout, timeoutErr := container.HealthCheck.Timeout.ParseDuration()
+			timeout, timeoutErr := hc.Timeout.ParseDuration()
 			if timeoutErr != nil {
 				utils.Error("CreateService: Invalid healthcheck timeout", timeoutErr)
 				OnLog(utils.DoErr("Invalid healthcheck timeout: %s\n", timeoutErr.Error()))
 				Rollback(rollbackActions, OnLog)
 				return timeoutErr
 			}
-			startPeriod, startPeriodErr := container.HealthCheck.StartPeriod.ParseDuration()
+			startPeriod, startPeriodErr := hc.StartPeriod.ParseDuration()
 			if startPeriodErr != nil {
 				utils.Error("CreateService: Invalid healthcheck start_period", startPeriodErr)
 				OnLog(utils.DoErr("Invalid healthcheck start_period: %s\n", startPeriodErr.Error()))
@@ -1279,11 +1280,11 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 				return startPeriodErr
 			}
 			containerConfig.Healthcheck = &conttype.HealthConfig{
-				Test: container.HealthCheck.Test,
+				Test: hc.Test,
 				Interval: interval,
 				Timeout: timeout,
 				StartPeriod: startPeriod,
-				Retries: container.HealthCheck.Retries,
+				Retries: hc.Retries,
 			}
 		}
 
