@@ -80,7 +80,20 @@ func ExportContainerRoute(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		service, err := ExportContainer(containerID)
+		// from=initial returns the config the user actually set (container vs
+		// image-config diff). from=runtime returns the full live runtime state.
+		from := req.URL.Query().Get("from")
+		if from == "" {
+			from = "initial"
+		}
+
+		var service ContainerCreateRequestContainer
+		var err error
+		if from == "runtime" {
+			service, err = ExportContainer(containerID)
+		} else {
+			service, err = ExportContainerRuntime(containerID)
+		}
 		if err != nil {
 			utils.Error("exportContainer: Error while exporting container", err)
 			utils.HTTPError(w, "Container Export Error: "+err.Error(), http.StatusInternalServerError, "EC002")
