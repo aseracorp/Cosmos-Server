@@ -24,7 +24,7 @@ import { useEffect, useState } from 'react';
 import ResponsiveButton from '../../../components/responseiveButton';
 import UploadButtons from '../../../components/fileUpload';
 import NewDockerService from './newService';
-import { parseJsonOrHjson } from '../../../utils/hjson';
+import { parseJsonOrHjson, toHjson } from '../../../utils/hjson';
 import yaml from 'js-yaml';
 import { CosmosCollapse, CosmosFormDivider, CosmosInputPassword, CosmosInputText, CosmosSelect } from '../../config/users/formShortcuts';
 import VolumeContainerSetup from './volumes';
@@ -88,65 +88,29 @@ const cleanUpStore = (service) => {
   return newService;
 }
 
-// Remove top-level cosmos-installer / x-cosmos-installer blocks from a
-// rendered compose document, preserving everything else — including comments
-// and formatting in the services. This is a textual strip (brace-matched), so
-// it never parses/re-serializes the document and therefore never drops the
-// comments the user typed. The market installer metadata is meta-config and
-// should not appear in the compose editor or the stored initial-config label.
+// Remove cosmos-installer / x-cosmos-installer from a rendered raw compose
+// document so the compose editor shows only the deployable services (as
+// before), not the market installer metadata. If the document parses as
+// JSON/HJSON we drop the keys and re-serialize (toHjson) — the installer is
+// meta-config, so losing its formatting is fine and comments elsewhere are
+// preserved through the editor's own rawText handling. If it does not parse,
+// we leave it untouched rather than risk corrupting the payload.
 const stripRawInstaller = (text) => {
   if (!text || typeof text !== 'string' || text.trim() === '') return text;
-  let out = text;
-  ['cosmos-installer', 'x-cosmos-installer'].forEach((key) => {
-    // Match a top-level key: optional quotes, key, colon. We look for the
-    // key at the start of a line (possibly indented) so we never match a
-    // nested service named the same.
-    const re = new RegExp('(^|\n)([ \t]*)"?' + key + '"?\s*:', 'g');
-    let m;
-    while ((m = re.exec(out)) !== null) {
-      const lineStart = m.index + m[1].length;
-      const valueStart = m.index + m[0].length;
-      // Skip whitespace after the colon.
-      let i = valueStart;
-      while (i < out.length && /\s/.test(out[i])) i++;
-      if (i >= out.length) break;
-      let end;
-      if (out[i] === '{' || out[i] === '[') {
-        end = matchBalanced(out, i);
-      } else {
-        // scalar value: to end of line
-        const nl = out.indexOf('\n', i);
-        end = nl === -1 ? out.length : nl;
-      }
-      // Consume a trailing comma (and whitespace) after the block.
-      let after = end;
-      while (after < out.length && /[\s,]/.test(out[after])) after++;
-      // Remove from the line start (including its indentation) up to `after`.
-      out = out.slice(0, lineStart) + out.slice(after);
-      // If the removed block was the last key, a dangling comma may remain
-      // right before a closing brace/bracket — tidy it up.
-      out = out.replace(/,\s*([}\]])/g, '$1');
-      // Reset regex lastIndex since we mutated the string.
-      re.lastIndex = 0;
-    }
-  });
-  return out;
+  let obj;
+  try {
+    obj = parseJsonOrHjson(text);
+  } catch (e) {
+    return text;
+  }
+  if (!obj || typeof obj !== 'object') return text;
+  let changed = false;
+  if (typeof obj['cosmos-installer'] !== 'undefined') { delete obj['cosmos-installer']; changed = true; }
+  if (typeof obj['x-cosmos-installer'] !== 'undefined') { delete obj['x-cosmos-installer']; changed = true; }
+  if (!changed) return text;
+  return toHjson(obj);
 };
 
-// Match a balanced {...} or [...] block starting at openIdx. Returns the index
-// just past the closing brace/bracket.
-const matchBalanced = (str, openIdx) => {
-  let depth = 0;
-  for (let i = openIdx; i < str.length; i++) {
-    const c = str[i];
-    if (c === '{' || c === '[') depth++;
-    else if (c === '}' || c === ']') {
-      depth--;
-      if (depth === 0) return i + 1;
-    }
-  }
-  return str.length;
-};
 
 const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) => {
       let doc;
