@@ -54,6 +54,35 @@ func GetInitialConfigRaw(conf *conttype.Config) string {
 	return conf.Labels[initialConfigRawLabel]
 }
 
+// RawConfigForService returns the raw editor text that should be stored for a
+// given service in a compose stack.
+//
+// The compose editor sends one "$$raw" string for the entire stack (all
+// services), but each container's initial-config-raw label should only hold
+// that container's own service — otherwise every container in a multi-service
+// stack ends up with the full compose document duplicated in its label.
+//
+// The raw text is arbitrary HJSON (comments, unquoted keys), which the backend
+// cannot parse reliably. So:
+//
+//   - single-service stack (serviceCount == 1): the raw document already IS
+//     that one service, so we keep it unchanged (comments and all).
+//   - multi-service stack (serviceCount > 1): we do NOT store a raw label at
+//     all (return ""). The compose editor renders the per-service structured
+//     snapshot (cosmos.initial-config) via toHjson instead, which gives the
+//     correct single-service view without duplicating the whole stack.
+func RawConfigForService(serviceName string, rawConfig string, serviceCount int) string {
+	if serviceName == "" || strings.TrimSpace(rawConfig) == "" {
+		return ""
+	}
+	if serviceCount <= 1 {
+		return rawConfig
+	}
+	// Multi-service stack: do not persist the whole raw document on each
+	// container; the structured per-service snapshot is the source of truth.
+	return ""
+}
+
 // jsonDecode is a thin wrapper over json.Unmarshal kept for tests.
 func jsonDecode(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
