@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"os"
 	"io/ioutil"
+	"io"
 	"os/user"
 	"errors"
 	"reflect"
@@ -400,18 +401,26 @@ func CreateServiceRoute(w http.ResponseWriter, req *http.Request) {
 				return 
 		}
 
-		decoder := json.NewDecoder(req.Body)
+		// Read the raw body once: json.Decode consumes the stream, and we need
+		// the bytes both for Decode and to extract the optional "$$comments"
+		// member (HJSON comments keyed by node path from the compose editor).
+		rawBody, err := io.ReadAll(req.Body)
+		if err != nil {
+			utils.Error("CreateService - read body - ", err)
+			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
+			return
+		}
 		var serviceRequest DockerServiceCreateRequest
-		err := decoder.Decode(&serviceRequest)
+		err = json.Unmarshal(rawBody, &serviceRequest)
 		if err != nil {
 			utils.Error("CreateService - decode - ", err)
-			fmt.Fprintf(w, "[OPERATION FAILED] Bad request: "+err.Error(), http.StatusBadRequest, "DS003")
-			flusher.Flush()
 			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
 			return
 		}
 
-		CreateService(serviceRequest, 
+		comments := extractCommentsConfig(rawBody)
+
+		CreateService(serviceRequest, comments,
 			func (msg string) {
 				fmt.Fprintf(w, "%s", msg)
 				flusher.Flush()
@@ -443,7 +452,7 @@ func generatePorts(portRangeStr string) []string {
 	return ports
 }
 
-func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)) error {
+func CreateService(serviceRequest DockerServiceCreateRequest, comments map[string]string, OnLog func(string)) error {
 	utils.ConfigLock.Lock()
 	defer utils.ConfigLock.Unlock()
 	
@@ -670,6 +679,10 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			Tty:          container.Tty,
 			OpenStdin:    container.StdinOpen,
 		}
+
+		// Persist HJSON comments (cosmos.compose.<path> labels) so the compose
+		// editor can restore them on reload.
+		setComposeCommentsLabels(containerConfig, comments)
 
 		// Tag multi-service compose stacks with cosmos.stack (+ .main) so the
 		// UI groups them and the dependents cascade can scope by stack. Single

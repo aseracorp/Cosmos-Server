@@ -18,6 +18,7 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
   const { Name } = containerInfo;
 
   const [exportedCompose, setExportedCompose] = React.useState(null);
+  const [savedComments, setSavedComments] = React.useState(null);
   // false = show the config the user actually set (container vs image-config
   // diff: only explicitly-set values). true = show the live Docker runtime
   // state (everything Docker resolved, including image defaults).
@@ -31,6 +32,7 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
           [Name.replace('/', '')]: res.data
         }
       });
+      setSavedComments(res.comments || null);
     });
   }, [Name, showRuntime]);
 
@@ -90,7 +92,7 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
           sx={{ '& .MuiFormControlLabel-label': { color: theme.palette.text.primary } }}
         />
       </Stack>
-      {exportedCompose && <NewDockerService edit service={exportedCompose} refresh={refreshAll} />}
+      {exportedCompose && <NewDockerService edit service={exportedCompose} refresh={refreshAll} comments={savedComments} />}
     </div>
   );
 };

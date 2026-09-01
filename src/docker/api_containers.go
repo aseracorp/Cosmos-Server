@@ -100,9 +100,18 @@ func ExportContainerRoute(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		// Collect HJSON comments stored as cosmos.compose.<path> labels.
+		comments := map[string]string{}
+		if ci, ciErr := DockerClient.ContainerInspect(DockerContext, containerID); ciErr == nil {
+			if c := getComposeComments(ci.Config); c != nil {
+				comments = c
+			}
+		}
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "OK",
 			"data": service,
+			"comments": comments,
 		})
 	} else {
 		utils.Error("exportContainer: Method not allowed " + req.Method, nil)
