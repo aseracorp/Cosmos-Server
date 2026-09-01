@@ -460,24 +460,50 @@ func ExportContainerRuntime(containerID string) (ContainerCreateRequestContainer
 		}
 	}
 
-	// Runtime: hide when it matches the daemon default (empty means the daemon
-	// default runtime, usually runc). Only a non-default runtime is worth
-	// showing as an explicitly-set value.
-	if service.Runtime == "" || service.Runtime == "runc" {
+	// Runtime: hide when it matches the docker daemon's default runtime.
+	// The default is read from the local daemon (Info.DefaultRuntime, usually
+	// "runc" but administrators can configure a different default), so a
+	// container running on the standard runtime is not shown as if the user
+	// explicitly chose it. Empty means "use the daemon default".
+	if service.Runtime == "" || service.Runtime == getDockerDefaultRuntime() {
 		service.Runtime = ""
 	}
 
-	// Shm size: Docker's default is 64MB (67108864 bytes). When the container
-	// is running with the default (either 0/unset or exactly the default), hide
-	// it — only an explicit /app/shm_size that differs from the standard is
-	// a user-set value.
-	const dockerDefaultShm = 64 * 1024 * 1024 // 67108864
+	// Shm size: hide when the container runs with the docker daemon's default
+	// shm size (64MB — Docker's fixed DefaultShmSize; not configurable and not
+	// exposed via the Info API, so the documented constant is the standard).
+	// 0/unset also means "use the daemon default". Only an explicit shm_size
+	// that differs from the standard is a user-set value.
+	const dockerDefaultShmSize = 64 * 1024 * 1024 // 67108864 (Docker DefaultShmSize)
 	shm := detailedInfo.HostConfig.ShmSize
-	if shm == 0 || shm == dockerDefaultShm {
+	if shm == 0 || shm == dockerDefaultShmSize {
 		service.ShmSize = ""
 	}
 
 	return service, nil
+}
+
+// getDockerDefaultRuntime returns the docker daemon's default runtime (e.g.
+// "runc") by querying the local daemon Info, cached after the first call. An
+// empty result falls back to the conventional "runc".
+var cachedDefaultRuntime = ""
+var cachedDefaultRuntimeSet = false
+
+func getDockerDefaultRuntime() string {
+	if cachedDefaultRuntimeSet {
+		return cachedDefaultRuntime
+	}
+	defaultRuntime := "runc"
+	if DockerClient != nil {
+		if info, err := DockerClient.Info(DockerContext); err == nil {
+			if info.DefaultRuntime != "" {
+				defaultRuntime = info.DefaultRuntime
+			}
+		}
+	}
+	cachedDefaultRuntime = defaultRuntime
+	cachedDefaultRuntimeSet = true
+	return defaultRuntime
 }
 
 func ExportDocker() {
