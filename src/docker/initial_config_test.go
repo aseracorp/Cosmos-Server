@@ -2,8 +2,10 @@ package docker
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
+	"github.com/azukaar/cosmos-server/src/utils"
 	conttype "github.com/docker/docker/api/types/container"
 )
 
@@ -50,6 +52,38 @@ func TestInitialConfigRoundTrip(t *testing.T) {
 	}
 	if stripped["com.example.tag"] != "keep-me" {
 		t.Error("StripInitialConfigLabel: unrelated label was removed")
+	}
+}
+
+func TestInitialConfigExcludesRoutes(t *testing.T) {
+	svc := ContainerCreateRequestContainer{
+		Name:  "web",
+		Image: "nginx:latest",
+		Routes: []utils.ProxyRouteConfig{
+			{Name: "web-route", Target: "http://web:80"},
+		},
+	}
+
+	conf := &conttype.Config{Labels: map[string]string{}}
+	if err := SetInitialConfigLabel(conf, svc); err != nil {
+		t.Fatalf("SetInitialConfigLabel: %v", err)
+	}
+
+	got, ok := GetInitialConfig(conf)
+	if !ok {
+		t.Fatal("GetInitialConfig: expected stored snapshot, got none")
+	}
+	if len(got.Routes) != 0 {
+		t.Errorf("routes must not be stored in the docker initial-config label, got %+v", got.Routes)
+	}
+	if got.Image != "nginx:latest" {
+		t.Errorf("image mismatch: %+v", got.Image)
+	}
+
+	// The raw label must not contain the routes key either (json omitempty).
+	raw := conf.Labels[initialConfigLabel]
+	if strings.Contains(raw, "routes") {
+		t.Errorf("stored label JSON contains routes key: %s", raw)
 	}
 }
 
