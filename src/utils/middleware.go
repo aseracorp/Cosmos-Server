@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 	"net"
+	"bufio"
 	"strings"
 	"fmt"
 	"sync"
@@ -256,6 +257,35 @@ func (h *headProbeWriter) Write(b []byte) (int, error) {
 		h.wrote = true
 	}
 	return h.ResponseWriter.Write(b)
+}
+
+// Flush forwards to the underlying ResponseWriter when it supports
+// http.Flusher. Streaming routes (create service, image pull, container
+// update) rely on w.(http.Flusher) succeeding; without this forwarding the
+// wrapper would hide Flusher and progress logs would stop streaming
+// line-by-line (buffered, arriving in chunks).
+func (h *headProbeWriter) Flush() {
+	if flusher, ok := h.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Hijack forwards to the underlying ResponseWriter when it supports
+// http.Hijacker, so WebSocket/terminal upgrades keep working through the
+// wrapper.
+func (h *headProbeWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := h.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
+}
+
+// Unwrap lets http.ResponseController and middleware down the chain reach
+// the underlying writer (e.g. for Flush, Hijack, and other optional
+// interfaces) instead of being cut off by this wrapper.
+func (h *headProbeWriter) Unwrap() http.ResponseWriter {
+	return h.ResponseWriter
 }
 
 // HeadProbeCORS lets the Cosmos UI read responses from host-based app routes
