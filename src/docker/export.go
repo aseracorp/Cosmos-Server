@@ -242,6 +242,138 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 		return service, nil
 }
 
+// ExportContainerRuntime exports the service definition containing only the
+// settings that were EXPLICITLY set when the container was created, as
+// opposed to values implicitly inherited from the image's Dockerfile.
+//
+// It does this by diffing the running container's config (ContainerInspect)
+// against the image's own config (ImageInspectWithRaw):
+//   - env vars: only entries that are not present in the image env, or whose
+//     value differs from the image default, are kept (image-inherited ENV and
+//     Cosmos-injected TZ/normalized vars are dropped).
+//   - labels: only labels that are not in the image labels are kept, then
+//     Cosmos bookkeeping labels (cosmos.* / com.docker.compose.*) are dropped.
+//   - command / entrypoint: kept only when they differ from the image's.
+//   - working dir / user / stop signal / hostname / domainname / mac address:
+//     kept only when they differ from the image's.
+//   - healthcheck: kept only when it differs from the image's.
+//
+// Fields that are inherently runtime (ports, volumes, networks, resource
+// limits, restart policy, dns, etc.) have no image-config baseline and are
+// exported as-is — they represent the container's actual wiring.
+//
+// If the image cannot be inspected (deleted, retagged, or not present
+// locally), we fall back to the full runtime export so the compose editor
+// still gets a usable document.
+func ExportContainerRuntime(containerID string) (ContainerCreateRequestContainer, error) {
+	service, err := ExportContainer(containerID)
+	if err != nil {
+		return service, err
+	}
+
+	// Fetch detailed info again to get the container config + resolve the image.
+	detailedInfo, err := DockerClient.ContainerInspect(DockerContext, containerID)
+	if err != nil {
+		ExportError = "Export Docker - Cannot inspect container" + containerID + " - " + err.Error()
+		return ContainerCreateRequestContainer{}, errors.New(ExportError)
+	}
+	if detailedInfo.Config == nil {
+		return service, nil
+	}
+
+	image, _, imgErr := DockerClient.ImageInspectWithRaw(DockerContext, detailedInfo.Config.Image)
+	if imgErr != nil || image.Config == nil {
+		// Image unavailable — cannot diff; return the full runtime export.
+		return service, nil
+	}
+	imgConfig := image.Config
+
+	// Environment: keep user-set / overridden entries only.
+	if len(imgConfig.Env) > 0 {
+		imgEnv := map[string]string{}
+		for _, e := range imgConfig.Env {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) == 2 {
+				imgEnv[parts[0]] = parts[1]
+			}
+		}
+		filtered := []string{}
+		for _, e := range service.Environment {
+			parts := strings.SplitN(e, "=", 2)
+			if len(parts) != 2 {
+				filtered = append(filtered, e)
+				continue
+			}
+			k, v := parts[0], parts[1]
+			if imgV, present := imgEnv[k]; !present || imgV != v {
+				filtered = append(filtered, e)
+			}
+		}
+		service.Environment = filtered
+	}
+
+	// Labels: keep only labels not in the image, then drop Cosmos-internal ones.
+	if len(imgConfig.Labels) > 0 {
+		filtered := map[string]string{}
+		for k, v := range service.Labels {
+			if imgV, present := imgConfig.Labels[k]; present && imgV == v {
+				continue // inherited from image
+			}
+			// drop Cosmos bookkeeping labels
+			if strings.HasPrefix(k, "cosmos.") || strings.HasPrefix(k, "com.docker.compose.") {
+				continue
+			}
+			filtered[k] = v
+		}
+		service.Labels = filtered
+	}
+
+	// Command / Entrypoint: keep only if they differ from the image's.
+	containerCmd := strings.Join(detailedInfo.Config.Cmd, " ")
+	imgCmd := strings.Join(imgConfig.Cmd, " ")
+	if containerCmd != "" && containerCmd == imgCmd {
+		service.Command = ""
+	}
+	containerEntry := strings.Join(detailedInfo.Config.Entrypoint, " ")
+	imgEntry := strings.Join(imgConfig.Entrypoint, " ")
+	if containerEntry != "" && containerEntry == imgEntry {
+		service.Entrypoint = ""
+	}
+
+	// WorkingDir / User / StopSignal / Hostname / Domainname / MacAddress.
+	if imgConfig.WorkingDir != "" && detailedInfo.Config.WorkingDir == imgConfig.WorkingDir {
+		service.WorkingDir = ""
+	}
+	if imgConfig.User != "" && detailedInfo.Config.User == imgConfig.User {
+		service.User = ""
+		service.UID = 0
+		service.GID = 0
+	}
+	if imgConfig.StopSignal != "" && detailedInfo.Config.StopSignal == imgConfig.StopSignal {
+		service.StopSignal = ""
+	}
+	if imgConfig.Hostname != "" && detailedInfo.Config.Hostname == imgConfig.Hostname {
+		service.Hostname = ""
+	}
+	if imgConfig.Domainname != "" && detailedInfo.Config.Domainname == imgConfig.Domainname {
+		service.Domainname = ""
+	}
+
+	// Healthcheck: keep only if it differs from the image's.
+	if imgConfig.Healthcheck != nil {
+		if detailedInfo.Config.Healthcheck != nil &&
+			strings.Join(detailedInfo.Config.Healthcheck.Test, " ") == strings.Join(imgConfig.Healthcheck.Test, " ") &&
+			detailedInfo.Config.Healthcheck.Interval == imgConfig.Healthcheck.Interval &&
+			detailedInfo.Config.Healthcheck.Timeout == imgConfig.Healthcheck.Timeout &&
+			detailedInfo.Config.Healthcheck.Retries == imgConfig.Healthcheck.Retries &&
+			detailedInfo.Config.Healthcheck.StartPeriod == imgConfig.Healthcheck.StartPeriod {
+			service.HealthCheck = ContainerCreateRequestContainerHealthcheck{}
+		}
+	}
+
+	return service, nil
+}
+
 func ExportDocker() {
 	config := utils.GetMainConfig()
 	if config.NewInstall {
