@@ -24,7 +24,7 @@ import { useEffect, useState } from 'react';
 import ResponsiveButton from '../../../components/responseiveButton';
 import UploadButtons from '../../../components/fileUpload';
 import NewDockerService from './newService';
-import { parseJsonOrHjson, toHjson } from '../../../utils/hjson';
+import { parseJsonOrHjson } from '../../../utils/hjson';
 import yaml from 'js-yaml';
 import { CosmosCollapse, CosmosFormDivider, CosmosInputPassword, CosmosInputText, CosmosSelect } from '../../config/users/formShortcuts';
 import VolumeContainerSetup from './volumes';
@@ -87,30 +87,6 @@ const cleanUpStore = (service) => {
   delete newService['x-cosmos-installer'];
   return newService;
 }
-
-// Remove cosmos-installer / x-cosmos-installer from a rendered raw compose
-// document so the compose editor shows only the deployable services (as
-// before), not the market installer metadata. If the document parses as
-// JSON/HJSON we drop the keys and re-serialize (toHjson) — the installer is
-// meta-config, so losing its formatting is fine and comments elsewhere are
-// preserved through the editor's own rawText handling. If it does not parse,
-// we leave it untouched rather than risk corrupting the payload.
-const stripRawInstaller = (text) => {
-  if (!text || typeof text !== 'string' || text.trim() === '') return text;
-  let obj;
-  try {
-    obj = parseJsonOrHjson(text);
-  } catch (e) {
-    return text;
-  }
-  if (!obj || typeof obj !== 'object') return text;
-  let changed = false;
-  if (typeof obj['cosmos-installer'] !== 'undefined') { delete obj['cosmos-installer']; changed = true; }
-  if (typeof obj['x-cosmos-installer'] !== 'undefined') { delete obj['x-cosmos-installer']; changed = true; }
-  if (!changed) return text;
-  return toHjson(obj);
-};
-
 
 const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) => {
       let doc;
@@ -756,9 +732,7 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
 
       // Keep the rendered template text (comments included) so the market
       // compose editor can show and persist the original template verbatim.
-      // The market installer metadata (cosmos-installer / x-cosmos-installer)
-      // is stripped so the editor shows only the deployable services.
-      setRenderedText(stripRawInstaller(rendered));
+      setRenderedText(rendered);
 
       console.log('rendered', rendered);
 
