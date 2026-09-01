@@ -181,12 +181,13 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
     }))
   }
 
-  function exportContainer(containerId: string, from?: 'initial' | 'runtime'): Promise<ApiResponse & { stored?: boolean }> {
-    return wrap(apiFetch(`/cosmos/api/servapps/${containerId}/export?from=${from || 'initial'}`, {
+  function exportContainer(containerId: string, values: any): Promise<ApiResponse> {
+    return wrap(apiFetch('/cosmos/api/servapps/' + containerId + '/export', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
       },
+      body: JSON.stringify(values),
     }))
   }
 

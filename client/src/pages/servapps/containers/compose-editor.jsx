@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Checkbox, Chip, CircularProgress, FormControlLabel, Stack, Switch, Typography, useMediaQuery } from '@mui/material';
+import { Alert, Checkbox, Chip, CircularProgress, Stack, Typography, useMediaQuery } from '@mui/material';
 import MainCard from '../../../components/MainCard';
 import * as API from '../../../api';
 import NewDockerService from './newService';
@@ -16,24 +16,17 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
   const { Name } = containerInfo;
 
   const [exportedCompose, setExportedCompose] = React.useState(null);
-  // false = show the stored initial settings (what the user originally
-  // configured), true = show the live Docker runtime values. The runtime view
-  // externalizes settings the user never set (daemon defaults, image-provided
-  // env, internal cosmos.* labels), so it is opt-in.
-  const [showRuntime, setShowRuntime] = React.useState(false);
-  const [hasStoredConfig, setHasStoredConfig] = React.useState(true);
 
   React.useEffect(() => {
     if (!hasPermission(PERM_CREDENTIALS_READ)) return;
-    API.docker.exportContainer(Name.replace('/', ''), showRuntime ? 'runtime' : 'initial').then((res) => {
-      setHasStoredConfig(res.stored !== false);
+    API.docker.exportContainer(Name.replace('/', '')).then((res) => {
       setExportedCompose({
         services: {
           [Name.replace('/', '')]: res.data
         }
       });
     });
-  }, [Name, showRuntime]);
+  }, [Name]);
 
   let refreshAll = refresh ? (() => refresh().then(() => {
     setIsUpdating(false);
@@ -53,29 +46,6 @@ const ContainerComposeEdit = ({ containerInfo, config, refresh, updatesAvailable
 
   return (
     <div style={{ maxWidth: '1000px', width: '100%', margin: 'auto' }}>
-      <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-        <Typography variant="caption" color="text.secondary">
-          {showRuntime
-            ? t('mgmt.servapps.compose.runtimeValuesHint')
-            : t('mgmt.servapps.compose.initialValuesHint')}
-        </Typography>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={showRuntime}
-              onChange={(e) => setShowRuntime(e.target.checked)}
-              size="small"
-              disabled={!hasStoredConfig && !showRuntime}
-            />
-          }
-          label={t('mgmt.servapps.compose.showRuntimeValues')}
-        />
-      </Stack>
-      {!showRuntime && !hasStoredConfig && (
-        <Alert severity="info" sx={{ mb: 1 }}>
-          {t('mgmt.servapps.compose.noStoredConfig')}
-        </Alert>
-      )}
       {exportedCompose && <NewDockerService edit service={exportedCompose} refresh={refreshAll} />}
     </div>
   );
