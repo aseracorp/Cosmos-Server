@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -470,13 +471,13 @@ func ExportContainerRuntime(containerID string) (ContainerCreateRequestContainer
 	}
 
 	// Shm size: hide when the container runs with the docker daemon's default
-	// shm size (64MB — Docker's fixed DefaultShmSize; not configurable and not
-	// exposed via the Info API, so the documented constant is the standard).
-	// 0/unset also means "use the daemon default". Only an explicit shm_size
-	// that differs from the standard is a user-set value.
-	const dockerDefaultShmSize = 64 * 1024 * 1024 // 67108864 (Docker DefaultShmSize)
+	// shm size. The default is read from the local daemon
+	// (getDockerDefaultShmSize), so a configuration that changes
+	// default-shm-size is respected; 0/unset also means "use the daemon
+	// default". Only an explicit shm_size that differs from the daemon's
+	// default is a user-set value.
 	shm := detailedInfo.HostConfig.ShmSize
-	if shm == 0 || shm == dockerDefaultShmSize {
+	if shm == 0 || shm == getDockerDefaultShmSize() {
 		service.ShmSize = ""
 	}
 
@@ -504,6 +505,76 @@ func getDockerDefaultRuntime() string {
 	cachedDefaultRuntime = defaultRuntime
 	cachedDefaultRuntimeSet = true
 	return defaultRuntime
+}
+
+// getDockerDefaultShmSize returns the docker daemon's configured default shm
+// size (bytes) by querying the daemon "/info" endpoint (read from the local
+// docker daemon). We use the raw response rather than system.Info because the
+// client's Info struct does not carry the shm field even though the daemon
+// applies it at container-create time (0 -> configured default, default 64MB).
+// Falls back to Docker's documented constant (64MB) when the daemon does not
+// expose the value and we cannot reach it.
+var cachedDefaultShmSize int64 = 0
+var cachedDefaultShmSizeSet = false
+
+func getDockerDefaultShmSize() int64 {
+	if cachedDefaultShmSizeSet {
+		return cachedDefaultShmSize
+	}
+	shm := int64(64 * 1024 * 1024) // Docker DefaultShmSize
+	if DockerClient != nil {
+		host := DockerClient.DaemonHost()
+		if host != "" {
+			// DaemonHost returns e.g. unix:///var/run/docker.sock or
+			// tcp://host:port. Build a URL that the client's HTTP transport
+			// (already configured for unix/tls) can serve.
+			reqURL := strings.TrimRight(host, "/") + "/info"
+			if req, reqErr := http.NewRequest("GET", reqURL, nil); reqErr == nil {
+				if resp, err := DockerClient.HTTPClient().Do(req); err == nil {
+					if resp != nil && resp.Body != nil {
+						defer resp.Body.Close()
+						var infoMap map[string]interface{}
+						if decErr := json.NewDecoder(resp.Body).Decode(&infoMap); decErr == nil {
+							for _, key := range []string{"DefaultShmSize", "ShmSize", "default-shm-size"} {
+								if v, ok := infoMap[key]; ok {
+									if num, numOK := toInt64(v); numOK && num > 0 {
+										shm = num
+										break
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	cachedDefaultShmSize = shm
+	cachedDefaultShmSizeSet = true
+	return shm
+}
+
+// toInt64 coerces a JSON-typed value (float64, string, or json.Number) to an
+// int64, reporting whether the conversion was possible.
+func toInt64(v interface{}) (int64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int64(n), true
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case string:
+		var parsed int64
+		if _, err := fmt.Sscanf(n, "%d", &parsed); err == nil {
+			return parsed, true
+		}
+	case json.Number:
+		if parsed, err := n.Int64(); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
 }
 
 func ExportDocker() {
