@@ -824,16 +824,11 @@ func CreateService(serviceRequest DockerServiceCreateRequest, rawConfig string, 
 		// original document on reload. Only present when the client sent
 		// "$$raw" (i.e. the compose editor); external API clients that POST
 		// plain JSON get no raw label and keep the toHjson rendering.
-		//
-		// For multi-service stacks the raw doc covers ALL services; storing it
-		// verbatim on every container would duplicate the whole stack into
-		// each label. Only persist the raw text for single-service stacks,
-		// where it already scopes to exactly this container.
-		if scopedRaw := RawConfigForService(serviceName, rawConfig, len(serviceRequest.Services)); scopedRaw != "" {
+		if rawConfig != "" {
 			if containerConfig.Labels == nil {
 				containerConfig.Labels = make(map[string]string)
 			}
-			containerConfig.Labels[initialConfigRawLabel] = scopedRaw
+			containerConfig.Labels[initialConfigRawLabel] = rawConfig
 		}
 
 		// Tag multi-service compose stacks with cosmos.stack (+ .main) so the

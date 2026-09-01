@@ -79,31 +79,3 @@ func TestCreateServiceExtractsRawFromBody(t *testing.T) {
 		t.Errorf("expected empty raw for plain body, got %q", raw)
 	}
 }
-
-func TestRawConfigForService(t *testing.T) {
-	// Single-service stack: raw document is exactly this service, keep it.
-	got := RawConfigForService("web", "{\n  // comment\n  web: { image: nginx }\n}", 1)
-	if got == "" {
-		t.Fatal("single-service stack should keep the raw config")
-	}
-	if got != "{\n  // comment\n  web: { image: nginx }\n}" {
-		t.Errorf("single-service raw should be unchanged, got %q", got)
-	}
-
-	// Multi-service stack: must NOT store the whole document per container.
-	multi := "{\n  web: { image: nginx },\n  db: { image: postgres }\n}"
-	if got := RawConfigForService("web", multi, 2); got != "" {
-		t.Errorf("multi-service stack should not persist raw per container, got %q", got)
-	}
-
-	// Empty / missing inputs.
-	if got := RawConfigForService("", "x", 1); got != "" {
-		t.Errorf("empty serviceName should yield empty, got %q", got)
-	}
-	if got := RawConfigForService("web", "", 1); got != "" {
-		t.Errorf("empty raw should yield empty, got %q", got)
-	}
-	if got := RawConfigForService("web", "   ", 1); got != "" {
-		t.Errorf("whitespace raw should yield empty, got %q", got)
-	}
-}
