@@ -521,12 +521,6 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
   const [openModal, setOpenModal] = useState(false);
   const [dockerCompose, setDockerCompose] = useState('');
   const [service, setService] = useState({});
-  // The whiskers-rendered template text (HJSON/JSON with any comments from
-  // the market template). Passed to NewDockerService as rawText so the
-  // compose editor shows the original template (comments included) instead of
-  // a re-serialized object, and so those comments are stored in the
-  // initial-config-raw label on save.
-  const [renderedText, setRenderedText] = useState('');
   const [ymlError, setYmlError] = useState('');
   const [serviceName, setServiceName] = useState(null);
   const [hostnames, setHostnames] = useState({});
@@ -729,10 +723,6 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
         RootHostname: (config && config.HTTPConfig && config.HTTPConfig.Hostname) || window.location.hostname,
         RootProtocol: (config && config.HTTPConfig && config.HTTPConfig.HTTPSCertificateMode === "DISABLED") ? "http" : "https",
       });
-
-      // Keep the rendered template text (comments included) so the market
-      // compose editor can show and persist the original template verbatim.
-      setRenderedText(rendered);
 
       console.log('rendered', rendered);
 
@@ -1171,7 +1161,7 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
           </Stack>}
 
           {step === 1 && <Stack spacing={2}>
-            <NewDockerService service={service} refresh={refresh} rawText={renderedText} />
+            <NewDockerService service={service} refresh={refresh} />
           </Stack>}
         </DialogContentText>
       </DialogContent>
