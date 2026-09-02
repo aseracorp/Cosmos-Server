@@ -411,16 +411,22 @@ func ExportContainerRuntime(containerID string) (ContainerCreateRequestContainer
 	// labels. The internal com.docker.compose.depends_on label was already
 	// stripped by stripInternalDependsOnLabel in ExportContainer, so the
 	// depends_on field remains the source of truth.
-	if len(imgConfig.Labels) > 0 {
+	// The cosmos.compose.* comment-storage labels are always hidden (they are
+	// not user config, regardless of whether the image has labels). The
+	// image-inheritance filter (same key+value as the image => not user-set)
+	// only applies when the image actually defines labels.
+	{
 		filtered := map[string]string{}
 		for k, v := range service.Labels {
-			// Internal comment-storage labels are not user config — hide.
+			// Internal comment-storage labels are not user config — always hide.
 			if strings.HasPrefix(k, "cosmos.compose.") {
 				continue
 			}
-			// inherited from image → not user-set
-			if imgV, present := imgConfig.Labels[k]; present && imgV == v {
-				continue
+			// inherited from image → not user-set (only if image has labels)
+			if len(imgConfig.Labels) > 0 {
+				if imgV, present := imgConfig.Labels[k]; present && imgV == v {
+					continue
+				}
 			}
 			filtered[k] = v
 		}
