@@ -90,6 +90,7 @@ export const extractComments = (text) => {
   // the next key or array element line. Tracks an open block comment.
   let pending = [];
   let inBlockComment = false;
+  let inMultiLineString = false;
 
   const isCommentLine = (line) => {
     const t = line.trim();
@@ -120,6 +121,15 @@ export const extractComments = (text) => {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const trimmed = raw.trim();
+
+    // HJSON ''' multiline strings are a single value spanned over multiple
+    // lines; nothing inside them is a comment, an array element or a scope
+    // change — skip until the closing '''.
+    if (inMultiLineString) {
+      if (trimmed.includes("'''")) inMultiLineString = false;
+      pending = [];
+      continue;
+    }
 
     // Collect the raw comment block (verbatim lines).
     if (inBlockComment || (isCommentLine(raw) && !inBlockComment)) {
@@ -165,6 +175,10 @@ export const extractComments = (text) => {
       if (opensObj || opensArr) {
         scope.push({ indent, key, kind: opensArr ? 'arr' : 'obj' });
       }
+      // HJSON multiline string value: '''... possibly spanning further lines.
+      if (afterColon.startsWith("'''") && !afterColon.includes("'''", 3)) {
+        inMultiLineString = true;
+      }
       continue;
     }
 
@@ -172,6 +186,17 @@ export const extractComments = (text) => {
     if (insideArr && arrScope) {
       const idx = arrScope.index = (arrScope.index === undefined ? 0 : arrScope.index + 1);
       flushPendingTo(pathFor(null));
+      // A bare ''' array element is a multiline string that continues below.
+      if (trimmed.startsWith("'''") && !trimmed.includes("'''", 3)) {
+        inMultiLineString = true;
+      }
+      continue;
+    }
+
+    // A top-level bare multiline string value (e.g. within an object value).
+    if (trimmed.startsWith("'''") && !trimmed.includes("'''", 3)) {
+      inMultiLineString = true;
+      pending = [];
       continue;
     }
 
@@ -194,6 +219,7 @@ export const injectComments = (text, comments) => {
   const scope = [];
   const out = [];
   const inserted = {};
+  let inMultiLineString = false;
 
   const pathFor = (extra) => {
     const parts = [];
@@ -223,6 +249,14 @@ export const injectComments = (text, comments) => {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const trimmed = raw.trim();
+
+    // Inside a ''' multiline string: single value, skip (no comments there).
+    if (inMultiLineString) {
+      if (trimmed.includes("'''")) inMultiLineString = false;
+      out.push(raw);
+      continue;
+    }
+
     const indent = raw.length - raw.trimStart().length;
 
     while (scope.length && scope[scope.length - 1].indent > indent) {
@@ -252,6 +286,9 @@ export const injectComments = (text, comments) => {
       if (opensObj || opensArr) {
         scope.push({ indent, key, kind: opensArr ? 'arr' : 'obj' });
       }
+      if (afterColon.startsWith("'''") && !afterColon.includes("'''", 3)) {
+        inMultiLineString = true;
+      }
       continue;
     }
 
@@ -259,6 +296,16 @@ export const injectComments = (text, comments) => {
     if (insideArr && arrScope) {
       const idx = arrScope.index = (arrScope.index === undefined ? 0 : arrScope.index + 1);
       emitComment(pathFor(null));
+      out.push(raw);
+      if (trimmed.startsWith("'''") && !trimmed.includes("'''", 3)) {
+        inMultiLineString = true;
+      }
+      continue;
+    }
+
+    // Bare ''' multiline string value.
+    if (trimmed.startsWith("'''") && !trimmed.includes("'''", 3)) {
+      inMultiLineString = true;
       out.push(raw);
       continue;
     }
