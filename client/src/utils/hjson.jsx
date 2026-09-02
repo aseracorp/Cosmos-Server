@@ -82,9 +82,12 @@ export const extractComments = (text) => {
   if (!text || typeof text !== 'string') return {};
   const comments = {};
   const lines = text.split('\n');
-  const scope = []; // stack of { indent, key }
+  // scope entries: { indent, key, kind } where kind is 'obj' or 'arr'.
+  // Arrays keep an implicit element index; awaiting order is preserved by the
+  // document order (we count non-comment lines inside the array).
+  const scope = [];
   // Pending raw comment lines (verbatim, including indent + markers) before
-  // the next key line. Also tracks an open block comment.
+  // the next key or array element line. Tracks an open block comment.
   let pending = [];
   let inBlockComment = false;
 
@@ -95,6 +98,23 @@ export const extractComments = (text) => {
   const isBlockEnd = (line) => {
     const t = line.trim();
     return t.indexOf('*/') !== -1;
+  };
+  // pathFor builds the dotted key path for the current scope + an optional
+  // extra key/index segment.
+  const pathFor = (extra) => {
+    const parts = [];
+    for (const s of scope) {
+      parts.push(s.key);
+      if (s.kind === 'arr' && s.index !== undefined) parts.push(String(s.index));
+    }
+    if (extra !== undefined && extra !== null && extra !== '') parts.push(String(extra));
+    return parts.join('.');
+  };
+  const flushPendingTo = (path) => {
+    if (pending.length && !comments[path]) {
+      comments[path] = pending.join('\n');
+    }
+    pending = [];
   };
 
   for (let i = 0; i < lines.length; i++) {
@@ -116,13 +136,20 @@ export const extractComments = (text) => {
     if (!trimmed) { pending = []; inBlockComment = false; continue; }
 
     const indent = raw.length - raw.trimStart().length;
-    while (scope.length && scope[scope.length - 1].indent >= indent) {
+    // Dedent: pop scopes strictly deeper than current indent.
+    while (scope.length && scope[scope.length - 1].indent > indent) {
       scope.pop();
     }
+    // Closing brace/bracket: pop that scope, cancel pending.
     if (trimmed === '}' || trimmed === ']' || /^}[,}]?$/.test(trimmed) || /^][,}]?$/.test(trimmed)) {
+      if (scope.length) scope.pop();
       pending = [];
       continue;
     }
+    // Account for the implicit index of any open array whose line is at this
+    // indentation (i.e. we have an array element on this line).
+    const arrScope = scope.length ? scope[scope.length - 1] : null;
+    const insideArr = arrScope && arrScope.kind === 'arr' && indent > arrScope.indent;
 
     const keyMatch = /^("(?:[^"\\]|\\.)*"|[^:#\[\]{}"',\r\n\s/][^:#\[\]{}"',\r\n]*)?\s*:/.exec(trimmed);
     if (keyMatch) {
@@ -130,15 +157,21 @@ export const extractComments = (text) => {
       if (key.startsWith('"') && key.endsWith('"')) {
         try { key = JSON.parse(key); } catch (e) { /* keep raw */ }
       }
-      const path = scope.map(s => s.key).concat([key]).join('.');
-      if (pending.length && !comments[path]) {
-        comments[path] = pending.join('\n');
-      }
-      pending = [];
+      const path = pathFor(key);
+      flushPendingTo(path);
       const afterColon = trimmed.slice(keyMatch[0].length).trim();
-      if (afterColon.startsWith('{') || afterColon.startsWith('[')) {
-        scope.push({ indent, key });
+      const opensObj = afterColon.startsWith('{');
+      const opensArr = afterColon.startsWith('[');
+      if (opensObj || opensArr) {
+        scope.push({ indent, key, kind: opensArr ? 'arr' : 'obj' });
       }
+      continue;
+    }
+
+    // Array element line: attach pending comment at <arrPath>.<index>.
+    if (insideArr && arrScope) {
+      const idx = arrScope.index = (arrScope.index === undefined ? 0 : arrScope.index + 1);
+      flushPendingTo(pathFor(null));
       continue;
     }
 
@@ -157,22 +190,52 @@ export const injectComments = (text, comments) => {
   if (!text || typeof text !== 'string') return text;
 
   const lines = text.split('\n');
+  // scope entries: { indent, key, kind } (kind 'obj' | 'arr')
   const scope = [];
   const out = [];
   const inserted = {};
+
+  const pathFor = (extra) => {
+    const parts = [];
+    for (const s of scope) {
+      parts.push(s.key);
+      if (s.kind === 'arr' && s.index !== undefined) parts.push(String(s.index));
+    }
+    if (extra !== undefined && extra !== null && extra !== '') parts.push(String(extra));
+    return parts.join('.');
+  };
+  const emitComment = (path) => {
+    if (comments[path] && !inserted[path]) {
+      inserted[path] = true;
+      const nodeIndent = '  '.repeat(scope.length + 1);
+      const block = String(comments[path]);
+      const blockLines = block.split('\n');
+      const baseIndent = (blockLines[0].match(/^\s*/) || [''])[0].length;
+      for (const cl of blockLines) {
+        const lineIndent = (cl.match(/^\s*/) || [''])[0].length;
+        const rel = Math.max(0, lineIndent - baseIndent);
+        const content = cl.replace(/^\s+/, '');
+        out.push(content ? nodeIndent + ' '.repeat(rel) + content : nodeIndent);
+      }
+    }
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const trimmed = raw.trim();
     const indent = raw.length - raw.trimStart().length;
 
-    while (scope.length && scope[scope.length - 1].indent >= indent) {
+    while (scope.length && scope[scope.length - 1].indent > indent) {
       scope.pop();
     }
     if (trimmed === '}' || trimmed === ']' || /^}[,}]?$/.test(trimmed) || /^][,}]?$/.test(trimmed)) {
+      if (scope.length) scope.pop();
       out.push(raw);
       continue;
     }
+
+    const arrScope = scope.length ? scope[scope.length - 1] : null;
+    const insideArr = arrScope && arrScope.kind === 'arr' && indent > arrScope.indent;
 
     const keyMatch = /^("(?:[^"\\]|\\.)*"|[^:#\[\]{}"',\r\n\s/][^:#\[\]{}"',\r\n]*)?\s*:/.exec(trimmed);
     if (keyMatch) {
@@ -180,32 +243,26 @@ export const injectComments = (text, comments) => {
       if (key.startsWith('"') && key.endsWith('"')) {
         try { key = JSON.parse(key); } catch (e) { /* keep */ }
       }
-      const path = scope.map(s => s.key).concat([key]).join('.');
-      if (comments[path] && !inserted[path]) {
-        inserted[path] = true;
-        // The node lives one level deeper than the enclosing scope stack, so
-        // its comment aligns with the key line's indentation.
-        const nodeIndent = '  '.repeat(scope.length + 1);
-        const block = String(comments[path]);
-        const blockLines = block.split('\n');
-        // Re-anchor the block to the node's indentation, preserving the
-        // *relative* indentation of any continuation lines (so multi-line
-        // /* */ blocks keep their alignment).
-        const baseIndent = (blockLines[0].match(/^\s*/) || [''])[0].length;
-        for (const cl of blockLines) {
-          const lineIndent = (cl.match(/^\s*/) || [''])[0].length;
-          const rel = Math.max(0, lineIndent - baseIndent);
-          const content = cl.replace(/^\s+/, '');
-          out.push(content ? nodeIndent + ' '.repeat(rel) + content : nodeIndent);
-        }
-      }
+      const path = pathFor(key);
+      emitComment(path);
       out.push(raw);
       const afterColon = trimmed.slice(keyMatch[0].length).trim();
-      if (afterColon.startsWith('{') || afterColon.startsWith('[')) {
-        scope.push({ indent, key });
+      const opensArr = afterColon.startsWith('[');
+      const opensObj = afterColon.startsWith('{');
+      if (opensObj || opensArr) {
+        scope.push({ indent, key, kind: opensArr ? 'arr' : 'obj' });
       }
       continue;
     }
+
+    // Array element: emit comment at <arrPath>.<index> before the element.
+    if (insideArr && arrScope) {
+      const idx = arrScope.index = (arrScope.index === undefined ? 0 : arrScope.index + 1);
+      emitComment(pathFor(null));
+      out.push(raw);
+      continue;
+    }
+
     out.push(raw);
   }
 
