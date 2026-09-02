@@ -402,25 +402,20 @@ func ExportContainerRuntime(containerID string) (ContainerCreateRequestContainer
 		service.Environment = filtered
 	}
 
-	// Labels: keep only labels not in the image, then drop Cosmos-internal ones.
-	// The image-inheritance filter only applies to *user* labels: cosmos.* and
-	// cosmos-* labels are Cosmos bookkeeping that can never be a Dockerfile
-	// default (e.g. cosmos.stack, cosmos.stack.main, and their legacy dash
-	// aliases cosmos-stack / cosmos-stack-main) and must always be shown, while
-	// com.docker.compose.* labels are recomputed from the compose fields and
-	// kept hidden.
+	// Labels: the only labels hidden in the configured view are cosmos.compose.*
+	// (the internal per-node HJSON comment labels — not user config). Every
+	// other label is kept unless it is inherited from the image (same key and
+	// value as the image => not user-set): that includes all other cosmos.* /
+	// cosmos-* bookkeeping (cosmos.stack, cosmos-stack, cosmos.stack.main,
+	// cosmos-stack-main, cosmos-network-name, ...) and all com.docker.compose.*
+	// labels. The internal com.docker.compose.depends_on label was already
+	// stripped by stripInternalDependsOnLabel in ExportContainer, so the
+	// depends_on field remains the source of truth.
 	if len(imgConfig.Labels) > 0 {
 		filtered := map[string]string{}
 		for k, v := range service.Labels {
-			// Cosmos-managed labels (dot or dash) are never image defaults —
-			// always expose (covers cosmos.stack, cosmos-stack,
-			// cosmos.stack.main, cosmos-stack-main, ...).
-			if strings.HasPrefix(k, "cosmos.") || strings.HasPrefix(k, "cosmos-") {
-				filtered[k] = v
-				continue
-			}
-			// Internal compose bookkeeping is recomputed from fields — hide.
-			if strings.HasPrefix(k, "com.docker.compose.") {
+			// Internal comment-storage labels are not user config — hide.
+			if strings.HasPrefix(k, "cosmos.compose.") {
 				continue
 			}
 			// inherited from image → not user-set
