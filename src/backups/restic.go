@@ -406,6 +406,8 @@ func CreateBackupJob(config BackupConfig, crontab string) {
 		fmt.Sprintf("RESTIC_PASSWORD=%s", config.Password),
 	}
 
+	crontab, _ = cron.NormalizeCrontab(crontab)
+
 	cron.RegisterJob(cron.ConfigJob{
 		Scheduler:   "Restic",
 		Name:       fmt.Sprintf("Restic backup %s", config.Name),
@@ -472,6 +474,8 @@ func CreateForgetJob(config BackupConfig, crontab string) {
 	env := []string{
 		fmt.Sprintf("RESTIC_PASSWORD=%s", config.Password),
 	}
+
+	crontab, _ = cron.NormalizeCrontab(crontab)
 
 	cron.RegisterJob(cron.ConfigJob{
 		Scheduler:   "Restic",
