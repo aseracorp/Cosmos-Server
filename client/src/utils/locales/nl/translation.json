@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "Kop Toevoegen",
   "mgmt.backup.passwordTitle": "Wachtwoord",
   "sudo.required": "Schakel beheerderprivileges in met de knop rechtsboven om deze functie te gebruiken",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "De Compose-editor vereist toegang tot containerreferenties (omgevingsvariabelen, geheimen). Schakel beheerderprivileges in met de knop rechtsboven om de Compose-configuratie te bekijken en te bewerken.",
   "mgmt.servapps.compose.credentialsDenied": "De Compose-editor vereist toegang tot containerreferenties (omgevingsvariabelen, geheimen). Uw huidige rol heeft geen toestemming om referenties te bekijken."
 }

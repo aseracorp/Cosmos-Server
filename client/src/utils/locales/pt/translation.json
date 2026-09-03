@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "Adicionar Cabeçalho",
   "mgmt.backup.passwordTitle": "Senha",
   "sudo.required": "Habilite privilégios de administrador com o botão no canto superior direito para usar esta função",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "O editor Compose requer acesso às credenciais do contêiner (variáveis de ambiente, segredos). Por favor, ative os privilégios de administrador usando o botão no canto superior direito para visualizar e editar a configuração do Compose.",
   "mgmt.servapps.compose.credentialsDenied": "O editor Compose requer acesso às credenciais do contêiner (variáveis de ambiente, segredos). Seu papel atual não tem permissão para visualizar as credenciais."
 }

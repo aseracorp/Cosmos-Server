@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "헤더 추가",
   "mgmt.backup.passwordTitle": "비밀번호",
   "sudo.required": "이 기능을 사용하려면 오른쪽 상단의 버튼으로 관리자 권한을 활성화하세요",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "Compose 편집기는 컨테이너 자격 증명(환경 변수, 비밀)에 대한 액세스가 필요합니다. 오른쪽 상단의 버튼으로 관리자 권한을 활성화하여 Compose 구성을 보고 편집하세요.",
   "mgmt.servapps.compose.credentialsDenied": "Compose 편집기는 컨테이너 자격 증명(환경 변수, 비밀)에 대한 액세스가 필요합니다. 현재 역할은 자격 증명을 볼 수 있는 권한이 없습니다."
 }

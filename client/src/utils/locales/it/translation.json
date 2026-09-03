@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "Aggiungi intestazione",
   "mgmt.backup.passwordTitle": "Password",
   "sudo.required": "Abilita i privilegi di amministratore con il pulsante in alto a destra per usare questa funzione",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "L'editor Compose richiede l'accesso alle credenziali del container (variabili d'ambiente, segreti). Si prega di abilitare i privilegi di amministratore usando il pulsante in alto a destra per visualizzare e modificare la configurazione di Compose.",
   "mgmt.servapps.compose.credentialsDenied": "L'editor Compose richiede l'accesso alle credenziali del container (variabili d'ambiente, segreti). Il tuo ruolo attuale non ha il permesso di visualizzare le credenziali."
 }

@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "हेडर जोड़ें",
   "mgmt.backup.passwordTitle": "पासवर्ड",
   "sudo.required": "इस फ़ंक्शन का उपयोग करने के लिए शीर्ष दाएँ में बटन से व्यवस्थापक विशेषाधिकार सक्षम करें",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "कंपोज़ संपादक को कंटेनर क्रेडेंशियल्स (पर्यावरण चर, रहस्य) तक पहुँचने की आवश्यकता होती है। कृपया कॉम्पोज़ कॉन्फ़िगरेशन को देखने और संपादित करने के लिए शीर्ष दाएँ में बटन से व्यवस्थापक विशेषाधिकार सक्षम करें।",
   "mgmt.servapps.compose.credentialsDenied": "कंपोज़ संपादक को कंटेनर क्रेडेंशियल्स (पर्यावरण चर, रहस्य) तक पहुँचने की आवश्यकता होती है। आपके वर्तमान भूमिका को क्रेडेंशियल्स देखने की अनुमति नहीं है।"
 }
