@@ -85,6 +85,32 @@ func FormatDuration(d time.Duration) string {
 	return b.String()
 }
 
+// mountSubPathFromRaw extracts the daemon-reported SubPath of each mount from
+// the raw ContainerInspect JSON. The types.MountPoint struct in the pinned
+// Docker SDK (v26) predates the daemon's SubPath field, so it is NOT part of
+// detailedInfo.Mounts even though the daemon returns it. Parsing the raw body
+// keeps export round-trips faithful when a volume is mounted with a subpath.
+func mountSubPathFromRaw(raw []byte) map[int]string {
+	sub := map[int]string{}
+	if len(raw) == 0 {
+		return sub
+	}
+	var parsed struct {
+		Mounts []struct {
+			SubPath string `json:"SubPath"`
+		} `json:"Mounts"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return sub
+	}
+	for i, m := range parsed.Mounts {
+		if m.SubPath != "" {
+			sub[i] = m.SubPath
+		}
+	}
+	return sub
+}
+
 func ExportContainer(containerID string) (ContainerCreateRequestContainer, error)  {
 		// Fetch detailed info of each container
 		detailedInfo, err := DockerClient.ContainerInspect(DockerContext, containerID)
@@ -252,11 +278,22 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			// Volumes
 			Volumes: func() []CosmosMount {
 					mounts := []CosmosMount{}
-					for _, m := range detailedInfo.Mounts {
+					// Fetch the raw inspect payload too: the daemon reports
+					// SubPath there but the pinned SDK's MountPoint struct
+					// does not carry it.
+					_, rawInspect, rawErr := DockerClient.ContainerInspectWithRaw(DockerContext, containerID, false)
+					subPaths := map[int]string{}
+					if rawErr == nil {
+						subPaths = mountSubPathFromRaw(rawInspect)
+					}
+
+					for i, m := range detailedInfo.Mounts {
 						cm := CosmosMount{
-							Type:   string(m.Type),
-							Source: m.Source,
-							Target: m.Destination,
+							Type:     string(m.Type),
+							Source:   m.Source,
+							Target:   m.Destination,
+							SubPath:  subPaths[i],
+							ReadOnly: !m.RW,
 						}
 
 						if m.Type == "volume" {

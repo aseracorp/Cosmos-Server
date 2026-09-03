@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "Ajouter l'en-tête",
   "mgmt.backup.passwordTitle": "Mot de passe",
   "sudo.required": "Activez les privilèges d'administrateur avec le bouton en haut à droite pour utiliser cette fonction",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "L'éditeur Compose nécessite un accès aux identifiants des conteneurs (variables d'environnement, secrets). Veuillez activer les privilèges d'administrateur en utilisant le bouton en haut à droite pour afficher et modifier la configuration Compose.",
   "mgmt.servapps.compose.credentialsDenied": "L'éditeur Compose nécessite un accès aux identifiants des conteneurs (variables d'environnement, secrets). Votre rôle actuel n'a pas l'autorisation de voir les identifiants."
 }

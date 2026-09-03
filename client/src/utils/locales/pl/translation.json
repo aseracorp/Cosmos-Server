@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "Dodaj nagłówek",
   "mgmt.backup.passwordTitle": "Hasło",
   "sudo.required": "Włącz uprawnienia administratora za pomocą przycisku w prawym górnym rogu, aby użyć tej funkcji",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "Edytor Compose wymaga dostępu do poświadczeń kontenerów (zmienne środowiskowe, tajne dane). Proszę włączyć uprawnienia administratora, używając przycisku w prawym górnym rogu, aby przeglądać i edytować konfigurację Compose.",
   "mgmt.servapps.compose.credentialsDenied": "Edytor Compose wymaga dostępu do poświadczeń kontenerów (zmienne środowiskowe, tajne dane). Twoja obecna rola nie ma uprawnień do przeglądania poświadczeń."
 }

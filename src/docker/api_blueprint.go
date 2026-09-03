@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"strconv"
 	"os"
+	"path/filepath"
 	"io/ioutil"
 	"io"
 	"os/user"
@@ -964,7 +965,9 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 			hostPortsBound[hostPort + "/" + protocol] = true
 		}
 
-		// Create missing folders for bind mounts
+		// Create missing folders for bind mounts. A single-file bind (source
+		// is an existing file, or its parent is a directory and the basename
+		// looks like a file) must not be MkdirAll'd — only its parent dir.
 		for _, newmount := range container.Volumes {
 			if newmount.Type == "bind" {
 				newSource := newmount.Source
@@ -979,15 +982,36 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 						newSource = "/mnt/host" + newSource
 					}
 				}
-						
-				utils.Log(fmt.Sprintf("Checking directory %s for bind mount", newSource))
-				OnLog(fmt.Sprintf("Checking directory %s for bind mount\n", newSource))
 
-				if _, err := os.Stat(newSource); os.IsNotExist(err) {
-					utils.Log(fmt.Sprintf("Not found. Creating directory %s for bind mount", newSource))
-					OnLog(fmt.Sprintf("Not found. Creating directory %s for bind mount\n", newSource))
+				// Distinguish a single-file bind from a directory bind:
+				//  - existing path that is a file   -> file (parent may need creating)
+				//  - existing path that is a dir    -> directory
+				//  - non-existing path: if the parent exists and the basename
+				//    has a dot (e.g. config.json) assume a file; otherwise a dir.
+				isFile := false
+				if fi, err := os.Stat(newSource); err == nil {
+					isFile = !fi.IsDir()
+				} else if os.IsNotExist(err) {
+					parent := filepath.Dir(newSource)
+					base := filepath.Base(newSource)
+					if pfi, perr := os.Stat(parent); perr == nil && pfi.IsDir() && strings.Contains(base, ".") {
+						isFile = true
+					}
+				}
+
+				createDir := newSource
+				if isFile {
+					createDir = filepath.Dir(newSource)
+				}
+						
+				utils.Log(fmt.Sprintf("Checking directory %s for bind mount", createDir))
+				OnLog(fmt.Sprintf("Checking directory %s for bind mount\n", createDir))
+
+				if _, err := os.Stat(createDir); os.IsNotExist(err) {
+					utils.Log(fmt.Sprintf("Not found. Creating directory %s for bind mount", createDir))
+					OnLog(fmt.Sprintf("Not found. Creating directory %s for bind mount\n", createDir))
 	
-					err := os.MkdirAll(newSource, 0750)
+					err := os.MkdirAll(createDir, 0750)
 
 					if err != nil {
 						utils.Error("CreateService: Unable to create directory for bind mount. Make sure parent directories exist, and that Cosmos has permissions to create directories in the host directory", err)
@@ -998,7 +1022,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 
 					if container.UID != 0 {
 						// Change the ownership of the directory to the container.UID
-						err = os.Chown(newSource, container.UID, container.GID)
+						err = os.Chown(createDir, container.UID, container.GID)
 						if err != nil {
 							utils.Error("CreateService: Unable to change ownership of directory", err)
 							OnLog(utils.DoErr("Unable to change ownership of directory: " + err.Error()))

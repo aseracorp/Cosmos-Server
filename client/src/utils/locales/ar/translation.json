@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "إضافة عنوان",
   "mgmt.backup.passwordTitle": "كلمة المرور",
   "sudo.required": "قم بتمكين امتيازات المسؤول باستخدام الزر في أعلى اليمين لاستخدام هذه الوظيفة",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "يتطلب محرر Compose الوصول إلى بيانات اعتماد الحاوية (متغيرات البيئة، الأسرار). يرجى تمكين امتيازات المسؤول باستخدام الزر في أعلى اليمين لعرض وتعديل تكوين Compose.",
   "mgmt.servapps.compose.credentialsDenied": "يتطلب محرر Compose الوصول إلى بيانات اعتماد الحاوية (متغيرات البيئة، الأسرار). ليس لديك الصلاحية الحالية لعرض بيانات الاعتماد."
 }
