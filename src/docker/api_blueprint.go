@@ -1534,6 +1534,9 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 
 	// Start containers in dependency order, waiting for non-started
 	// conditions (service_healthy / service_completed_successfully).
+	// depends_on keys are already CONTAINER names: the compose editor rewrites
+	// service keys to container_name before sending (docker-compose.jsx), so
+	// WaitForDepCondition can inspect them directly.
 	for _, container := range startOrder {
 		if len(container.DependsOn) > 0 {
 			for depName, depCfg := range container.DependsOn {
