@@ -898,8 +898,8 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 			containerPorts = generatePorts(ports[len(ports)-1])
 
 			ipExposed := ""
-			if len(portStuff) > 2 {
-				ipExposed = strings.Join(portStuff[0:len(portStuff)-2], ":")
+			if len(ports) > 2 {
+				ipExposed = strings.Join(ports[0:len(ports)-2], ":")
 			}
 
 			for i := 0; i < utils.Max(len(hostPorts), len(containerPorts)); i++ {
