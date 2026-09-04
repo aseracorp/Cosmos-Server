@@ -27,8 +27,10 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
   const isSocketProxy = route && IsRouteSocketProxy(route);
 
   useEffect(() => {
-    // Container not running: grey dot, nothing to probe.
-    if (!isContainerRunning(container)) {
+    // When a container is passed and it is not running, show a grey dot and do
+    // not probe. When no container is passed (e.g. the routes/URLs page), we
+    // have no run state to gate on, so probe as usual.
+    if (container && !isContainerRunning(container)) {
       setIsOnline(null);
       return;
     }
