@@ -11,6 +11,7 @@ import (
 	"sync"
 	"os"
 	"sync/atomic"
+	"io"
 
 	"github.com/mxk/go-flowrate/flowrate"
 	"github.com/oschwald/geoip2-golang"
@@ -270,15 +271,44 @@ func (h *headProbeWriter) Flush() {
 	}
 }
 
+// ReadFrom forwards io.ReaderFrom to the underlying ResponseWriter when it
+// supports it. Without this method, wrappers that select their behaviour from
+// the writer's capability set degrade badly: chi's Logger middleware
+// (middleware.NewWrapResponseWriter) checks Flusher && Hijacker &&
+// io.ReaderFrom to decide between its httpFancyWriter (which forwards
+// Hijack) and its flushWriter (which does NOT implement http.Hijacker). A
+// headProbeWriter that only advertised Flusher+Hijacker made chi pick
+// flushWriter, and every WebSocket upgrade through the logger then failed
+// with "response does not implement http.Hijacker" / http.ErrNotSupported.
+func (h *headProbeWriter) ReadFrom(r io.Reader) (int64, error) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	if rf, ok := h.ResponseWriter.(io.ReaderFrom); ok {
+		return rf.ReadFrom(r)
+	}
+	return io.Copy(struct{ io.Writer }{h}, r)
+}
+
 // Hijack forwards to the underlying ResponseWriter when it supports
 // http.Hijacker, so WebSocket/terminal upgrades keep working through the
-// wrapper.
+// wrapper. It first tries the direct writer, then falls back to walking the
+// Unwrap() chain so that a non-Hijacker wrapper (e.g. chi's flushWriter)
+// sitting between us and the real writer does not break upgrades.
 func (h *headProbeWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hijacker, ok := h.ResponseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, http.ErrNotSupported
+	w := h.ResponseWriter
+	for {
+		if hijacker, ok := w.(http.Hijacker); ok {
+			return hijacker.Hijack()
+		}
+		unwrapper, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return nil, nil, http.ErrNotSupported
+		}
+		w = unwrapper.Unwrap()
 	}
-	return hijacker.Hijack()
 }
 
 // Unwrap lets http.ResponseController and middleware down the chain reach
