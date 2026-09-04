@@ -133,6 +133,7 @@ export const CronManager = () => {
               {
                 title: t('mgmt.scheduler.list.scheduleTitle'),
                 field: (r) => crontabToText(r.Crontab, t),
+                style: { whiteSpace: 'normal', wordBreak: 'break-word' },
               },
               {
                 title: t('global.statusTitle'),
