@@ -88,6 +88,24 @@ const cleanUpStore = (service) => {
   return newService;
 }
 
+// Escape a user-supplied string so it can be safely spliced into a
+// JSON/HJSON template by whiskers. Installer form fields ({Context.x}) end up
+// inside double-quoted strings of the rendered compose; a literal quote,
+// backslash or control character would break the document and the parse (and
+// therefore the whole installer view) crashes. Backslash MUST be escaped
+// first so the escape sequences we add are not re-escaped themselves.
+const escapeJsonString = (value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+};
+
 const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) => {
       let doc;
 
@@ -738,10 +756,21 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
         }
       }
 
+      // User-supplied installer values ({Context.x}) must be pre-processed so
+      // they cannot break the JSON/HJSON document when whiskers splices them
+      // into the template: a literal ", \ or control character would make the
+      // rendered compose unparseable and crash the installer view. Escape
+      // string values (booleans/numbers are left intact so {if Context.x}
+      // conditionals keep evaluating with their real truthiness).
+      const escapedContext = {};
+      Object.keys(context).forEach((k) => {
+        escapedContext[k] = escapeJsonString(context[k]);
+      });
+
       const rendered = whiskers.render(envSubstitutedCompose.replace(/{StaticServiceName}/ig, serviceName), {
         ServiceName: serviceName,
         Hostnames: hostnames,
-        Context: context,
+        Context: escapedContext,
         Passwords: renderPasswords,
         Secrets: renderSecrets,
         CPU_ARCH: API.CPU_ARCH,
