@@ -299,6 +299,12 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 	)
 	if createError != nil {
 		utils.Error("EditContainer - Failed to create container", createError)
+		// Surface volume-subpath failures with an actionable message in the
+		// streamed log so users don't see a bare daemon error.
+		if friendly := FriendlySubpathError(createError, CosmosMountsFromDocker(newConfig.HostConfig.Mounts)); friendly != createError {
+			utils.Log("EditContainer - " + friendly.Error())
+			createError = friendly
+		}
 	}
 	
 	utils.Log("EditContainer - Container recreated. Re-connecting networks " + createResponse.ID)

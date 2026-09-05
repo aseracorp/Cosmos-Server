@@ -2,6 +2,7 @@ package docker
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/docker/docker/api/types/mount"
@@ -132,4 +133,62 @@ func FromDockerMountSlice(mounts []mount.Mount) []CosmosMount {
 		c[i] = FromDockerMount(m)
 	}
 	return c
+}
+
+// FriendlySubpathError inspects a container-create error and, when it is a
+// volume-subpath failure, returns a clear, actionable message (in English, to
+// match the rest of the server-side streamed logs) instead of the raw daemon
+// error. The raw error is returned unchanged for unrelated failures.
+//
+// Two failure modes are translated:
+//  1. Engine too old: the daemon rejects `VolumeOptions.Subpath` unless the
+//     negotiated API version is >= 1.45 (Docker Engine 26.0+).
+//  2. Missing subpath: the named volume exists but the requested subpath does
+//     not (the daemon refuses to create it, resolving under the volume root).
+func FriendlySubpathError(err error, mounts []CosmosMount) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+
+	// (1) Daemon API too old for volume subpaths.
+	if strings.Contains(msg, "VolumeOptions.Subpath needs API v1.45") ||
+		strings.Contains(msg, "VolumeOptions.Subpath") && strings.Contains(msg, "v1.45") {
+		return fmt.Errorf("Volume subpaths require Docker Engine 26.0 or newer. "+
+			"Your Docker engine version does not support the 'subpath' mount option. "+
+			"Please upgrade Docker Engine to 26.0+ to use subpath mounts, or remove the 'subpath' from the volume. (%s)", msg)
+	}
+
+	// (2) Subpath does not exist inside the volume.
+	if strings.Contains(msg, "no such file or directory") ||
+		strings.Contains(msg, "ErrNotAccessible") ||
+		strings.Contains(msg, "ENOENT") {
+		if sub := subpathFromMounts(mounts); sub != "" {
+			return fmt.Errorf("The subpath '%s' does not exist inside its volume. "+
+				"Docker mounts a subpath only if it already exists inside the volume — "+
+				"docker doesn't create it. Add the %s directory/file to the volume "+
+				"(e.g. via a temporary helper container or an init that populates it), "+
+				"then retry. (%s)", sub, sub, msg)
+		}
+	}
+
+	return err
+}
+
+// subpathFromMounts returns the first non-empty subpath among the given mounts.
+func subpathFromMounts(mounts []CosmosMount) string {
+	for _, m := range mounts {
+		if m.SubPath != "" {
+			return m.SubPath
+		}
+	}
+	return ""
+}
+
+// CosmosMountsFromDocker converts a slice of Docker SDK mount.Mount into the
+// CosmosMount form. It's the same as FromDockerMountSlice; the alias exists so
+// call sites read naturally when they need the subpath-aware CosmosMount list
+// just to build a friendly error message.
+func CosmosMountsFromDocker(mounts []mount.Mount) []CosmosMount {
+	return FromDockerMountSlice(mounts)
 }

@@ -1480,7 +1480,8 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 
 		if err != nil {
 			utils.Error("CreateService: Rolling back changes because of -- Container", err)
-			OnLog(utils.DoErr("Rolling back changes because of -- Container creation error: "+err.Error()))
+			// Surface volume-subpath failures with an actionable message.
+			OnLog(utils.DoErr("Rolling back changes because of -- Container creation error: " + FriendlySubpathError(err, container.Volumes).Error()))
 			Rollback(rollbackActions, OnLog)
 			return err
 		}
