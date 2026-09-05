@@ -395,6 +395,7 @@
   	"mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
 	"mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
 	"mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+		"mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
   "mgmt.servapps.newContainer.volumes.updateVolumesButton": "Volumes bijwerken",
   "mgmt.servapps.newContainer.volumesTitle": "Volumeverzetten",
   "mgmt.servapps.newContainerTitle": "Docker container instellen",

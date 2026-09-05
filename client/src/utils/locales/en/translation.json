@@ -1078,6 +1078,7 @@
 		"mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
 	"mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
 	"mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+		"mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
 	"mgmt.servapps.newContainer.volumes.updateVolumesButton": "Update Volumes",
 	"mgmt.servapps.newContainer.volumesTitle": "Volume Mounts",
 	"mgmt.servapps.newContainer.resourceLimitsTitle": "Resource Limits",

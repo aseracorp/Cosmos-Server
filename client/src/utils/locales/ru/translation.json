@@ -395,6 +395,7 @@
   	"mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
 	"mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
 	"mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+		"mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
   "mgmt.servapps.newContainer.volumes.updateVolumesButton": "Обновить тома",
   "mgmt.servapps.newContainer.volumesTitle": "Монтирование томов",
   "mgmt.servapps.newContainerTitle": "Настройка Docker контейнера",

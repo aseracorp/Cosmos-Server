@@ -23,6 +23,11 @@ type CosmosMount struct {
 	SubPath string `json:"subpath,omitempty"`
 	// ReadOnly mounts the source read-only (compose short-syntax `:ro`).
 	ReadOnly bool `json:"readOnly,omitempty"`
+	// NoCopy is the volume-nocopy mount option (VolumeOptions.NoCopy). It is
+	// auto-enabled for subpath mounts on engines older than Docker 29.5.0 as a
+	// workaround for moby#52546, but users can also set it explicitly; it is
+	// preserved through the export round-trip.
+	NoCopy bool `json:"noCopy,omitempty"`
 }
 
 // UnmarshalJSON implements a compatibility layer that accepts both lowercase
@@ -69,6 +74,7 @@ func (c *CosmosMount) UnmarshalJSON(data []byte) error {
 	c.Target = getStr("target")
 	c.SubPath = getStr("subpath")
 	c.ReadOnly = getBool("readOnly", "read_only", "readonly")
+	c.NoCopy = getBool("noCopy", "nocopy", "no_copy")
 	if v, ok := raw["mode"]; ok {
 		if mode, ok := v.(string); ok {
 			for _, seg := range strings.Split(mode, ",") {
@@ -93,8 +99,16 @@ func (c CosmosMount) ToDockerMount() mount.Mount {
 	// Docker engine 26.0+ supports mounting a subpath of a named volume
 	// (volume-subpath). docker-compose exposes this as the `subpath` option.
 	if c.SubPath != "" {
+		// NoCopy (volume-nocopy) is set as a workaround on engines older than
+		// Docker 29.5.0: moby#52546 — Docker's seed-from-image copy step treats
+		// a file subpath as a directory and fails ("open .../safe-mount...:
+		// not a directory"). moby PR #52584 (Docker >= 29.5.0) fixed this
+		// daemon-side by skipping population for non-directory subpaths, so on
+		// 29.5.0+ NoCopy is only applied when the user explicitly requested it.
+		noCopy := c.NoCopy || (!SupportsBuiltinFileSubpathFix())
 		m.VolumeOptions = &mount.VolumeOptions{
 			Subpath: c.SubPath,
+			NoCopy:  noCopy,
 		}
 	}
 
@@ -130,6 +144,7 @@ func FromDockerMount(m mount.Mount) CosmosMount {
 	}
 	if m.VolumeOptions != nil {
 		cm.SubPath = m.VolumeOptions.Subpath
+		cm.NoCopy = m.VolumeOptions.NoCopy
 	}
 	return cm
 }
