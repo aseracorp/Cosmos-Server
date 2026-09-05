@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Checkbox, Chip, CircularProgress, Stack, Typography, useMediaQuery } from '@mui/material';
+import { Alert, Checkbox, Chip, CircularProgress, MenuItem, Stack, TextField, Typography, useMediaQuery } from '@mui/material';
 import MainCard from '../../../components/MainCard';
 import { ContainerOutlined, DashboardOutlined, DesktopOutlined, InfoCircleOutlined, NodeExpandOutlined, PlayCircleOutlined, PlusCircleOutlined, SafetyCertificateOutlined, SettingOutlined } from '@ant-design/icons';
 import { getFaviconURL, getContainersRoutes } from '../../../utils/routes';
@@ -84,7 +84,9 @@ const ContainerOverview = ({ containerInfo, config, refresh, updatesAvailable, s
             ) : null}
           </div>
             <div>
-              {({
+              {(State.Status !== 'running' && Config.Labels['cosmos-lazy'] === 'true') ? (
+                <Chip label={t('mgmt.servApps.dormantChip.dormantLabel')} color="info" />
+              ) : ({
                "created": <Chip label={t('mgmt.servApps.createdChip.createdLabel')} color="warning" />,
                "restarting": <Chip label={t('mgmt.servApps.restartingChip.restartingLabel')} color="warning" />,
                "running": <Chip label={t('mgmt.servApps.runningChip.runningLabel')} color="success" />,
@@ -186,6 +188,54 @@ const ContainerOverview = ({ containerInfo, config, refresh, updatesAvailable, s
                 />
               </PermissionGuard> {t('mgmt.servApps.autoUpdateCheckbox')}
             </Stack>
+            <Stack style={{ fontSize: '80%' }} direction={"row"} alignItems="center">
+              <PermissionGuard permission={PERM_RESOURCES} alwaysShow>
+                <Checkbox
+                  checked={Config.Labels['cosmos-lazy'] === 'true'}
+                  disabled={isUpdating}
+                  onChange={(e) => {
+                    setIsUpdating(true);
+                    API.docker.lazy(Name.replace('/', ''), e.target.checked, {
+                      idle: Config.Labels['cosmos-lazy-idle'] || '1h',
+                    }).then(() => {
+                      setTimeout(() => {
+                        refreshAll();
+                      }, 3000);
+                    })
+                  }}
+                />
+              </PermissionGuard> {t('mgmt.servApps.lazyCheckbox')}
+            </Stack>
+            {Config.Labels['cosmos-lazy'] === 'true' && (
+              <Stack style={{ fontSize: '80%' }} direction={"row"} alignItems="center" spacing={2}>
+                <PermissionGuard permission={PERM_RESOURCES} alwaysShow>
+                  <TextField
+                    select
+                    size="small"
+                    label={t('mgmt.servApps.lazyIdleSelect')}
+                    value={Config.Labels['cosmos-lazy-idle'] || '1h'}
+                    disabled={isUpdating}
+                    onChange={(e) => {
+                      setIsUpdating(true);
+                      API.docker.lazy(Name.replace('/', ''), true, {
+                        idle: e.target.value,
+                      }).then(() => {
+                        setTimeout(() => {
+                          refreshAll();
+                        }, 3000);
+                      })
+                    }}
+                  >
+                    <MenuItem value="15m">15m</MenuItem>
+                    <MenuItem value="30m">30m</MenuItem>
+                    <MenuItem value="1h">1h</MenuItem>
+                    <MenuItem value="3h">3h</MenuItem>
+                    <MenuItem value="12h">12h</MenuItem>
+                    <MenuItem value="24h">24h</MenuItem>
+                  </TextField>
+                </PermissionGuard>
+              </Stack>
+            )}
             <strong><NodeExpandOutlined /> URLs</strong>
             <div>
               {routes.map((route) => {

@@ -1,7 +1,6 @@
 module github.com/azukaar/cosmos-server/go-sdk
 
-go 1.25.0
-
+go 1.26.0
 require (
 	github.com/getkin/kin-openapi v0.134.0
 	github.com/oapi-codegen/runtime v1.2.0

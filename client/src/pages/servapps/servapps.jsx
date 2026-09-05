@@ -27,7 +27,8 @@ import PermissionGuard from '../../components/permissionGuard';
 import { PERM_RESOURCES, PERM_CREDENTIALS_READ } from '../../utils/permissions';
 import { getContainerDisplayStatus, rankDisplayStatus, isContainerRunning } from '../../utils/container-status';
 
-const Item = styled(Paper)(({ theme }) => ({
+// Exported: the Constellation feature pages reuse this card.
+export const Item = styled(Paper)(({ theme }) => ({
   backgroundColor: theme.palette.mode === 'dark' ? 'rgba(20,24,35,0.7)' : 'rgba(255,255,255)',
   backdropFilter: 'blur(8px)',
   WebkitBackdropFilter: 'blur(8px)',
@@ -48,6 +49,16 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
     padding: '0 4px',
   },
 }));
+
+export const gridAnim = {
+  transition: 'all 0.2s ease',
+  opacity: 1,
+  transform: 'translateY(0px)',
+  '&.MuiGrid2-item--hidden': {
+    opacity: 0,
+    transform: 'translateY(-20px)',
+  },
+};
 
 const noOver = {
   overflowX: 'auto',
@@ -98,16 +109,6 @@ const ServApps = ({stack}) => {
       setOpenRestartModal(true);
     });
   }
-
-  const gridAnim = {
-    transition: 'all 0.2s ease',
-    opacity: 1,
-    transform: 'translateY(0px)',
-    '&.MuiGrid2-item--hidden': {
-      opacity: 0,
-      transform: 'translateY(-20px)',
-    },
-  };
 
   const selectable = {
     cursor: 'pointer',
@@ -306,7 +307,9 @@ const ServApps = ({stack}) => {
                 <Stack style={{position: 'relative', overflowX: 'hidden', width: '100%'}} direction="row" spacing={2} alignItems="center">
                   <Typography variant="body2" color="text.secondary">
                     {
-                      ({
+                      (app.state !== 'running' && app.labels && app.labels['cosmos-lazy'] === 'true') ? (
+                        <Chip label={t('mgmt.servApps.dormantChip.dormantLabel')} color="info" />
+                      ) : ({
                         "created": <Chip label={t('mgmt.servApps.createdChip.createdLabel')} color="warning" />,
                         "restarting": <Chip label={t('mgmt.servApps.restartingChip.restartingLabel')} color="warning" />,
                         "running": <Chip label={t('mgmt.servApps.runningChip.runningLabel')} color="success" />,

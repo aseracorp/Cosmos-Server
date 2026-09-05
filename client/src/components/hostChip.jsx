@@ -1,64 +1,56 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Chip } from "@mui/material";
+import { Chip, Tooltip } from "@mui/material";
 import { useEffect, useState } from "react";
-import { getOrigin, getFullOrigin, IsRouteSocketProxy } from "../utils/routes";
-import { isContainerRunning } from "../utils/container-status";
+import { useTranslation } from "react-i18next";
+import { getOrigin, getFullOrigin } from "../utils/routes";
+import { useTheme } from '@mui/material/styles';
 import StatusDot from "./statusDot";
 
-// Green: 2xx/3xx (incl. opaqueredirect for cross-origin login redirects) and
-// the 4xx codes that mean the reverse proxy answered while refusing this
-// caller/method (401, 403, 405, 407, 429, 511) - the service is up.
-// Red: everything else (404, 408, 5xx, ...) and network errors.
-function classifyProbeStatus(res) {
-  if (res.type === 'opaqueredirect') return true;
-  const s = res.status;
-  if (s >= 200 && s < 400) return true;
-  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511) return true;
-  return false;
-}
-
-const HostChip = ({route, settings, container, style, ellipsis}) => {
-  const [isOnline, setIsOnline] = useState(null);
-  const url = getOrigin(route);
-
-  // Raw TCP/UDP socket proxies (e.g. 0.0.0.0:32400) have no HTTP layer to
-  // probe: "online" simply means the container is running. Show green instead
-  // of firing a meaningless HTTP HEAD.
-  const isSocketProxy = route && IsRouteSocketProxy(route);
-
-  useEffect(() => {
-    // When a container is passed and it is not running, show a grey dot and do
-    // not probe. When no container is passed (e.g. the routes/URLs page), we
-    // have no run state to gate on, so probe as usual.
-    if (container && !isContainerRunning(container)) {
-      setIsOnline(null);
-      return;
-    }
-    if (isSocketProxy) {
-      setIsOnline(true);
-      return;
-    }
-    // HEAD + cors exposes the real status; no-store bypasses stale caches.
-    // redirect: 'manual' keeps 3xx (incl. login redirects) from being followed
-    // into a CORS failure (e.g. a data: URL).
-    fetch(getFullOrigin(route), {
+const probeRoute = async (route) => {
+  const origin = getFullOrigin(route);
+  try {
+    const res = await fetch(origin + (origin.includes('?') ? '&' : '?') + '__cosmos_probe=1', {
       method: 'HEAD',
       mode: 'cors',
-      cache: 'no-store',
+      credentials: 'include',
       redirect: 'manual',
-    }).then((res) => {
-      setIsOnline(classifyProbeStatus(res));
-    }).catch(() => {
-      setIsOnline(false);
+      cache: 'no-store',
     });
-  }, [url, container, isSocketProxy]);
+    return res.headers.get('X-Cosmos-Container') === 'sleeping' ? 'sleeping' : 'online';
+  } catch (e) {
+    try {
+      await fetch(origin, { method: 'HEAD', mode: 'no-cors' });
+      return 'online';
+    } catch (e2) {
+      return 'offline';
+    }
+  }
+};
+
+const HostChip = ({route, settings, style, ellipsis}) => {
+  const { t } = useTranslation();
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+  const [status, setStatus] = useState(null);
+  const url = getOrigin(route)
+
+  useEffect(() => {
+    let cancelled = false;
+    probeRoute(route).then((s) => { if (!cancelled) setStatus(s); });
+    return () => { cancelled = true; };
+  }, [url]);
+
+  const dot = status === 'sleeping'
+    ? <Tooltip title={t('global.containerSleeping')}><StatusDot status="unknown" hollow size={8} style={{ marginRight: 6 }} /></Tooltip>
+    : <StatusDot status={status == null ? "unknown" : status === 'online' ? "success" : "error"} size={8} style={{ marginRight: 6 }} />;
 
   return <Chip
-    label={<><StatusDot status={isOnline == null ? "unknown" : isOnline ? "success" : "error"} size={8} style={{ marginRight: 6 }} />{url}</>}
+    label={<>{dot}{url}</>}
     color="primary"
     variant="outlined"
     style={{
       paddingRight: '4px',
+      // textDecoration: isOnline ? 'none' : 'underline wavy red',
       ...style,
       ...(ellipsis ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '250px' } : {})
     }}

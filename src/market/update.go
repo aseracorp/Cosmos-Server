@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strconv"
-	"github.com/azukaar/cosmos-server/src/utils" 
+	"github.com/azukaar/cosmos-server/src/utils"
 	"time"
 )
 
@@ -134,7 +134,7 @@ func updateCache(w http.ResponseWriter, req *http.Request) error {
 					"numberOfApps": len(result.All),
 			})
 
-			utils.Log("MarketUpdate: Updated market " + result.Source + " with " + string(len(result.All)) + " results")
+			utils.Log("MarketUpdate: Updated market " + result.Source + " with " + strconv.Itoa(len(result.All)) + " results")
 
 			// save to cache
 			currentMarketcache[index] = cachedMarket

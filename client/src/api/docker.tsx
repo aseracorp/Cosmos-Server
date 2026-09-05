@@ -389,6 +389,20 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
     }))
   }
 
+  function lazy(id: string, toggle: string, opts?: { idle?: string, startTimeout?: string }): Promise<ApiResponse> {
+    const params = new URLSearchParams();
+    if (opts && opts.idle) params.set('idle', opts.idle);
+    if (opts && opts.startTimeout) params.set('startTimeout', opts.startTimeout);
+    const query = params.toString() ? '?' + params.toString() : '';
+
+    return wrap(apiFetch('/cosmos/api/servapps/' + id + '/lazy/' + toggle + query, {
+      method: 'GET',
+      headers: {
+          'Content-Type': 'application/json'
+      },
+    }))
+  }
+
   return {
     list,
     get,
@@ -411,6 +425,7 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
     createService,
     pullImage,
     autoUpdate,
+    lazy,
     updateContainerImage,
     exportContainer,
     migrateHost,
