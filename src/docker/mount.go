@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/docker/docker/api/types/mount"
 	"github.com/azukaar/cosmos-server/src/utils"
+	"github.com/docker/docker/api/types/mount"
 )
 
 // CosmosMount mirrors mount.Mount but uses lowercase JSON tags to match
@@ -36,34 +36,44 @@ func (c *CosmosMount) UnmarshalJSON(data []byte) error {
 
 	*c = CosmosMount{}
 
-	// Helper: try lowercase key first, then uppercase fallback
-	getStr := func(keys ...string) string {
-		for _, low := range keys {
-			if v, ok := raw[low]; ok {
-				if s, ok := v.(string); ok {
-					return s
-				}
+	// Case-insensitive lookup: the compose/HJSON editor and the Docker SDK
+	// have historically spelled these keys differently (subpath / subPath /
+	// SubPath / Subpath, readOnly / read_only / ReadOnly, type / Type, ...).
+	// Match any spelling so a subpath is never silently dropped.
+	find := func(name string) (interface{}, bool) {
+		for k, v := range raw {
+			if strings.EqualFold(k, name) {
+				return v, true
+			}
+		}
+		return nil, false
+	}
+	getStr := func(name string) string {
+		if v, ok := find(name); ok {
+			if s, ok := v.(string); ok {
+				return s
 			}
 		}
 		return ""
 	}
+	getBool := func(names ...string) bool {
+		for _, n := range names {
+			if v, ok := find(n); ok {
+				if b, ok := v.(bool); ok {
+					return b
+				}
+			}
+		}
+		return false
+	}
 
-	c.Type = getStr("type", "Type")
-	c.Source = getStr("source", "Source")
-	c.Target = getStr("target", "Target")
-	// Accept the docker-compose spelling ("subpath") as well as the Docker
-	// SDK JSON spelling ("Subpath") and the legacy "SubPath" casing.
-	c.SubPath = getStr("subpath", "Subpath", "SubPath")
-	if v, ok := raw["readOnly"]; ok {
-		if b, ok := v.(bool); ok {
-			c.ReadOnly = b
-		}
-	}
-	if v, ok := raw["read_only"]; ok {
-		if b, ok := v.(bool); ok {
-			c.ReadOnly = b
-		}
-	}
+	c.Type = getStr("type")
+	c.Source = getStr("source")
+	c.Target = getStr("target")
+	// Accept docker-compose "subpath", the Docker SDK "Subpath", and the
+	// legacy "SubPath" / mixed "subPath" spellings case-insensitively.
+	c.SubPath = getStr("subpath")
+	c.ReadOnly = getBool("readOnly", "read_only", "readonly")
 	if v, ok := raw["mode"]; ok {
 		if mode, ok := v.(string); ok {
 			for _, seg := range strings.Split(mode, ",") {
