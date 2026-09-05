@@ -1,3 +1,11 @@
+## Version 0.24.0
+ - Lazy loading
+ - Improve TCP proxy support
+ - Fix issue with the port allocation when load balancing TCP
+ - Minor load balancing quirk fixes
+ - Fix issue with regex in event tab of monitoring
+ - Fix PingURL / Favicon fetcher exposing some scanning surface
+
 ## Version 0.23.04
  - Allow terraform to remove Constellation managers
 

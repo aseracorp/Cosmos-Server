@@ -102,6 +102,27 @@ func (e MountType) Valid() bool {
 	}
 }
 
+// Defines values for ProDeploymentReplicaFillMode.
+const (
+	Bare  ProDeploymentReplicaFillMode = "bare"
+	Empty ProDeploymentReplicaFillMode = "empty"
+	Full  ProDeploymentReplicaFillMode = "full"
+)
+
+// Valid indicates whether the value is a known member of the ProDeploymentReplicaFillMode enum.
+func (e ProDeploymentReplicaFillMode) Valid() bool {
+	switch e {
+	case Bare:
+		return true
+	case Empty:
+		return true
+	case Full:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProDeploymentStrategy.
 const (
 	LeastBusy  ProDeploymentStrategy = "least-busy"
@@ -114,6 +135,42 @@ func (e ProDeploymentStrategy) Valid() bool {
 	case LeastBusy:
 		return true
 	case RoundRobin:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProManagedDBCreateRequestEngine.
+const (
+	Postgres ProManagedDBCreateRequestEngine = "postgres"
+)
+
+// Valid indicates whether the value is a known member of the ProManagedDBCreateRequestEngine enum.
+func (e ProManagedDBCreateRequestEngine) Valid() bool {
+	switch e {
+	case Postgres:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProRegistryStorageBackend.
+const (
+	Local     ProRegistryStorageBackend = "local"
+	S3        ProRegistryStorageBackend = "s3"
+	Seaweedfs ProRegistryStorageBackend = "seaweedfs"
+)
+
+// Valid indicates whether the value is a known member of the ProRegistryStorageBackend enum.
+func (e ProRegistryStorageBackend) Valid() bool {
+	switch e {
+	case Local:
+		return true
+	case S3:
+		return true
+	case Seaweedfs:
 		return true
 	default:
 		return false
@@ -317,6 +374,8 @@ type ConstellationDeviceCreateRequestJSON struct {
 
 // ConstellationDeviceEditRequestJSON defines model for constellation.DeviceEditRequestJSON.
 type ConstellationDeviceEditRequestJSON struct {
+	// DeviceName Empty means "this node" (full edit); set means a remote tags-only edit.
+	DeviceName     *string   `json:"deviceName,omitempty"`
 	IsExitNode     *bool     `json:"isExitNode,omitempty"`
 	IsLighthouse   *bool     `json:"isLighthouse,omitempty"`
 	IsLoadBalancer *bool     `json:"isLoadBalancer,omitempty"`
@@ -801,9 +860,30 @@ type ProCreateGroupRequest struct {
 
 // ProDeployment defines model for pro.Deployment.
 type ProDeployment struct {
-	Compose  DockerDockerServiceCreateRequest `json:"compose"`
-	Name     string                           `json:"name"`
-	Replicas int                              `json:"replicas"`
+	Compose     DockerDockerServiceCreateRequest `json:"compose"`
+	MaxReplicas *int                             `json:"maxReplicas,omitempty"`
+
+	// MinReplicas MinReplicas/MaxReplicas select load-based autoscaling clamped to [min,max], one step per cooldown.
+	MinReplicas *int   `json:"minReplicas,omitempty"`
+	Name        string `json:"name"`
+
+	// Owner Owner marks a system-owned deployment (e.g. "seaweedfs:<instance>"); the HTTP API refuses user create/update/delete on it.
+	Owner *string `json:"owner,omitempty"`
+
+	// PreserveVolumesOnRemove PreserveVolumesOnRemove keeps the deployment's named volumes on disk on replica removal or
+	// full delete; stamped as the cosmos-deployment-keep-volumes label on containers and volumes.
+	PreserveVolumesOnRemove *bool `json:"preserveVolumesOnRemove,omitempty"`
+
+	// ReplicaFill ReplicaFill: one replica on every alive node matching Tags (DaemonSet-style).
+	ReplicaFill *bool `json:"replicaFill,omitempty"`
+
+	// ReplicaFillMode fill sub-mode: "full" (default) = every eligible node; "bare" = autoscale between 1 and the
+	// eligible set; "empty" = bare with lazy scale-to-zero.
+	ReplicaFillMode *ProDeploymentReplicaFillMode `json:"replicaFillMode,omitempty"`
+
+	// Replicas Exactly one of the three replica modes (fixed Replicas, autoscale Min/MaxReplicas, fill ReplicaFill)
+	// must be set; ValidateReplicaConfig enforces the exclusivity.
+	Replicas *int `json:"replicas,omitempty"`
 
 	// Storage Storage lists RCLONE remote names this deployment depends on. Checked
 	// node-side in executeApply before docker.CreateService runs — a missing
@@ -823,12 +903,159 @@ type ProDeployment struct {
 	// Multiple tags are AND'd: ["gpu","nvme"] requires both. Empty means no
 	// filter — any node is eligible.
 	Tags *[]string `json:"tags,omitempty"`
+
+	// Version Version is a server-assigned monotonic integer bumped on every create/update, stamped on containers
+	// as cosmos-deployment-version so the scheduler can detect stale specs.
+	Version *int `json:"version,omitempty"`
 }
+
+// ProDeploymentReplicaFillMode fill sub-mode: "full" (default) = every eligible node; "bare" = autoscale between 1 and the
+// eligible set; "empty" = bare with lazy scale-to-zero.
+type ProDeploymentReplicaFillMode string
 
 // ProDeploymentStrategy Strategy selects which PlacementStrategy the scheduler uses for this
 // deployment. Empty is treated as "round-robin" for back-compat with
 // KV entries written before this field existed.
 type ProDeploymentStrategy string
+
+// ProManagedDBBackupRequest defines model for pro.ManagedDBBackupRequest.
+type ProManagedDBBackupRequest struct {
+	Crontab         *string `json:"crontab,omitempty"`
+	CrontabForget   *string `json:"crontabForget,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	Repository      *string `json:"repository,omitempty"`
+	RetentionPolicy *string `json:"retentionPolicy,omitempty"`
+}
+
+// ProManagedDBCreateRequest defines model for pro.ManagedDBCreateRequest.
+type ProManagedDBCreateRequest struct {
+	Engine *ProManagedDBCreateRequestEngine `json:"engine,omitempty"`
+
+	// Image Image overrides the pinned default; never inferred from a running container.
+	Image *string `json:"image,omitempty"`
+	Name  string  `json:"name"`
+
+	// Port Port overrides proxy listen-port allocation. Zero means "allocate one".
+	Port *int `json:"port,omitempty"`
+
+	// RestrictToConstellation Pointer: the default is true, so a plain bool cannot tell "client sent
+	// false" from "client omitted the field".
+	RestrictToConstellation *bool `json:"restrictToConstellation,omitempty"`
+}
+
+// ProManagedDBCreateRequestEngine defines model for ProManagedDBCreateRequest.Engine.
+type ProManagedDBCreateRequestEngine string
+
+// ProManagedDBLogicalRequest defines model for pro.ManagedDBLogicalRequest.
+type ProManagedDBLogicalRequest struct {
+	Database string  `json:"database"`
+	Role     *string `json:"role,omitempty"`
+}
+
+// ProManagedDBRestoreRequest defines model for pro.ManagedDBRestoreRequest.
+type ProManagedDBRestoreRequest struct {
+	// Databases Databases restricts what is restored; empty means every logical database.
+	Databases *[]string `json:"databases,omitempty"`
+
+	// NewName NewName is the instance to create. It must not exist.
+	NewName string `json:"newName"`
+
+	// Port Port and RestrictToConstellation default as in a plain create (allocate a
+	// port; restrict to the constellation).
+	Port                    *int  `json:"port,omitempty"`
+	RestrictToConstellation *bool `json:"restrictToConstellation,omitempty"`
+
+	// SnapshotId SnapshotID is a restic snapshot id, long or short; "latest" works.
+	SnapshotId string `json:"snapshotId"`
+
+	// SourceName SourceName's backup configuration (repository AND password) is used to
+	// read the snapshot; the source instance itself is never touched.
+	SourceName string `json:"sourceName"`
+}
+
+// ProManagedDBUpdateRequest defines model for pro.ManagedDBUpdateRequest.
+type ProManagedDBUpdateRequest struct {
+	RestrictToConstellation *bool `json:"restrictToConstellation,omitempty"`
+}
+
+// ProRegistryAccessCreateRequest defines model for pro.RegistryAccessCreateRequest.
+type ProRegistryAccessCreateRequest struct {
+	AllowAnonymousPull *bool     `json:"allowAnonymousPull,omitempty"`
+	Host               *string   `json:"host,omitempty"`
+	Internal           *bool     `json:"internal,omitempty"`
+	Name               *string   `json:"name,omitempty"`
+	Registries         *[]string `json:"registries,omitempty"`
+	Tags               *[]string `json:"tags,omitempty"`
+}
+
+// ProRegistryAccessSettingsRequest defines model for pro.RegistryAccessSettingsRequest.
+type ProRegistryAccessSettingsRequest struct {
+	AllowAnonymousPull *bool     `json:"allowAnonymousPull,omitempty"`
+	Host               *string   `json:"host,omitempty"`
+	Internal           *bool     `json:"internal,omitempty"`
+	Registries         *[]string `json:"registries,omitempty"`
+	Tags               *[]string `json:"tags,omitempty"`
+}
+
+// ProRegistryAccessTokenCreateRequest defines model for pro.RegistryAccessTokenCreateRequest.
+type ProRegistryAccessTokenCreateRequest struct {
+	ExpiryDays *int      `json:"expiryDays,omitempty"`
+	Name       *string   `json:"name,omitempty"`
+	Scopes     *[]string `json:"scopes,omitempty"`
+}
+
+// ProRegistryCreateRequest defines model for pro.RegistryCreateRequest.
+type ProRegistryCreateRequest struct {
+	Name       *string             `json:"name,omitempty"`
+	QuotaBytes *int                `json:"quotaBytes,omitempty"`
+	Storage    *ProRegistryStorage `json:"storage,omitempty"`
+
+	// Type Type is docker, npm, static or generic. Required and immutable afterwards.
+	Type *string `json:"type,omitempty"`
+}
+
+// ProRegistrySettingsRequest defines model for pro.RegistrySettingsRequest.
+type ProRegistrySettingsRequest struct {
+	QuotaBytes *int `json:"quotaBytes,omitempty"`
+}
+
+// ProRegistryStaticActivateRequest defines model for pro.RegistryStaticActivateRequest.
+type ProRegistryStaticActivateRequest struct {
+	Version *string `json:"version,omitempty"`
+}
+
+// ProRegistryStorage defines model for pro.RegistryStorage.
+type ProRegistryStorage struct {
+	AccessKey *string                   `json:"accessKey,omitempty"`
+	Backend   ProRegistryStorageBackend `json:"backend"`
+	Bucket    *string                   `json:"bucket,omitempty"`
+
+	// Endpoint External S3 only.
+	Endpoint *string `json:"endpoint,omitempty"`
+	Path     *string `json:"path,omitempty"`
+	Region   *string `json:"region,omitempty"`
+
+	// Seaweedfs SeaweedFS is the managed instance name when Backend is "seaweedfs".
+	Seaweedfs *string `json:"seaweedfs,omitempty"`
+	SecretKey *string `json:"secretKey,omitempty"`
+}
+
+// ProRegistryStorageBackend defines model for ProRegistryStorage.Backend.
+type ProRegistryStorageBackend string
+
+// ProSeaweedFSCreateRequest defines model for pro.SeaweedFSCreateRequest.
+type ProSeaweedFSCreateRequest struct {
+	DefaultReplication      *string   `json:"defaultReplication,omitempty"`
+	FilerReplicas           *int      `json:"filerReplicas,omitempty"`
+	Image                   *string   `json:"image,omitempty"`
+	IndexMode               *string   `json:"indexMode,omitempty"`
+	MaxStorageGBPerNode     *int      `json:"maxStorageGBPerNode,omitempty"`
+	MinFreeSpace            *string   `json:"minFreeSpace,omitempty"`
+	Name                    *string   `json:"name,omitempty"`
+	RestrictToConstellation *bool     `json:"restrictToConstellation,omitempty"`
+	Tags                    *[]string `json:"tags,omitempty"`
+	VolumeSizeLimitMB       *int      `json:"volumeSizeLimitMB,omitempty"`
+}
 
 // ProUpdateGroupRequest defines model for pro.UpdateGroupRequest.
 type ProUpdateGroupRequest struct {
@@ -1406,6 +1633,42 @@ type GetApiBackupsNameSnapshotSubfolderRestoreSizeParams struct {
 // PostApiConstellationCreateJSONBody defines parameters for PostApiConstellationCreate.
 type PostApiConstellationCreateJSONBody = map[string]interface{}
 
+// DeleteApiConstellationDatabasesNameParams defines parameters for DeleteApiConstellationDatabasesName.
+type DeleteApiConstellationDatabasesNameParams struct {
+	// RemoveVolume Also destroy the data volume
+	RemoveVolume *bool `form:"removeVolume,omitempty" json:"removeVolume,omitempty"`
+}
+
+// DeleteApiConstellationRegistriesNameParams defines parameters for DeleteApiConstellationRegistriesName.
+type DeleteApiConstellationRegistriesNameParams struct {
+	// PurgeData Also delete every stored blob
+	PurgeData *bool `form:"purgeData,omitempty" json:"purgeData,omitempty"`
+}
+
+// PostApiConstellationRegistriesNamePackagesPackageVersionsParams defines parameters for PostApiConstellationRegistriesNamePackagesPackageVersions.
+type PostApiConstellationRegistriesNamePackagesPackageVersionsParams struct {
+	// Version Version (default: UTC timestamp)
+	Version *string `form:"version,omitempty" json:"version,omitempty"`
+
+	// Filename Filename, required for a raw body
+	Filename *string `form:"filename,omitempty" json:"filename,omitempty"`
+}
+
+// DeleteApiConstellationSeaweedfsNameParams defines parameters for DeleteApiConstellationSeaweedfsName.
+type DeleteApiConstellationSeaweedfsNameParams struct {
+	// PurgeData Also remove the data volumes on every node
+	PurgeData *bool `form:"purgeData,omitempty" json:"purgeData,omitempty"`
+
+	// KeepFilerDB Keep the auto-provisioned filer database
+	KeepFilerDB *bool `form:"keepFilerDB,omitempty" json:"keepFilerDB,omitempty"`
+}
+
+// GetApiConstellationTagNodesParams defines parameters for GetApiConstellationTagNodes.
+type GetApiConstellationTagNodesParams struct {
+	// Tags Comma-separated tags, ANDed together
+	Tags *string `form:"tags,omitempty" json:"tags,omitempty"`
+}
+
 // GetApiDnsParams defines parameters for GetApiDns.
 type GetApiDnsParams struct {
 	// Url URL to resolve
@@ -1441,11 +1704,11 @@ type GetApiEventsParams struct {
 
 // GetApiFaviconParams defines parameters for GetApiFavicon.
 type GetApiFaviconParams struct {
-	// Q URL-encoded site URL to fetch favicon for
-	Q string `form:"q" json:"q"`
+	// Route Name of the configured route
+	Route *string `form:"route,omitempty" json:"route,omitempty"`
 
-	// Servapp Service app mode flag
-	Servapp *string `form:"servapp,omitempty" json:"servapp,omitempty"`
+	// Openid ID of the configured OpenID client
+	Openid *string `form:"openid,omitempty" json:"openid,omitempty"`
 }
 
 // GetApiImagesParams defines parameters for GetApiImages.
@@ -1505,19 +1768,19 @@ type GetApiNotificationsReadParams struct {
 	Ids string `form:"ids" json:"ids"`
 }
 
-// GetApiPingParams defines parameters for GetApiPing.
-type GetApiPingParams struct {
-	// Q URL-encoded site URL to ping
-	Q string `form:"q" json:"q"`
-
-	// Servapp Service app mode flag
-	Servapp *string `form:"servapp,omitempty" json:"servapp,omitempty"`
-}
-
 // GetApiServappsParams defines parameters for GetApiServapps.
 type GetApiServappsParams struct {
 	// Limit Maximum number of containers to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetApiServappsContainerIdLazyStatusParams defines parameters for GetApiServappsContainerIdLazyStatus.
+type GetApiServappsContainerIdLazyStatusParams struct {
+	// Idle Idle duration before the container is stopped (Go duration, ex 1h)
+	Idle *string `form:"idle,omitempty" json:"idle,omitempty"`
+
+	// StartTimeout Readiness timeout after a wake (Go duration, ex 60s)
+	StartTimeout *string `form:"startTimeout,omitempty" json:"startTimeout,omitempty"`
 }
 
 // GetApiServappsContainerIdLogsParams defines parameters for GetApiServappsContainerIdLogs.
@@ -1616,6 +1879,21 @@ type PostApiConstellationBlockJSONRequestBody = ConstellationDeviceBlockRequestJ
 // PostApiConstellationCreateJSONRequestBody defines body for PostApiConstellationCreate for application/json ContentType.
 type PostApiConstellationCreateJSONRequestBody = PostApiConstellationCreateJSONBody
 
+// PostApiConstellationDatabasesJSONRequestBody defines body for PostApiConstellationDatabases for application/json ContentType.
+type PostApiConstellationDatabasesJSONRequestBody = ProManagedDBCreateRequest
+
+// PostApiConstellationDatabasesRestoreJSONRequestBody defines body for PostApiConstellationDatabasesRestore for application/json ContentType.
+type PostApiConstellationDatabasesRestoreJSONRequestBody = ProManagedDBRestoreRequest
+
+// PutApiConstellationDatabasesNameJSONRequestBody defines body for PutApiConstellationDatabasesName for application/json ContentType.
+type PutApiConstellationDatabasesNameJSONRequestBody = ProManagedDBUpdateRequest
+
+// PutApiConstellationDatabasesNameBackupJSONRequestBody defines body for PutApiConstellationDatabasesNameBackup for application/json ContentType.
+type PutApiConstellationDatabasesNameBackupJSONRequestBody = ProManagedDBBackupRequest
+
+// PostApiConstellationDatabasesNameDatabasesJSONRequestBody defines body for PostApiConstellationDatabasesNameDatabases for application/json ContentType.
+type PostApiConstellationDatabasesNameDatabasesJSONRequestBody = ProManagedDBLogicalRequest
+
 // PostApiConstellationDeploymentsJSONRequestBody defines body for PostApiConstellationDeployments for application/json ContentType.
 type PostApiConstellationDeploymentsJSONRequestBody = ProDeployment
 
@@ -1633,6 +1911,27 @@ type PutApiConstellationDnsKeyJSONRequestBody = UtilsConstellationDNSEntry
 
 // PostApiConstellationEditDeviceJSONRequestBody defines body for PostApiConstellationEditDevice for application/json ContentType.
 type PostApiConstellationEditDeviceJSONRequestBody = ConstellationDeviceEditRequestJSON
+
+// PostApiConstellationRegistriesJSONRequestBody defines body for PostApiConstellationRegistries for application/json ContentType.
+type PostApiConstellationRegistriesJSONRequestBody = ProRegistryCreateRequest
+
+// PutApiConstellationRegistriesNameSettingsJSONRequestBody defines body for PutApiConstellationRegistriesNameSettings for application/json ContentType.
+type PutApiConstellationRegistriesNameSettingsJSONRequestBody = ProRegistrySettingsRequest
+
+// PostApiConstellationRegistriesNameSitesSiteActivateJSONRequestBody defines body for PostApiConstellationRegistriesNameSitesSiteActivate for application/json ContentType.
+type PostApiConstellationRegistriesNameSitesSiteActivateJSONRequestBody = ProRegistryStaticActivateRequest
+
+// PostApiConstellationRegistryAccessesJSONRequestBody defines body for PostApiConstellationRegistryAccesses for application/json ContentType.
+type PostApiConstellationRegistryAccessesJSONRequestBody = ProRegistryAccessCreateRequest
+
+// PutApiConstellationRegistryAccessesNameSettingsJSONRequestBody defines body for PutApiConstellationRegistryAccessesNameSettings for application/json ContentType.
+type PutApiConstellationRegistryAccessesNameSettingsJSONRequestBody = ProRegistryAccessSettingsRequest
+
+// PostApiConstellationRegistryAccessesNameTokensJSONRequestBody defines body for PostApiConstellationRegistryAccessesNameTokens for application/json ContentType.
+type PostApiConstellationRegistryAccessesNameTokensJSONRequestBody = ProRegistryAccessTokenCreateRequest
+
+// PostApiConstellationSeaweedfsJSONRequestBody defines body for PostApiConstellationSeaweedfs for application/json ContentType.
+type PostApiConstellationSeaweedfsJSONRequestBody = ProSeaweedFSCreateRequest
 
 // GetApiCronJSONRequestBody defines body for GetApiCron for application/json ContentType.
 type GetApiCronJSONRequestBody = UtilsCRONConfig
@@ -2201,6 +2500,214 @@ type ClientInterface interface {
 	// Corresponds with POST /api/constellation/create (the `PostApiConstellationCreate` operationId).
 	PostApiConstellationCreate(ctx context.Context, body PostApiConstellationCreateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetApiConstellationDatabases List all managed databases
+	//
+	// Returns every managed database record in the cluster, with live/down
+	// status merged in from node heartbeats (Pro feature). Secrets are
+	// redacted; use the connection endpoint to read them.
+	//
+	// Corresponds with GET /api/constellation/databases (the `GetApiConstellationDatabases` operationId).
+	GetApiConstellationDatabases(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabasesWithBody Provision a managed database instance
+	//
+	// Creates a single-node postgres container on THIS node and records
+	// it in the cluster store (Pro feature). Not scheduled: the node that
+	// serves this request becomes the instance's home node.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+	PostApiConstellationDatabasesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabases Provision a managed database instance
+	//
+	// Creates a single-node postgres container on THIS node and records
+	// it in the cluster store (Pro feature). Not scheduled: the node that
+	// serves this request becomes the instance's home node.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+	PostApiConstellationDatabases(ctx context.Context, body PostApiConstellationDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabasesRestoreWithBody Restore a managed database backup into a new instance
+	//
+	// Restores one snapshot of an instance's backup into a BRAND-NEW
+	// instance on the node serving this request (Pro feature). The source
+	// instance is never modified. Each logical database in the snapshot is
+	// recreated with a FRESHLY generated role password — the roles in the
+	// backup's globals.sql carry password hashes the cluster cannot
+	// reproduce, so that file is kept for manual recovery only.
+	// The repository must be reachable from this node.
+	// Partial failures are reported per database in the response body; the
+	// new instance is kept either way.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+	PostApiConstellationDatabasesRestoreWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabasesRestore Restore a managed database backup into a new instance
+	//
+	// Restores one snapshot of an instance's backup into a BRAND-NEW
+	// instance on the node serving this request (Pro feature). The source
+	// instance is never modified. Each logical database in the snapshot is
+	// recreated with a FRESHLY generated role password — the roles in the
+	// backup's globals.sql carry password hashes the cluster cannot
+	// reproduce, so that file is kept for manual recovery only.
+	// The repository must be reachable from this node.
+	// Partial failures are reported per database in the response body; the
+	// new instance is kept either way.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+	PostApiConstellationDatabasesRestore(ctx context.Context, body PostApiConstellationDatabasesRestoreJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationDatabasesName Delete a managed database instance
+	//
+	// Stops and removes the instance's container on its home node and drops
+	// the record (Pro feature). The data volume is KEPT unless
+	// ?removeVolume=true is passed.
+	//
+	// Corresponds with DELETE /api/constellation/databases/{name} (the `DeleteApiConstellationDatabasesName` operationId).
+	DeleteApiConstellationDatabasesName(ctx context.Context, name string, params *DeleteApiConstellationDatabasesNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationDatabasesName Get a managed database
+	//
+	// Returns one record with live status and, when the home node answers,
+	// its container/server state (Pro feature). Secrets are redacted.
+	//
+	// Corresponds with GET /api/constellation/databases/{name} (the `GetApiConstellationDatabasesName` operationId).
+	GetApiConstellationDatabasesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationDatabasesNameWithBody Update a managed database instance
+	//
+	// Changes settings that do not require recreating the container —
+	// currently only the constellation restriction, which is re-applied to
+	// the instance's proxy route on its home node (Pro feature).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+	PutApiConstellationDatabasesNameWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationDatabasesName Update a managed database instance
+	//
+	// Changes settings that do not require recreating the container —
+	// currently only the constellation restriction, which is re-applied to
+	// the instance's proxy route on its home node (Pro feature).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+	PutApiConstellationDatabasesName(ctx context.Context, name string, body PutApiConstellationDatabasesNameJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationDatabasesNameBackup Remove a managed database's backup configuration
+	//
+	// Clears the instance's backup settings and deregisters its scheduled
+	// jobs (Pro feature). The restic repository and every snapshot in it
+	// are left untouched — but the password is dropped with the record, so
+	// recovering those snapshots afterwards means recovering the password
+	// from the backup password log.
+	//
+	// Corresponds with DELETE /api/constellation/databases/{name}/backup (the `DeleteApiConstellationDatabasesNameBackup` operationId).
+	DeleteApiConstellationDatabasesNameBackup(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationDatabasesNameBackupWithBody Configure backups for a managed database
+	//
+	// Sets the restic repository and schedules for an instance's backups
+	// (Pro feature). The repository is interpreted on the instance's HOME
+	// node and is initialised lazily, on the first run. The repository
+	// password is generated once and never rotated by this endpoint, since
+	// it is the only key to the existing snapshots.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+	PutApiConstellationDatabasesNameBackupWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationDatabasesNameBackup Configure backups for a managed database
+	//
+	// Sets the restic repository and schedules for an instance's backups
+	// (Pro feature). The repository is interpreted on the instance's HOME
+	// node and is initialised lazily, on the first run. The repository
+	// password is generated once and never rotated by this endpoint, since
+	// it is the only key to the existing snapshots.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+	PutApiConstellationDatabasesNameBackup(ctx context.Context, name string, body PutApiConstellationDatabasesNameBackupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabasesNameBackupRun Back up a managed database now
+	//
+	// Starts a backup of the instance on its home node and returns
+	// immediately (Pro feature): a dump plus an upload is unbounded work.
+	// Progress and outcome are reported through the instance's events and
+	// through the snapshot listing.
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/backup/run (the `PostApiConstellationDatabasesNameBackupRun` operationId).
+	PostApiConstellationDatabasesNameBackupRun(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationDatabasesNameBackupSnapshots List a managed database's backup snapshots
+	//
+	// Returns the restic snapshots tagged for this instance, newest first
+	// (Pro feature). An empty list is returned — not an error — while the
+	// repository has not been written to yet.
+	//
+	// Corresponds with GET /api/constellation/databases/{name}/backup/snapshots (the `GetApiConstellationDatabasesNameBackupSnapshots` operationId).
+	GetApiConstellationDatabasesNameBackupSnapshots(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationDatabasesNameConnection Get connection info for a managed database
+	//
+	// Returns the superuser credentials and connection URL for an instance,
+	// plus one URL per logical database (Pro feature). This is the only
+	// endpoint that returns secrets.
+	//
+	// Corresponds with GET /api/constellation/databases/{name}/connection (the `GetApiConstellationDatabasesNameConnection` operationId).
+	GetApiConstellationDatabasesNameConnection(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabasesNameDatabasesWithBody Create a logical database and role
+	//
+	// Creates one application database inside an instance, owned by a
+	// freshly generated role scoped to it (Pro feature). Returns the
+	// credentials once, in the response.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+	PostApiConstellationDatabasesNameDatabasesWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabasesNameDatabases Create a logical database and role
+	//
+	// Creates one application database inside an instance, owned by a
+	// freshly generated role scoped to it (Pro feature). Returns the
+	// credentials once, in the response.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+	PostApiConstellationDatabasesNameDatabases(ctx context.Context, name string, body PostApiConstellationDatabasesNameDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationDatabasesNameDatabasesDatabase Delete a logical database and its role
+	//
+	// Drops one application database inside an instance, terminating its
+	// open sessions first (Pro feature). Destroys that database's data.
+	//
+	// Corresponds with DELETE /api/constellation/databases/{name}/databases/{database} (the `DeleteApiConstellationDatabasesNameDatabasesDatabase` operationId).
+	DeleteApiConstellationDatabasesNameDatabasesDatabase(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationDatabasesNameDatabasesDatabaseRotate Rotate a logical database role's password
+	//
+	// Generates a new password for one application role and returns the new
+	// connection URL (Pro feature). Existing sessions keep working until
+	// they reconnect.
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/databases/{database}/rotate (the `PostApiConstellationDatabasesNameDatabasesDatabaseRotate` operationId).
+	PostApiConstellationDatabasesNameDatabasesDatabaseRotate(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetApiConstellationDeployments List all cluster deployments
 	//
 	// Returns all deployment definitions from the constellation-deployments KV (Pro feature).
@@ -2342,14 +2849,14 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/constellation/dns/{key} (the `PutApiConstellationDnsKey` operationId).
 	PutApiConstellationDnsKey(ctx context.Context, key string, body PutApiConstellationDnsKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostApiConstellationEditDeviceWithBody Edit the current Constellation device properties
+	// PostApiConstellationEditDeviceWithBody Edit Constellation device properties (this device, or another device's tags)
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /api/constellation/edit-device (the `PostApiConstellationEditDevice` operationId).
 	PostApiConstellationEditDeviceWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// PostApiConstellationEditDevice Edit the current Constellation device properties
+	// PostApiConstellationEditDevice Edit Constellation device properties (this device, or another device's tags)
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -2362,6 +2869,33 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /api/constellation/force-reform (the `PostApiConstellationForceReform` operationId).
 	PostApiConstellationForceReform(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationFunctionRuntimes performs a GET /api/constellation/function-runtimes (the `GetApiConstellationFunctionRuntimes` operationId) request.
+	GetApiConstellationFunctionRuntimes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationFunctions performs a GET /api/constellation/functions (the `GetApiConstellationFunctions` operationId) request.
+	GetApiConstellationFunctions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationFunctions performs a POST /api/constellation/functions (the `PostApiConstellationFunctions` operationId) request.
+	PostApiConstellationFunctions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationFunctionsName performs a DELETE /api/constellation/functions/{name} (the `DeleteApiConstellationFunctionsName` operationId) request.
+	DeleteApiConstellationFunctionsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationFunctionsName performs a GET /api/constellation/functions/{name} (the `GetApiConstellationFunctionsName` operationId) request.
+	GetApiConstellationFunctionsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationFunctionsName performs a PUT /api/constellation/functions/{name} (the `PutApiConstellationFunctionsName` operationId) request.
+	PutApiConstellationFunctionsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationFunctionsNameDeploy performs a POST /api/constellation/functions/{name}/deploy (the `PostApiConstellationFunctionsNameDeploy` operationId) request.
+	PostApiConstellationFunctionsNameDeploy(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationFunctionsNameInvoke performs a POST /api/constellation/functions/{name}/invoke (the `PostApiConstellationFunctionsNameInvoke` operationId) request.
+	PostApiConstellationFunctionsNameInvoke(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationFunctionsNameVersions performs a GET /api/constellation/functions/{name}/versions (the `GetApiConstellationFunctionsNameVersions` operationId) request.
+	GetApiConstellationFunctionsNameVersions(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiConstellationGetNextIp Get the next available IP address in the Constellation CIDR range
 	//
@@ -2399,6 +2933,296 @@ type ClientInterface interface {
 	// Corresponds with GET /api/constellation/public-devices (the `GetApiConstellationPublicDevices` operationId).
 	GetApiConstellationPublicDevices(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetApiConstellationRegistries List package registries
+	//
+	// Returns every registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/registries (the `GetApiConstellationRegistries` operationId).
+	GetApiConstellationRegistries(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistriesWithBody Create a package registry
+	//
+	// Claims the name, provisions the backing bucket and marks the registry ready.
+	// A registry is typed storage (docker/npm/static/generic): publish it by creating
+	// an access (Pro feature).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+	PostApiConstellationRegistriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistries Create a package registry
+	//
+	// Claims the name, provisions the backing bucket and marks the registry ready.
+	// A registry is typed storage (docker/npm/static/generic): publish it by creating
+	// an access (Pro feature).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+	PostApiConstellationRegistries(ctx context.Context, body PostApiConstellationRegistriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationRegistriesName Delete a package registry
+	//
+	// Removes the record and every metadata key. Refused while an access
+	// still publishes it. Stored blobs are PRESERVED unless purgeData=true,
+	// which best-effort empties the backing bucket (the bucket itself is
+	// left in place) (Pro feature).
+	//
+	// Corresponds with DELETE /api/constellation/registries/{name} (the `DeleteApiConstellationRegistriesName` operationId).
+	DeleteApiConstellationRegistriesName(ctx context.Context, name string, params *DeleteApiConstellationRegistriesNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistriesName Get one package registry
+	//
+	// Returns the registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/registries/{name} (the `GetApiConstellationRegistriesName` operationId).
+	GetApiConstellationRegistriesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistriesNameGc Run a registry's garbage collection now
+	//
+	// Starts a mark-and-sweep of the registry's blob store and reconciles its
+	// stored-size and package counters. Returns 202 immediately; the outcome
+	// arrives as a cosmos.registry.gc event. Blobs younger than 24 hours are
+	// never collected, whether or not anything references them (Pro feature).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/gc (the `PostApiConstellationRegistriesNameGc` operationId).
+	PostApiConstellationRegistriesNameGc(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistriesNamePackages List the packages of a generic or pypi registry
+	//
+	// Returns every package with its versions and their files (Pro feature).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/packages (the `GetApiConstellationRegistriesNamePackages` operationId).
+	GetApiConstellationRegistriesNamePackages(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistriesNamePackagesPackage Get or delete one generic or pypi package
+	//
+	// GET returns the package with its versions and files; DELETE removes the
+	// package and every version (the stored files are reclaimed by the next
+	// GC pass) (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/packages/{package} (the `GetApiConstellationRegistriesNamePackagesPackage` operationId).
+	GetApiConstellationRegistriesNamePackagesPackage(ctx context.Context, name string, pPackage string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistriesNamePackagesPackageVersions Upload files into a generic package version
+	//
+	// Stores one or more files under a version. Accepts a multipart form (every
+	// file part is stored under its own filename) or a single raw file as the
+	// request body, in which case the filename query parameter is required.
+	// Query parameters: version (default: a UTC timestamp), filename. A file
+	// that already exists in the version is refused (409): upload a new version
+	// or delete it first. Accepts a Cosmos token with the Resources permission
+	// OR a registry deploy token with push scope on an access that exposes this
+	// registry (Pro feature).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/packages/{package}/versions (the `PostApiConstellationRegistriesNamePackagesPackageVersions` operationId).
+	PostApiConstellationRegistriesNamePackagesPackageVersions(ctx context.Context, name string, pPackage string, params *PostApiConstellationRegistriesNamePackagesPackageVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion Delete one generic or pypi package version
+	//
+	// Removes the version and its file entries; the stored files are reclaimed
+	// by the next GC pass. "latest" is re-pointed at the newest remaining
+	// version (Pro feature).
+	//
+	// Corresponds with DELETE /api/constellation/registries/{name}/packages/{package}/versions/{version} (the `DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion` operationId).
+	DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion(ctx context.Context, name string, pPackage string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile Download or delete one file of a generic or pypi package version
+	//
+	// GET streams the file (the version may be "latest"); accepts a Cosmos token
+	// with the Resources read permission OR a registry deploy token with pull
+	// scope. DELETE removes the file entry — and the version, when it was its
+	// last file; the stored bytes are reclaimed by the next GC pass (Pro feature).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/packages/{package}/versions/{version}/files/{file} (the `GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile` operationId).
+	GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile(ctx context.Context, name string, pPackage string, version string, file string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationRegistriesNameSettingsWithBody Update a registry's storage settings
+	//
+	// Replaces the quota. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+	PutApiConstellationRegistriesNameSettingsWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationRegistriesNameSettings Update a registry's storage settings
+	//
+	// Replaces the quota. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+	PutApiConstellationRegistriesNameSettings(ctx context.Context, name string, body PutApiConstellationRegistriesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistriesNameSites List the sites of a static registry
+	//
+	// Returns every site with its deployments, which one is active, and its
+	// route configuration (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/sites (the `GetApiConstellationRegistriesNameSites` operationId).
+	GetApiConstellationRegistriesNameSites(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistriesNameSitesSite Get, configure or delete one static site
+	//
+	// GET returns the site with its deployments; PUT replaces its route
+	// configuration (host, internal, spa, tags — absent fields keep their
+	// stored value); DELETE removes the site and all its deployments (the
+	// stored zips are reclaimed by the next GC pass) (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/sites/{site} (the `GetApiConstellationRegistriesNameSitesSite` operationId).
+	GetApiConstellationRegistriesNameSitesSite(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistriesNameSitesSiteActivateWithBody Activate a static-site deployment
+	//
+	// Moves the site's active pointer. This is BOTH deploy and rollback: the
+	// deployments are immutable, so switching between them is instant and
+	// cannot half-apply. Accepts a Cosmos token with the Resources permission
+	// OR a registry deploy token with push scope (Pro feature).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+	PostApiConstellationRegistriesNameSitesSiteActivateWithBody(ctx context.Context, name string, site string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistriesNameSitesSiteActivate Activate a static-site deployment
+	//
+	// Moves the site's active pointer. This is BOTH deploy and rollback: the
+	// deployments are immutable, so switching between them is instant and
+	// cannot half-apply. Accepts a Cosmos token with the Resources permission
+	// OR a registry deploy token with push scope (Pro feature).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+	PostApiConstellationRegistriesNameSitesSiteActivate(ctx context.Context, name string, site string, body PostApiConstellationRegistriesNameSitesSiteActivateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistriesNameSitesSiteVersions Upload a static-site deployment
+	//
+	// Stores a zip as one immutable deployment. Accepts a multipart form
+	// (field "file") or the raw zip as the request body. Query parameters:
+	// version (default: a UTC timestamp), activate (default true for the
+	// site's first deployment), host/internal/spa/tags to configure the
+	// site's route on first upload. Accepts a Cosmos token with the
+	// Resources permission OR a registry deploy token with push scope on an
+	// access that exposes this registry (Pro feature).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/versions (the `PostApiConstellationRegistriesNameSitesSiteVersions` operationId).
+	PostApiConstellationRegistriesNameSitesSiteVersions(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion Delete one static-site deployment
+	//
+	// Removes the deployment record; the stored zip is reclaimed by the next
+	// GC pass. Refused for the deployment that is currently active (Pro feature).
+	//
+	// Corresponds with DELETE /api/constellation/registries/{name}/sites/{site}/versions/{version} (the `DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion` operationId).
+	DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload Download one static-site deployment archive
+	//
+	// Streams the zip exactly as it was uploaded (the version may be "active"
+	// for the one currently served). Accepts a Cosmos token with the Resources
+	// read permission OR a registry deploy token with pull scope (Pro feature).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/sites/{site}/versions/{version}/download (the `GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload` operationId).
+	GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistryAccesses List registry accesses
+	//
+	// Returns every registry endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/registry-accesses (the `GetApiConstellationRegistryAccesses` operationId).
+	GetApiConstellationRegistryAccesses(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistryAccessesWithBody Create a registry access
+	//
+	// Publishes one or more registries on a hostname. Every exposed registry
+	// must share ONE type, so an access serves exactly one protocol (several
+	// docker registries are fine — they namespace by path; an npm or generic
+	// access exposes exactly one registry); an empty tag list means every node
+	// serves it; internal restricts the endpoint to the constellation (Pro feature).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+	PostApiConstellationRegistryAccessesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistryAccesses Create a registry access
+	//
+	// Publishes one or more registries on a hostname. Every exposed registry
+	// must share ONE type, so an access serves exactly one protocol (several
+	// docker registries are fine — they namespace by path; an npm or generic
+	// access exposes exactly one registry); an empty tag list means every node
+	// serves it; internal restricts the endpoint to the constellation (Pro feature).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+	PostApiConstellationRegistryAccesses(ctx context.Context, body PostApiConstellationRegistryAccessesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationRegistryAccessesName Delete a registry access
+	//
+	// Removes the endpoint. The registries it published and everything
+	// stored in them are untouched (Pro feature).
+	//
+	// Corresponds with DELETE /api/constellation/registry-accesses/{name} (the `DeleteApiConstellationRegistryAccessesName` operationId).
+	DeleteApiConstellationRegistryAccessesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationRegistryAccessesName Get one registry access
+	//
+	// Returns the endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/registry-accesses/{name} (the `GetApiConstellationRegistryAccessesName` operationId).
+	GetApiConstellationRegistryAccessesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationRegistryAccessesNameSettingsWithBody Update a registry access
+	//
+	// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+	// and/or serving tags. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+	PutApiConstellationRegistryAccessesNameSettingsWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutApiConstellationRegistryAccessesNameSettings Update a registry access
+	//
+	// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+	// and/or serving tags. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+	PutApiConstellationRegistryAccessesNameSettings(ctx context.Context, name string, body PutApiConstellationRegistryAccessesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistryAccessesNameTokensWithBody Mint a registry deploy token
+	//
+	// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+	// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+	PostApiConstellationRegistryAccessesNameTokensWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationRegistryAccessesNameTokens Mint a registry deploy token
+	//
+	// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+	// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+	PostApiConstellationRegistryAccessesNameTokens(ctx context.Context, name string, body PostApiConstellationRegistryAccessesNameTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationRegistryAccessesNameTokensTokenName Delete a registry deploy token
+	//
+	// Revokes the token on every node (Pro feature).
+	//
+	// Corresponds with DELETE /api/constellation/registry-accesses/{name}/tokens/{tokenName} (the `DeleteApiConstellationRegistryAccessesNameTokensTokenName` operationId).
+	DeleteApiConstellationRegistryAccessesNameTokensTokenName(ctx context.Context, name string, tokenName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetApiConstellationReset Reset the Nebula VPN configuration
 	//
 	// Corresponds with GET /api/constellation/reset (the `GetApiConstellationReset` operationId).
@@ -2408,6 +3232,57 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/constellation/restart (the `GetApiConstellationRestart` operationId).
 	GetApiConstellationRestart(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationSeaweedfs List managed SeaweedFS instances
+	//
+	// Returns every instance with heartbeat-derived status, secrets redacted (Pro feature)
+	//
+	// Corresponds with GET /api/constellation/seaweedfs (the `GetApiConstellationSeaweedfs` operationId).
+	GetApiConstellationSeaweedfs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationSeaweedfsWithBody Create a managed SeaweedFS instance
+	//
+	// Provisions 3 pinned masters on the first three constellation managers,
+	// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+	// deployment behind the tunnel LB, and a managed postgres for the filer
+	// store (Pro feature). Refused when fewer than 3 managers are online.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+	PostApiConstellationSeaweedfsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiConstellationSeaweedfs Create a managed SeaweedFS instance
+	//
+	// Provisions 3 pinned masters on the first three constellation managers,
+	// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+	// deployment behind the tunnel LB, and a managed postgres for the filer
+	// store (Pro feature). Refused when fewer than 3 managers are online.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+	PostApiConstellationSeaweedfs(ctx context.Context, body PostApiConstellationSeaweedfsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiConstellationSeaweedfsName Delete a managed SeaweedFS instance
+	//
+	// Tears down deployments, masters and (by default) the filer database.
+	// Volume-server data volumes are PRESERVED unless purgeData=true;
+	// keepFilerDB=true keeps the managed database entirely (Pro feature).
+	//
+	// Corresponds with DELETE /api/constellation/seaweedfs/{name} (the `DeleteApiConstellationSeaweedfsName` operationId).
+	DeleteApiConstellationSeaweedfsName(ctx context.Context, name string, params *DeleteApiConstellationSeaweedfsNameParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiConstellationTagNodes Which nodes a tag set selects
+	//
+	// Returns the nodes whose tags satisfy every requested tag (AND
+	// semantics; an empty tag set matches every node), each flagged with
+	// whether it is currently heartbeating, plus the cluster totals the
+	// UI needs for a "matches N of M nodes" hint (Pro feature).
+	// Read-only and answerable from any node.
+	//
+	// Corresponds with GET /api/constellation/tag-nodes (the `GetApiConstellationTagNodes` operationId).
+	GetApiConstellationTagNodes(ctx context.Context, params *GetApiConstellationTagNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiConstellationTunnels List all active Constellation tunnels
 	//
@@ -2547,9 +3422,9 @@ type ClientInterface interface {
 	// Corresponds with GET /api/events (the `GetApiEvents` operationId).
 	GetApiEvents(ctx context.Context, params *GetApiEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetApiFavicon Get favicon for a URL
+	// GetApiFavicon Get favicon for a route or OpenID client
 	//
-	// Fetches and caches the favicon for the given URL, returning it as an image
+	// Fetches and caches the favicon of a configured route or OpenID client, returning it as an image. Exactly one of route or openid must be given.
 	//
 	// Corresponds with GET /api/favicon (the `GetApiFavicon` operationId).
 	GetApiFavicon(ctx context.Context, params *GetApiFaviconParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3000,13 +3875,6 @@ type ClientInterface interface {
 	// Corresponds with POST /api/password-reset (the `PostApiPasswordReset` operationId).
 	PostApiPasswordReset(ctx context.Context, body PostApiPasswordResetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetApiPing Ping a URL
-	//
-	// Checks if a URL is reachable and returns a non-5xx response.
-	//
-	// Corresponds with GET /api/ping (the `GetApiPing` operationId).
-	GetApiPing(ctx context.Context, params *GetApiPingParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// GetApiRcloneRestart Restart all RClone remote storage mounts
 	//
 	// Corresponds with GET /api/rclone-restart (the `GetApiRcloneRestart` operationId).
@@ -3130,6 +3998,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/servapps/{containerId}/export (the `GetApiServappsContainerIdExport` operationId).
 	GetApiServappsContainerIdExport(ctx context.Context, containerId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiServappsContainerIdLazyStatus Enable or disable lazy start (stop when idle) for a Docker container
+	//
+	// Corresponds with GET /api/servapps/{containerId}/lazy/{status} (the `GetApiServappsContainerIdLazyStatus` operationId).
+	GetApiServappsContainerIdLazyStatus(ctx context.Context, containerId string, status string, params *GetApiServappsContainerIdLazyStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiServappsContainerIdLogs Retrieve logs for a Docker container
 	//
@@ -4346,6 +5219,404 @@ func (c *Client) PostApiConstellationCreate(ctx context.Context, body PostApiCon
 	return c.Client.Do(req)
 }
 
+// GetApiConstellationDatabases List all managed databases
+//
+// Returns every managed database record in the cluster, with live/down
+// status merged in from node heartbeats (Pro feature). Secrets are
+// redacted; use the connection endpoint to read them.
+//
+// Corresponds with GET /api/constellation/databases (the `GetApiConstellationDatabases` operationId).
+func (c *Client) GetApiConstellationDatabases(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationDatabasesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabasesWithBody Provision a managed database instance
+//
+// Creates a single-node postgres container on THIS node and records
+// it in the cluster store (Pro feature). Not scheduled: the node that
+// serves this request becomes the instance's home node.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+func (c *Client) PostApiConstellationDatabasesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabases Provision a managed database instance
+//
+// Creates a single-node postgres container on THIS node and records
+// it in the cluster store (Pro feature). Not scheduled: the node that
+// serves this request becomes the instance's home node.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+func (c *Client) PostApiConstellationDatabases(ctx context.Context, body PostApiConstellationDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabasesRestoreWithBody Restore a managed database backup into a new instance
+//
+// Restores one snapshot of an instance's backup into a BRAND-NEW
+// instance on the node serving this request (Pro feature). The source
+// instance is never modified. Each logical database in the snapshot is
+// recreated with a FRESHLY generated role password — the roles in the
+// backup's globals.sql carry password hashes the cluster cannot
+// reproduce, so that file is kept for manual recovery only.
+// The repository must be reachable from this node.
+// Partial failures are reported per database in the response body; the
+// new instance is kept either way.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+func (c *Client) PostApiConstellationDatabasesRestoreWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesRestoreRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabasesRestore Restore a managed database backup into a new instance
+//
+// Restores one snapshot of an instance's backup into a BRAND-NEW
+// instance on the node serving this request (Pro feature). The source
+// instance is never modified. Each logical database in the snapshot is
+// recreated with a FRESHLY generated role password — the roles in the
+// backup's globals.sql carry password hashes the cluster cannot
+// reproduce, so that file is kept for manual recovery only.
+// The repository must be reachable from this node.
+// Partial failures are reported per database in the response body; the
+// new instance is kept either way.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+func (c *Client) PostApiConstellationDatabasesRestore(ctx context.Context, body PostApiConstellationDatabasesRestoreJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesRestoreRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationDatabasesName Delete a managed database instance
+//
+// Stops and removes the instance's container on its home node and drops
+// the record (Pro feature). The data volume is KEPT unless
+// ?removeVolume=true is passed.
+//
+// Corresponds with DELETE /api/constellation/databases/{name} (the `DeleteApiConstellationDatabasesName` operationId).
+func (c *Client) DeleteApiConstellationDatabasesName(ctx context.Context, name string, params *DeleteApiConstellationDatabasesNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationDatabasesNameRequest(c.Server, name, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationDatabasesName Get a managed database
+//
+// Returns one record with live status and, when the home node answers,
+// its container/server state (Pro feature). Secrets are redacted.
+//
+// Corresponds with GET /api/constellation/databases/{name} (the `GetApiConstellationDatabasesName` operationId).
+func (c *Client) GetApiConstellationDatabasesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationDatabasesNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationDatabasesNameWithBody Update a managed database instance
+//
+// Changes settings that do not require recreating the container —
+// currently only the constellation restriction, which is re-applied to
+// the instance's proxy route on its home node (Pro feature).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+func (c *Client) PutApiConstellationDatabasesNameWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationDatabasesNameRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationDatabasesName Update a managed database instance
+//
+// Changes settings that do not require recreating the container —
+// currently only the constellation restriction, which is re-applied to
+// the instance's proxy route on its home node (Pro feature).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+func (c *Client) PutApiConstellationDatabasesName(ctx context.Context, name string, body PutApiConstellationDatabasesNameJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationDatabasesNameRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationDatabasesNameBackup Remove a managed database's backup configuration
+//
+// Clears the instance's backup settings and deregisters its scheduled
+// jobs (Pro feature). The restic repository and every snapshot in it
+// are left untouched — but the password is dropped with the record, so
+// recovering those snapshots afterwards means recovering the password
+// from the backup password log.
+//
+// Corresponds with DELETE /api/constellation/databases/{name}/backup (the `DeleteApiConstellationDatabasesNameBackup` operationId).
+func (c *Client) DeleteApiConstellationDatabasesNameBackup(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationDatabasesNameBackupRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationDatabasesNameBackupWithBody Configure backups for a managed database
+//
+// Sets the restic repository and schedules for an instance's backups
+// (Pro feature). The repository is interpreted on the instance's HOME
+// node and is initialised lazily, on the first run. The repository
+// password is generated once and never rotated by this endpoint, since
+// it is the only key to the existing snapshots.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+func (c *Client) PutApiConstellationDatabasesNameBackupWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationDatabasesNameBackupRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationDatabasesNameBackup Configure backups for a managed database
+//
+// Sets the restic repository and schedules for an instance's backups
+// (Pro feature). The repository is interpreted on the instance's HOME
+// node and is initialised lazily, on the first run. The repository
+// password is generated once and never rotated by this endpoint, since
+// it is the only key to the existing snapshots.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+func (c *Client) PutApiConstellationDatabasesNameBackup(ctx context.Context, name string, body PutApiConstellationDatabasesNameBackupJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationDatabasesNameBackupRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabasesNameBackupRun Back up a managed database now
+//
+// Starts a backup of the instance on its home node and returns
+// immediately (Pro feature): a dump plus an upload is unbounded work.
+// Progress and outcome are reported through the instance's events and
+// through the snapshot listing.
+//
+// Corresponds with POST /api/constellation/databases/{name}/backup/run (the `PostApiConstellationDatabasesNameBackupRun` operationId).
+func (c *Client) PostApiConstellationDatabasesNameBackupRun(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesNameBackupRunRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationDatabasesNameBackupSnapshots List a managed database's backup snapshots
+//
+// Returns the restic snapshots tagged for this instance, newest first
+// (Pro feature). An empty list is returned — not an error — while the
+// repository has not been written to yet.
+//
+// Corresponds with GET /api/constellation/databases/{name}/backup/snapshots (the `GetApiConstellationDatabasesNameBackupSnapshots` operationId).
+func (c *Client) GetApiConstellationDatabasesNameBackupSnapshots(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationDatabasesNameBackupSnapshotsRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationDatabasesNameConnection Get connection info for a managed database
+//
+// Returns the superuser credentials and connection URL for an instance,
+// plus one URL per logical database (Pro feature). This is the only
+// endpoint that returns secrets.
+//
+// Corresponds with GET /api/constellation/databases/{name}/connection (the `GetApiConstellationDatabasesNameConnection` operationId).
+func (c *Client) GetApiConstellationDatabasesNameConnection(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationDatabasesNameConnectionRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabasesNameDatabasesWithBody Create a logical database and role
+//
+// Creates one application database inside an instance, owned by a
+// freshly generated role scoped to it (Pro feature). Returns the
+// credentials once, in the response.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+func (c *Client) PostApiConstellationDatabasesNameDatabasesWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesNameDatabasesRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabasesNameDatabases Create a logical database and role
+//
+// Creates one application database inside an instance, owned by a
+// freshly generated role scoped to it (Pro feature). Returns the
+// credentials once, in the response.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+func (c *Client) PostApiConstellationDatabasesNameDatabases(ctx context.Context, name string, body PostApiConstellationDatabasesNameDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesNameDatabasesRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationDatabasesNameDatabasesDatabase Delete a logical database and its role
+//
+// Drops one application database inside an instance, terminating its
+// open sessions first (Pro feature). Destroys that database's data.
+//
+// Corresponds with DELETE /api/constellation/databases/{name}/databases/{database} (the `DeleteApiConstellationDatabasesNameDatabasesDatabase` operationId).
+func (c *Client) DeleteApiConstellationDatabasesNameDatabasesDatabase(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationDatabasesNameDatabasesDatabaseRequest(c.Server, name, database)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationDatabasesNameDatabasesDatabaseRotate Rotate a logical database role's password
+//
+// Generates a new password for one application role and returns the new
+// connection URL (Pro feature). Existing sessions keep working until
+// they reconnect.
+//
+// Corresponds with POST /api/constellation/databases/{name}/databases/{database}/rotate (the `PostApiConstellationDatabasesNameDatabasesDatabaseRotate` operationId).
+func (c *Client) PostApiConstellationDatabasesNameDatabasesDatabaseRotate(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationDatabasesNameDatabasesDatabaseRotateRequest(c.Server, name, database)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetApiConstellationDeployments List all cluster deployments
 //
 // Returns all deployment definitions from the constellation-deployments KV (Pro feature).
@@ -4687,7 +5958,7 @@ func (c *Client) PutApiConstellationDnsKey(ctx context.Context, key string, body
 	return c.Client.Do(req)
 }
 
-// PostApiConstellationEditDeviceWithBody Edit the current Constellation device properties
+// PostApiConstellationEditDeviceWithBody Edit Constellation device properties (this device, or another device's tags)
 //
 // Takes any type of body and a specified content type.
 //
@@ -4704,7 +5975,7 @@ func (c *Client) PostApiConstellationEditDeviceWithBody(ctx context.Context, con
 	return c.Client.Do(req)
 }
 
-// PostApiConstellationEditDevice Edit the current Constellation device properties
+// PostApiConstellationEditDevice Edit Constellation device properties (this device, or another device's tags)
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4728,6 +5999,123 @@ func (c *Client) PostApiConstellationEditDevice(ctx context.Context, body PostAp
 // Corresponds with POST /api/constellation/force-reform (the `PostApiConstellationForceReform` operationId).
 func (c *Client) PostApiConstellationForceReform(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostApiConstellationForceReformRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationFunctionRuntimes performs a GET /api/constellation/function-runtimes (the `GetApiConstellationFunctionRuntimes` operationId) request.
+func (c *Client) GetApiConstellationFunctionRuntimes(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationFunctionRuntimesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationFunctions performs a GET /api/constellation/functions (the `GetApiConstellationFunctions` operationId) request.
+func (c *Client) GetApiConstellationFunctions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationFunctionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationFunctions performs a POST /api/constellation/functions (the `PostApiConstellationFunctions` operationId) request.
+func (c *Client) PostApiConstellationFunctions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationFunctionsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationFunctionsName performs a DELETE /api/constellation/functions/{name} (the `DeleteApiConstellationFunctionsName` operationId) request.
+func (c *Client) DeleteApiConstellationFunctionsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationFunctionsNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationFunctionsName performs a GET /api/constellation/functions/{name} (the `GetApiConstellationFunctionsName` operationId) request.
+func (c *Client) GetApiConstellationFunctionsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationFunctionsNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationFunctionsName performs a PUT /api/constellation/functions/{name} (the `PutApiConstellationFunctionsName` operationId) request.
+func (c *Client) PutApiConstellationFunctionsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationFunctionsNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationFunctionsNameDeploy performs a POST /api/constellation/functions/{name}/deploy (the `PostApiConstellationFunctionsNameDeploy` operationId) request.
+func (c *Client) PostApiConstellationFunctionsNameDeploy(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationFunctionsNameDeployRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationFunctionsNameInvoke performs a POST /api/constellation/functions/{name}/invoke (the `PostApiConstellationFunctionsNameInvoke` operationId) request.
+func (c *Client) PostApiConstellationFunctionsNameInvoke(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationFunctionsNameInvokeRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationFunctionsNameVersions performs a GET /api/constellation/functions/{name}/versions (the `GetApiConstellationFunctionsNameVersions` operationId) request.
+func (c *Client) GetApiConstellationFunctionsNameVersions(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationFunctionsNameVersionsRequest(c.Server, name)
 	if err != nil {
 		return nil, err
 	}
@@ -4834,6 +6222,596 @@ func (c *Client) GetApiConstellationPublicDevices(ctx context.Context, reqEditor
 	return c.Client.Do(req)
 }
 
+// GetApiConstellationRegistries List package registries
+//
+// Returns every registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+//
+// Corresponds with GET /api/constellation/registries (the `GetApiConstellationRegistries` operationId).
+func (c *Client) GetApiConstellationRegistries(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistriesWithBody Create a package registry
+//
+// Claims the name, provisions the backing bucket and marks the registry ready.
+// A registry is typed storage (docker/npm/static/generic): publish it by creating
+// an access (Pro feature).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+func (c *Client) PostApiConstellationRegistriesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistriesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistries Create a package registry
+//
+// Claims the name, provisions the backing bucket and marks the registry ready.
+// A registry is typed storage (docker/npm/static/generic): publish it by creating
+// an access (Pro feature).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+func (c *Client) PostApiConstellationRegistries(ctx context.Context, body PostApiConstellationRegistriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistriesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationRegistriesName Delete a package registry
+//
+// Removes the record and every metadata key. Refused while an access
+// still publishes it. Stored blobs are PRESERVED unless purgeData=true,
+// which best-effort empties the backing bucket (the bucket itself is
+// left in place) (Pro feature).
+//
+// Corresponds with DELETE /api/constellation/registries/{name} (the `DeleteApiConstellationRegistriesName` operationId).
+func (c *Client) DeleteApiConstellationRegistriesName(ctx context.Context, name string, params *DeleteApiConstellationRegistriesNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationRegistriesNameRequest(c.Server, name, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistriesName Get one package registry
+//
+// Returns the registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+//
+// Corresponds with GET /api/constellation/registries/{name} (the `GetApiConstellationRegistriesName` operationId).
+func (c *Client) GetApiConstellationRegistriesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistriesNameGc Run a registry's garbage collection now
+//
+// Starts a mark-and-sweep of the registry's blob store and reconciles its
+// stored-size and package counters. Returns 202 immediately; the outcome
+// arrives as a cosmos.registry.gc event. Blobs younger than 24 hours are
+// never collected, whether or not anything references them (Pro feature).
+//
+// Corresponds with POST /api/constellation/registries/{name}/gc (the `PostApiConstellationRegistriesNameGc` operationId).
+func (c *Client) PostApiConstellationRegistriesNameGc(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistriesNameGcRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistriesNamePackages List the packages of a generic or pypi registry
+//
+// Returns every package with its versions and their files (Pro feature).
+//
+// Corresponds with GET /api/constellation/registries/{name}/packages (the `GetApiConstellationRegistriesNamePackages` operationId).
+func (c *Client) GetApiConstellationRegistriesNamePackages(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesNamePackagesRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistriesNamePackagesPackage Get or delete one generic or pypi package
+//
+// GET returns the package with its versions and files; DELETE removes the
+// package and every version (the stored files are reclaimed by the next
+// GC pass) (Pro feature)
+//
+// Corresponds with GET /api/constellation/registries/{name}/packages/{package} (the `GetApiConstellationRegistriesNamePackagesPackage` operationId).
+func (c *Client) GetApiConstellationRegistriesNamePackagesPackage(ctx context.Context, name string, pPackage string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesNamePackagesPackageRequest(c.Server, name, pPackage)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistriesNamePackagesPackageVersions Upload files into a generic package version
+//
+// Stores one or more files under a version. Accepts a multipart form (every
+// file part is stored under its own filename) or a single raw file as the
+// request body, in which case the filename query parameter is required.
+// Query parameters: version (default: a UTC timestamp), filename. A file
+// that already exists in the version is refused (409): upload a new version
+// or delete it first. Accepts a Cosmos token with the Resources permission
+// OR a registry deploy token with push scope on an access that exposes this
+// registry (Pro feature).
+//
+// Corresponds with POST /api/constellation/registries/{name}/packages/{package}/versions (the `PostApiConstellationRegistriesNamePackagesPackageVersions` operationId).
+func (c *Client) PostApiConstellationRegistriesNamePackagesPackageVersions(ctx context.Context, name string, pPackage string, params *PostApiConstellationRegistriesNamePackagesPackageVersionsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistriesNamePackagesPackageVersionsRequest(c.Server, name, pPackage, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion Delete one generic or pypi package version
+//
+// Removes the version and its file entries; the stored files are reclaimed
+// by the next GC pass. "latest" is re-pointed at the newest remaining
+// version (Pro feature).
+//
+// Corresponds with DELETE /api/constellation/registries/{name}/packages/{package}/versions/{version} (the `DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion` operationId).
+func (c *Client) DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion(ctx context.Context, name string, pPackage string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionRequest(c.Server, name, pPackage, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile Download or delete one file of a generic or pypi package version
+//
+// GET streams the file (the version may be "latest"); accepts a Cosmos token
+// with the Resources read permission OR a registry deploy token with pull
+// scope. DELETE removes the file entry — and the version, when it was its
+// last file; the stored bytes are reclaimed by the next GC pass (Pro feature).
+//
+// Corresponds with GET /api/constellation/registries/{name}/packages/{package}/versions/{version}/files/{file} (the `GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile` operationId).
+func (c *Client) GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile(ctx context.Context, name string, pPackage string, version string, file string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileRequest(c.Server, name, pPackage, version, file)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationRegistriesNameSettingsWithBody Update a registry's storage settings
+//
+// Replaces the quota. Absent fields keep their stored value (Pro feature).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+func (c *Client) PutApiConstellationRegistriesNameSettingsWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationRegistriesNameSettingsRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationRegistriesNameSettings Update a registry's storage settings
+//
+// Replaces the quota. Absent fields keep their stored value (Pro feature).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+func (c *Client) PutApiConstellationRegistriesNameSettings(ctx context.Context, name string, body PutApiConstellationRegistriesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationRegistriesNameSettingsRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistriesNameSites List the sites of a static registry
+//
+// Returns every site with its deployments, which one is active, and its
+// route configuration (Pro feature)
+//
+// Corresponds with GET /api/constellation/registries/{name}/sites (the `GetApiConstellationRegistriesNameSites` operationId).
+func (c *Client) GetApiConstellationRegistriesNameSites(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesNameSitesRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistriesNameSitesSite Get, configure or delete one static site
+//
+// GET returns the site with its deployments; PUT replaces its route
+// configuration (host, internal, spa, tags — absent fields keep their
+// stored value); DELETE removes the site and all its deployments (the
+// stored zips are reclaimed by the next GC pass) (Pro feature)
+//
+// Corresponds with GET /api/constellation/registries/{name}/sites/{site} (the `GetApiConstellationRegistriesNameSitesSite` operationId).
+func (c *Client) GetApiConstellationRegistriesNameSitesSite(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesNameSitesSiteRequest(c.Server, name, site)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistriesNameSitesSiteActivateWithBody Activate a static-site deployment
+//
+// Moves the site's active pointer. This is BOTH deploy and rollback: the
+// deployments are immutable, so switching between them is instant and
+// cannot half-apply. Accepts a Cosmos token with the Resources permission
+// OR a registry deploy token with push scope (Pro feature).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+func (c *Client) PostApiConstellationRegistriesNameSitesSiteActivateWithBody(ctx context.Context, name string, site string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistriesNameSitesSiteActivateRequestWithBody(c.Server, name, site, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistriesNameSitesSiteActivate Activate a static-site deployment
+//
+// Moves the site's active pointer. This is BOTH deploy and rollback: the
+// deployments are immutable, so switching between them is instant and
+// cannot half-apply. Accepts a Cosmos token with the Resources permission
+// OR a registry deploy token with push scope (Pro feature).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+func (c *Client) PostApiConstellationRegistriesNameSitesSiteActivate(ctx context.Context, name string, site string, body PostApiConstellationRegistriesNameSitesSiteActivateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistriesNameSitesSiteActivateRequest(c.Server, name, site, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistriesNameSitesSiteVersions Upload a static-site deployment
+//
+// Stores a zip as one immutable deployment. Accepts a multipart form
+// (field "file") or the raw zip as the request body. Query parameters:
+// version (default: a UTC timestamp), activate (default true for the
+// site's first deployment), host/internal/spa/tags to configure the
+// site's route on first upload. Accepts a Cosmos token with the
+// Resources permission OR a registry deploy token with push scope on an
+// access that exposes this registry (Pro feature).
+//
+// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/versions (the `PostApiConstellationRegistriesNameSitesSiteVersions` operationId).
+func (c *Client) PostApiConstellationRegistriesNameSitesSiteVersions(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistriesNameSitesSiteVersionsRequest(c.Server, name, site)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion Delete one static-site deployment
+//
+// Removes the deployment record; the stored zip is reclaimed by the next
+// GC pass. Refused for the deployment that is currently active (Pro feature).
+//
+// Corresponds with DELETE /api/constellation/registries/{name}/sites/{site}/versions/{version} (the `DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion` operationId).
+func (c *Client) DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationRegistriesNameSitesSiteVersionsVersionRequest(c.Server, name, site, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload Download one static-site deployment archive
+//
+// Streams the zip exactly as it was uploaded (the version may be "active"
+// for the one currently served). Accepts a Cosmos token with the Resources
+// read permission OR a registry deploy token with pull scope (Pro feature).
+//
+// Corresponds with GET /api/constellation/registries/{name}/sites/{site}/versions/{version}/download (the `GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload` operationId).
+func (c *Client) GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadRequest(c.Server, name, site, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistryAccesses List registry accesses
+//
+// Returns every registry endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+//
+// Corresponds with GET /api/constellation/registry-accesses (the `GetApiConstellationRegistryAccesses` operationId).
+func (c *Client) GetApiConstellationRegistryAccesses(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistryAccessesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistryAccessesWithBody Create a registry access
+//
+// Publishes one or more registries on a hostname. Every exposed registry
+// must share ONE type, so an access serves exactly one protocol (several
+// docker registries are fine — they namespace by path; an npm or generic
+// access exposes exactly one registry); an empty tag list means every node
+// serves it; internal restricts the endpoint to the constellation (Pro feature).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+func (c *Client) PostApiConstellationRegistryAccessesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistryAccessesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistryAccesses Create a registry access
+//
+// Publishes one or more registries on a hostname. Every exposed registry
+// must share ONE type, so an access serves exactly one protocol (several
+// docker registries are fine — they namespace by path; an npm or generic
+// access exposes exactly one registry); an empty tag list means every node
+// serves it; internal restricts the endpoint to the constellation (Pro feature).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+func (c *Client) PostApiConstellationRegistryAccesses(ctx context.Context, body PostApiConstellationRegistryAccessesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistryAccessesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationRegistryAccessesName Delete a registry access
+//
+// Removes the endpoint. The registries it published and everything
+// stored in them are untouched (Pro feature).
+//
+// Corresponds with DELETE /api/constellation/registry-accesses/{name} (the `DeleteApiConstellationRegistryAccessesName` operationId).
+func (c *Client) DeleteApiConstellationRegistryAccessesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationRegistryAccessesNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationRegistryAccessesName Get one registry access
+//
+// Returns the endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+//
+// Corresponds with GET /api/constellation/registry-accesses/{name} (the `GetApiConstellationRegistryAccessesName` operationId).
+func (c *Client) GetApiConstellationRegistryAccessesName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationRegistryAccessesNameRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationRegistryAccessesNameSettingsWithBody Update a registry access
+//
+// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+// and/or serving tags. Absent fields keep their stored value (Pro feature).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+func (c *Client) PutApiConstellationRegistryAccessesNameSettingsWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationRegistryAccessesNameSettingsRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutApiConstellationRegistryAccessesNameSettings Update a registry access
+//
+// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+// and/or serving tags. Absent fields keep their stored value (Pro feature).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+func (c *Client) PutApiConstellationRegistryAccessesNameSettings(ctx context.Context, name string, body PutApiConstellationRegistryAccessesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiConstellationRegistryAccessesNameSettingsRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistryAccessesNameTokensWithBody Mint a registry deploy token
+//
+// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+func (c *Client) PostApiConstellationRegistryAccessesNameTokensWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistryAccessesNameTokensRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationRegistryAccessesNameTokens Mint a registry deploy token
+//
+// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+func (c *Client) PostApiConstellationRegistryAccessesNameTokens(ctx context.Context, name string, body PostApiConstellationRegistryAccessesNameTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationRegistryAccessesNameTokensRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationRegistryAccessesNameTokensTokenName Delete a registry deploy token
+//
+// Revokes the token on every node (Pro feature).
+//
+// Corresponds with DELETE /api/constellation/registry-accesses/{name}/tokens/{tokenName} (the `DeleteApiConstellationRegistryAccessesNameTokensTokenName` operationId).
+func (c *Client) DeleteApiConstellationRegistryAccessesNameTokensTokenName(ctx context.Context, name string, tokenName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationRegistryAccessesNameTokensTokenNameRequest(c.Server, name, tokenName)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetApiConstellationReset Reset the Nebula VPN configuration
 //
 // Corresponds with GET /api/constellation/reset (the `GetApiConstellationReset` operationId).
@@ -4854,6 +6832,107 @@ func (c *Client) GetApiConstellationReset(ctx context.Context, reqEditors ...Req
 // Corresponds with GET /api/constellation/restart (the `GetApiConstellationRestart` operationId).
 func (c *Client) GetApiConstellationRestart(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetApiConstellationRestartRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationSeaweedfs List managed SeaweedFS instances
+//
+// Returns every instance with heartbeat-derived status, secrets redacted (Pro feature)
+//
+// Corresponds with GET /api/constellation/seaweedfs (the `GetApiConstellationSeaweedfs` operationId).
+func (c *Client) GetApiConstellationSeaweedfs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationSeaweedfsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationSeaweedfsWithBody Create a managed SeaweedFS instance
+//
+// Provisions 3 pinned masters on the first three constellation managers,
+// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+// deployment behind the tunnel LB, and a managed postgres for the filer
+// store (Pro feature). Refused when fewer than 3 managers are online.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+func (c *Client) PostApiConstellationSeaweedfsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationSeaweedfsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostApiConstellationSeaweedfs Create a managed SeaweedFS instance
+//
+// Provisions 3 pinned masters on the first three constellation managers,
+// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+// deployment behind the tunnel LB, and a managed postgres for the filer
+// store (Pro feature). Refused when fewer than 3 managers are online.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+func (c *Client) PostApiConstellationSeaweedfs(ctx context.Context, body PostApiConstellationSeaweedfsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiConstellationSeaweedfsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteApiConstellationSeaweedfsName Delete a managed SeaweedFS instance
+//
+// Tears down deployments, masters and (by default) the filer database.
+// Volume-server data volumes are PRESERVED unless purgeData=true;
+// keepFilerDB=true keeps the managed database entirely (Pro feature).
+//
+// Corresponds with DELETE /api/constellation/seaweedfs/{name} (the `DeleteApiConstellationSeaweedfsName` operationId).
+func (c *Client) DeleteApiConstellationSeaweedfsName(ctx context.Context, name string, params *DeleteApiConstellationSeaweedfsNameParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiConstellationSeaweedfsNameRequest(c.Server, name, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiConstellationTagNodes Which nodes a tag set selects
+//
+// Returns the nodes whose tags satisfy every requested tag (AND
+// semantics; an empty tag set matches every node), each flagged with
+// whether it is currently heartbeating, plus the cluster totals the
+// UI needs for a "matches N of M nodes" hint (Pro feature).
+// Read-only and answerable from any node.
+//
+// Corresponds with GET /api/constellation/tag-nodes (the `GetApiConstellationTagNodes` operationId).
+func (c *Client) GetApiConstellationTagNodes(ctx context.Context, params *GetApiConstellationTagNodesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiConstellationTagNodesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5202,9 +7281,9 @@ func (c *Client) GetApiEvents(ctx context.Context, params *GetApiEventsParams, r
 	return c.Client.Do(req)
 }
 
-// GetApiFavicon Get favicon for a URL
+// GetApiFavicon Get favicon for a route or OpenID client
 //
-// # Fetches and caches the favicon for the given URL, returning it as an image
+// Fetches and caches the favicon of a configured route or OpenID client, returning it as an image. Exactly one of route or openid must be given.
 //
 // Corresponds with GET /api/favicon (the `GetApiFavicon` operationId).
 func (c *Client) GetApiFavicon(ctx context.Context, params *GetApiFaviconParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6285,23 +8364,6 @@ func (c *Client) PostApiPasswordReset(ctx context.Context, body PostApiPasswordR
 	return c.Client.Do(req)
 }
 
-// GetApiPing Ping a URL
-//
-// Checks if a URL is reachable and returns a non-5xx response.
-//
-// Corresponds with GET /api/ping (the `GetApiPing` operationId).
-func (c *Client) GetApiPing(ctx context.Context, params *GetApiPingParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiPingRequest(c.Server, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // GetApiRcloneRestart Restart all RClone remote storage mounts
 //
 // Corresponds with GET /api/rclone-restart (the `GetApiRcloneRestart` operationId).
@@ -6596,6 +8658,21 @@ func (c *Client) GetApiServappsContainerIdCheckUpdate(ctx context.Context, conta
 // Corresponds with GET /api/servapps/{containerId}/export (the `GetApiServappsContainerIdExport` operationId).
 func (c *Client) GetApiServappsContainerIdExport(ctx context.Context, containerId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetApiServappsContainerIdExportRequest(c.Server, containerId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiServappsContainerIdLazyStatus Enable or disable lazy start (stop when idle) for a Docker container
+//
+// Corresponds with GET /api/servapps/{containerId}/lazy/{status} (the `GetApiServappsContainerIdLazyStatus` operationId).
+func (c *Client) GetApiServappsContainerIdLazyStatus(ctx context.Context, containerId string, status string, params *GetApiServappsContainerIdLazyStatusParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiServappsContainerIdLazyStatusRequest(c.Server, containerId, status, params)
 	if err != nil {
 		return nil, err
 	}
@@ -8783,6 +10860,567 @@ func NewPostApiConstellationCreateRequestWithBody(server string, contentType str
 	return req, nil
 }
 
+// NewGetApiConstellationDatabasesRequest constructs an http.Request for the GetApiConstellationDatabases method
+func NewGetApiConstellationDatabasesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationDatabasesRequest calls the generic PostApiConstellationDatabases builder with application/json body
+func NewPostApiConstellationDatabasesRequest(server string, body PostApiConstellationDatabasesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationDatabasesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationDatabasesRequestWithBody constructs an http.Request for the PostApiConstellationDatabases method, with any body, and a specified content type
+func NewPostApiConstellationDatabasesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostApiConstellationDatabasesRestoreRequest calls the generic PostApiConstellationDatabasesRestore builder with application/json body
+func NewPostApiConstellationDatabasesRestoreRequest(server string, body PostApiConstellationDatabasesRestoreJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationDatabasesRestoreRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationDatabasesRestoreRequestWithBody constructs an http.Request for the PostApiConstellationDatabasesRestore method, with any body, and a specified content type
+func NewPostApiConstellationDatabasesRestoreRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/restore")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationDatabasesNameRequest constructs an http.Request for the DeleteApiConstellationDatabasesName method
+func NewDeleteApiConstellationDatabasesNameRequest(server string, name string, params *DeleteApiConstellationDatabasesNameParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.RemoveVolume != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "removeVolume", *params.RemoveVolume, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationDatabasesNameRequest constructs an http.Request for the GetApiConstellationDatabasesName method
+func NewGetApiConstellationDatabasesNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutApiConstellationDatabasesNameRequest calls the generic PutApiConstellationDatabasesName builder with application/json body
+func NewPutApiConstellationDatabasesNameRequest(server string, name string, body PutApiConstellationDatabasesNameJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutApiConstellationDatabasesNameRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewPutApiConstellationDatabasesNameRequestWithBody constructs an http.Request for the PutApiConstellationDatabasesName method, with any body, and a specified content type
+func NewPutApiConstellationDatabasesNameRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationDatabasesNameBackupRequest constructs an http.Request for the DeleteApiConstellationDatabasesNameBackup method
+func NewDeleteApiConstellationDatabasesNameBackupRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/backup", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutApiConstellationDatabasesNameBackupRequest calls the generic PutApiConstellationDatabasesNameBackup builder with application/json body
+func NewPutApiConstellationDatabasesNameBackupRequest(server string, name string, body PutApiConstellationDatabasesNameBackupJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutApiConstellationDatabasesNameBackupRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewPutApiConstellationDatabasesNameBackupRequestWithBody constructs an http.Request for the PutApiConstellationDatabasesNameBackup method, with any body, and a specified content type
+func NewPutApiConstellationDatabasesNameBackupRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/backup", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostApiConstellationDatabasesNameBackupRunRequest constructs an http.Request for the PostApiConstellationDatabasesNameBackupRun method
+func NewPostApiConstellationDatabasesNameBackupRunRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/backup/run", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationDatabasesNameBackupSnapshotsRequest constructs an http.Request for the GetApiConstellationDatabasesNameBackupSnapshots method
+func NewGetApiConstellationDatabasesNameBackupSnapshotsRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/backup/snapshots", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationDatabasesNameConnectionRequest constructs an http.Request for the GetApiConstellationDatabasesNameConnection method
+func NewGetApiConstellationDatabasesNameConnectionRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/connection", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationDatabasesNameDatabasesRequest calls the generic PostApiConstellationDatabasesNameDatabases builder with application/json body
+func NewPostApiConstellationDatabasesNameDatabasesRequest(server string, name string, body PostApiConstellationDatabasesNameDatabasesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationDatabasesNameDatabasesRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationDatabasesNameDatabasesRequestWithBody constructs an http.Request for the PostApiConstellationDatabasesNameDatabases method, with any body, and a specified content type
+func NewPostApiConstellationDatabasesNameDatabasesRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/databases", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationDatabasesNameDatabasesDatabaseRequest constructs an http.Request for the DeleteApiConstellationDatabasesNameDatabasesDatabase method
+func NewDeleteApiConstellationDatabasesNameDatabasesDatabaseRequest(server string, name string, database string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "database", database, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/databases/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationDatabasesNameDatabasesDatabaseRotateRequest constructs an http.Request for the PostApiConstellationDatabasesNameDatabasesDatabaseRotate method
+func NewPostApiConstellationDatabasesNameDatabasesDatabaseRotateRequest(server string, name string, database string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "database", database, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/databases/%s/databases/%s/rotate", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetApiConstellationDeploymentsRequest constructs an http.Request for the GetApiConstellationDeployments method
 func NewGetApiConstellationDeploymentsRequest(server string) (*http.Request, error) {
 	var err error
@@ -9376,6 +12014,291 @@ func NewPostApiConstellationForceReformRequest(server string) (*http.Request, er
 	return req, nil
 }
 
+// NewGetApiConstellationFunctionRuntimesRequest constructs an http.Request for the GetApiConstellationFunctionRuntimes method
+func NewGetApiConstellationFunctionRuntimesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/function-runtimes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationFunctionsRequest constructs an http.Request for the GetApiConstellationFunctions method
+func NewGetApiConstellationFunctionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationFunctionsRequest constructs an http.Request for the PostApiConstellationFunctions method
+func NewPostApiConstellationFunctionsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationFunctionsNameRequest constructs an http.Request for the DeleteApiConstellationFunctionsName method
+func NewDeleteApiConstellationFunctionsNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationFunctionsNameRequest constructs an http.Request for the GetApiConstellationFunctionsName method
+func NewGetApiConstellationFunctionsNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutApiConstellationFunctionsNameRequest constructs an http.Request for the PutApiConstellationFunctionsName method
+func NewPutApiConstellationFunctionsNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationFunctionsNameDeployRequest constructs an http.Request for the PostApiConstellationFunctionsNameDeploy method
+func NewPostApiConstellationFunctionsNameDeployRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions/%s/deploy", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationFunctionsNameInvokeRequest constructs an http.Request for the PostApiConstellationFunctionsNameInvoke method
+func NewPostApiConstellationFunctionsNameInvokeRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions/%s/invoke", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationFunctionsNameVersionsRequest constructs an http.Request for the GetApiConstellationFunctionsNameVersions method
+func NewGetApiConstellationFunctionsNameVersionsRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/functions/%s/versions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetApiConstellationGetNextIpRequest constructs an http.Request for the GetApiConstellationGetNextIp method
 func NewGetApiConstellationGetNextIpRequest(server string) (*http.Request, error) {
 	var err error
@@ -9545,6 +12468,1043 @@ func NewGetApiConstellationPublicDevicesRequest(server string) (*http.Request, e
 	return req, nil
 }
 
+// NewGetApiConstellationRegistriesRequest constructs an http.Request for the GetApiConstellationRegistries method
+func NewGetApiConstellationRegistriesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationRegistriesRequest calls the generic PostApiConstellationRegistries builder with application/json body
+func NewPostApiConstellationRegistriesRequest(server string, body PostApiConstellationRegistriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationRegistriesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationRegistriesRequestWithBody constructs an http.Request for the PostApiConstellationRegistries method, with any body, and a specified content type
+func NewPostApiConstellationRegistriesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationRegistriesNameRequest constructs an http.Request for the DeleteApiConstellationRegistriesName method
+func NewDeleteApiConstellationRegistriesNameRequest(server string, name string, params *DeleteApiConstellationRegistriesNameParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.PurgeData != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "purgeData", *params.PurgeData, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistriesNameRequest constructs an http.Request for the GetApiConstellationRegistriesName method
+func NewGetApiConstellationRegistriesNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationRegistriesNameGcRequest constructs an http.Request for the PostApiConstellationRegistriesNameGc method
+func NewPostApiConstellationRegistriesNameGcRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/gc", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistriesNamePackagesRequest constructs an http.Request for the GetApiConstellationRegistriesNamePackages method
+func NewGetApiConstellationRegistriesNamePackagesRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/packages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistriesNamePackagesPackageRequest constructs an http.Request for the GetApiConstellationRegistriesNamePackagesPackage method
+func NewGetApiConstellationRegistriesNamePackagesPackageRequest(server string, name string, pPackage string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "package", pPackage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/packages/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationRegistriesNamePackagesPackageVersionsRequest constructs an http.Request for the PostApiConstellationRegistriesNamePackagesPackageVersions method
+func NewPostApiConstellationRegistriesNamePackagesPackageVersionsRequest(server string, name string, pPackage string, params *PostApiConstellationRegistriesNamePackagesPackageVersionsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "package", pPackage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/packages/%s/versions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Version != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "version", *params.Version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Filename != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "filename", *params.Filename, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionRequest constructs an http.Request for the DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion method
+func NewDeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionRequest(server string, name string, pPackage string, version string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "package", pPackage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/packages/%s/versions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileRequest constructs an http.Request for the GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile method
+func NewGetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileRequest(server string, name string, pPackage string, version string, file string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "package", pPackage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "file", file, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/packages/%s/versions/%s/files/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutApiConstellationRegistriesNameSettingsRequest calls the generic PutApiConstellationRegistriesNameSettings builder with application/json body
+func NewPutApiConstellationRegistriesNameSettingsRequest(server string, name string, body PutApiConstellationRegistriesNameSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutApiConstellationRegistriesNameSettingsRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewPutApiConstellationRegistriesNameSettingsRequestWithBody constructs an http.Request for the PutApiConstellationRegistriesNameSettings method, with any body, and a specified content type
+func NewPutApiConstellationRegistriesNameSettingsRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistriesNameSitesRequest constructs an http.Request for the GetApiConstellationRegistriesNameSites method
+func NewGetApiConstellationRegistriesNameSitesRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/sites", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistriesNameSitesSiteRequest constructs an http.Request for the GetApiConstellationRegistriesNameSitesSite method
+func NewGetApiConstellationRegistriesNameSitesSiteRequest(server string, name string, site string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "site", site, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/sites/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationRegistriesNameSitesSiteActivateRequest calls the generic PostApiConstellationRegistriesNameSitesSiteActivate builder with application/json body
+func NewPostApiConstellationRegistriesNameSitesSiteActivateRequest(server string, name string, site string, body PostApiConstellationRegistriesNameSitesSiteActivateJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationRegistriesNameSitesSiteActivateRequestWithBody(server, name, site, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationRegistriesNameSitesSiteActivateRequestWithBody constructs an http.Request for the PostApiConstellationRegistriesNameSitesSiteActivate method, with any body, and a specified content type
+func NewPostApiConstellationRegistriesNameSitesSiteActivateRequestWithBody(server string, name string, site string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "site", site, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/sites/%s/activate", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostApiConstellationRegistriesNameSitesSiteVersionsRequest constructs an http.Request for the PostApiConstellationRegistriesNameSitesSiteVersions method
+func NewPostApiConstellationRegistriesNameSitesSiteVersionsRequest(server string, name string, site string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "site", site, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/sites/%s/versions", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationRegistriesNameSitesSiteVersionsVersionRequest constructs an http.Request for the DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion method
+func NewDeleteApiConstellationRegistriesNameSitesSiteVersionsVersionRequest(server string, name string, site string, version string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "site", site, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/sites/%s/versions/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadRequest constructs an http.Request for the GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload method
+func NewGetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadRequest(server string, name string, site string, version string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "site", site, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registries/%s/sites/%s/versions/%s/download", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistryAccessesRequest constructs an http.Request for the GetApiConstellationRegistryAccesses method
+func NewGetApiConstellationRegistryAccessesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registry-accesses")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationRegistryAccessesRequest calls the generic PostApiConstellationRegistryAccesses builder with application/json body
+func NewPostApiConstellationRegistryAccessesRequest(server string, body PostApiConstellationRegistryAccessesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationRegistryAccessesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationRegistryAccessesRequestWithBody constructs an http.Request for the PostApiConstellationRegistryAccesses method, with any body, and a specified content type
+func NewPostApiConstellationRegistryAccessesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registry-accesses")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationRegistryAccessesNameRequest constructs an http.Request for the DeleteApiConstellationRegistryAccessesName method
+func NewDeleteApiConstellationRegistryAccessesNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registry-accesses/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationRegistryAccessesNameRequest constructs an http.Request for the GetApiConstellationRegistryAccessesName method
+func NewGetApiConstellationRegistryAccessesNameRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registry-accesses/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutApiConstellationRegistryAccessesNameSettingsRequest calls the generic PutApiConstellationRegistryAccessesNameSettings builder with application/json body
+func NewPutApiConstellationRegistryAccessesNameSettingsRequest(server string, name string, body PutApiConstellationRegistryAccessesNameSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutApiConstellationRegistryAccessesNameSettingsRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewPutApiConstellationRegistryAccessesNameSettingsRequestWithBody constructs an http.Request for the PutApiConstellationRegistryAccessesNameSettings method, with any body, and a specified content type
+func NewPutApiConstellationRegistryAccessesNameSettingsRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registry-accesses/%s/settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostApiConstellationRegistryAccessesNameTokensRequest calls the generic PostApiConstellationRegistryAccessesNameTokens builder with application/json body
+func NewPostApiConstellationRegistryAccessesNameTokensRequest(server string, name string, body PostApiConstellationRegistryAccessesNameTokensJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationRegistryAccessesNameTokensRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationRegistryAccessesNameTokensRequestWithBody constructs an http.Request for the PostApiConstellationRegistryAccessesNameTokens method, with any body, and a specified content type
+func NewPostApiConstellationRegistryAccessesNameTokensRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registry-accesses/%s/tokens", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationRegistryAccessesNameTokensTokenNameRequest constructs an http.Request for the DeleteApiConstellationRegistryAccessesNameTokensTokenName method
+func NewDeleteApiConstellationRegistryAccessesNameTokensTokenNameRequest(server string, name string, tokenName string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "tokenName", tokenName, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/registry-accesses/%s/tokens/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetApiConstellationResetRequest constructs an http.Request for the GetApiConstellationReset method
 func NewGetApiConstellationResetRequest(server string) (*http.Request, error) {
 	var err error
@@ -9589,6 +13549,200 @@ func NewGetApiConstellationRestartRequest(server string) (*http.Request, error) 
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationSeaweedfsRequest constructs an http.Request for the GetApiConstellationSeaweedfs method
+func NewGetApiConstellationSeaweedfsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/seaweedfs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiConstellationSeaweedfsRequest calls the generic PostApiConstellationSeaweedfs builder with application/json body
+func NewPostApiConstellationSeaweedfsRequest(server string, body PostApiConstellationSeaweedfsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiConstellationSeaweedfsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostApiConstellationSeaweedfsRequestWithBody constructs an http.Request for the PostApiConstellationSeaweedfs method, with any body, and a specified content type
+func NewPostApiConstellationSeaweedfsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/seaweedfs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiConstellationSeaweedfsNameRequest constructs an http.Request for the DeleteApiConstellationSeaweedfsName method
+func NewDeleteApiConstellationSeaweedfsNameRequest(server string, name string, params *DeleteApiConstellationSeaweedfsNameParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/seaweedfs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.PurgeData != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "purgeData", *params.PurgeData, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.KeepFilerDB != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "keepFilerDB", *params.KeepFilerDB, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiConstellationTagNodesRequest constructs an http.Request for the GetApiConstellationTagNodes method
+func NewGetApiConstellationTagNodesRequest(server string, params *GetApiConstellationTagNodesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/constellation/tag-nodes")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Tags != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tags", *params.Tags, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -10223,17 +14377,21 @@ func NewGetApiFaviconRequest(server string, params *GetApiFaviconParams) (*http.
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
-		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-			return nil, err
-		} else {
-			for _, qp := range strings.Split(queryFrag, "&") {
-				rawQueryFragments = append(rawQueryFragments, qp)
+		if params.Route != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "route", *params.Route, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
 			}
+
 		}
 
-		if params.Servapp != nil {
+		if params.Openid != nil {
 
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "servapp", *params.Servapp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "openid", *params.Openid, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -11960,68 +16118,6 @@ func NewPostApiPasswordResetRequestWithBody(server string, contentType string, b
 	return req, nil
 }
 
-// NewGetApiPingRequest constructs an http.Request for the GetApiPing method
-func NewGetApiPingRequest(server string, params *GetApiPingParams) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/ping")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		// queryValues collects non-styled parameters (passthrough, JSON)
-		// that are safe to round-trip through url.Values.Encode().
-		queryValues := queryURL.Query()
-		// rawQueryFragments collects pre-encoded query fragments from
-		// styled parameters, preserving literal commas as delimiters
-		// per the OpenAPI spec (e.g. "color=blue,black,brown").
-		var rawQueryFragments []string
-
-		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-			return nil, err
-		} else {
-			for _, qp := range strings.Split(queryFrag, "&") {
-				rawQueryFragments = append(rawQueryFragments, qp)
-			}
-		}
-
-		if params.Servapp != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "servapp", *params.Servapp, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if encoded := queryValues.Encode(); encoded != "" {
-			rawQueryFragments = append(rawQueryFragments, encoded)
-		}
-		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewGetApiRcloneRestartRequest constructs an http.Request for the GetApiRcloneRestart method
 func NewGetApiRcloneRestartRequest(server string) (*http.Request, error) {
 	var err error
@@ -12539,6 +16635,86 @@ func NewGetApiServappsContainerIdExportRequest(server string, containerId string
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiServappsContainerIdLazyStatusRequest constructs an http.Request for the GetApiServappsContainerIdLazyStatus method
+func NewGetApiServappsContainerIdLazyStatusRequest(server string, containerId string, status string, params *GetApiServappsContainerIdLazyStatusParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "containerId", containerId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "status", status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/servapps/%s/lazy/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Idle != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "idle", *params.Idle, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.StartTimeout != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "startTimeout", *params.StartTimeout, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -14397,6 +18573,232 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/constellation/create (the `PostApiConstellationCreate` operationId).
 	PostApiConstellationCreateWithResponse(ctx context.Context, body PostApiConstellationCreateJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationCreateResponse, error)
 
+	// GetApiConstellationDatabasesWithResponse List all managed databases
+	//
+	// Returns every managed database record in the cluster, with live/down
+	// status merged in from node heartbeats (Pro feature). Secrets are
+	// redacted; use the connection endpoint to read them.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/databases (the `GetApiConstellationDatabases` operationId).
+	GetApiConstellationDatabasesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesResponse, error)
+
+	// PostApiConstellationDatabasesWithBodyWithResponse Provision a managed database instance
+	//
+	// Creates a single-node postgres container on THIS node and records
+	// it in the cluster store (Pro feature). Not scheduled: the node that
+	// serves this request becomes the instance's home node.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+	PostApiConstellationDatabasesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesResponse, error)
+
+	// PostApiConstellationDatabasesWithResponse Provision a managed database instance
+	//
+	// Creates a single-node postgres container on THIS node and records
+	// it in the cluster store (Pro feature). Not scheduled: the node that
+	// serves this request becomes the instance's home node.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+	PostApiConstellationDatabasesWithResponse(ctx context.Context, body PostApiConstellationDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesResponse, error)
+
+	// PostApiConstellationDatabasesRestoreWithBodyWithResponse Restore a managed database backup into a new instance
+	//
+	// Restores one snapshot of an instance's backup into a BRAND-NEW
+	// instance on the node serving this request (Pro feature). The source
+	// instance is never modified. Each logical database in the snapshot is
+	// recreated with a FRESHLY generated role password — the roles in the
+	// backup's globals.sql carry password hashes the cluster cannot
+	// reproduce, so that file is kept for manual recovery only.
+	// The repository must be reachable from this node.
+	// Partial failures are reported per database in the response body; the
+	// new instance is kept either way.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+	PostApiConstellationDatabasesRestoreWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesRestoreResponse, error)
+
+	// PostApiConstellationDatabasesRestoreWithResponse Restore a managed database backup into a new instance
+	//
+	// Restores one snapshot of an instance's backup into a BRAND-NEW
+	// instance on the node serving this request (Pro feature). The source
+	// instance is never modified. Each logical database in the snapshot is
+	// recreated with a FRESHLY generated role password — the roles in the
+	// backup's globals.sql carry password hashes the cluster cannot
+	// reproduce, so that file is kept for manual recovery only.
+	// The repository must be reachable from this node.
+	// Partial failures are reported per database in the response body; the
+	// new instance is kept either way.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+	PostApiConstellationDatabasesRestoreWithResponse(ctx context.Context, body PostApiConstellationDatabasesRestoreJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesRestoreResponse, error)
+
+	// DeleteApiConstellationDatabasesNameWithResponse Delete a managed database instance
+	//
+	// Stops and removes the instance's container on its home node and drops
+	// the record (Pro feature). The data volume is KEPT unless
+	// ?removeVolume=true is passed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/databases/{name} (the `DeleteApiConstellationDatabasesName` operationId).
+	DeleteApiConstellationDatabasesNameWithResponse(ctx context.Context, name string, params *DeleteApiConstellationDatabasesNameParams, reqEditors ...RequestEditorFn) (*DeleteApiConstellationDatabasesNameResponse, error)
+
+	// GetApiConstellationDatabasesNameWithResponse Get a managed database
+	//
+	// Returns one record with live status and, when the home node answers,
+	// its container/server state (Pro feature). Secrets are redacted.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/databases/{name} (the `GetApiConstellationDatabasesName` operationId).
+	GetApiConstellationDatabasesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesNameResponse, error)
+
+	// PutApiConstellationDatabasesNameWithBodyWithResponse Update a managed database instance
+	//
+	// Changes settings that do not require recreating the container —
+	// currently only the constellation restriction, which is re-applied to
+	// the instance's proxy route on its home node (Pro feature).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+	PutApiConstellationDatabasesNameWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameResponse, error)
+
+	// PutApiConstellationDatabasesNameWithResponse Update a managed database instance
+	//
+	// Changes settings that do not require recreating the container —
+	// currently only the constellation restriction, which is re-applied to
+	// the instance's proxy route on its home node (Pro feature).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+	PutApiConstellationDatabasesNameWithResponse(ctx context.Context, name string, body PutApiConstellationDatabasesNameJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameResponse, error)
+
+	// DeleteApiConstellationDatabasesNameBackupWithResponse Remove a managed database's backup configuration
+	//
+	// Clears the instance's backup settings and deregisters its scheduled
+	// jobs (Pro feature). The restic repository and every snapshot in it
+	// are left untouched — but the password is dropped with the record, so
+	// recovering those snapshots afterwards means recovering the password
+	// from the backup password log.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/databases/{name}/backup (the `DeleteApiConstellationDatabasesNameBackup` operationId).
+	DeleteApiConstellationDatabasesNameBackupWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationDatabasesNameBackupResponse, error)
+
+	// PutApiConstellationDatabasesNameBackupWithBodyWithResponse Configure backups for a managed database
+	//
+	// Sets the restic repository and schedules for an instance's backups
+	// (Pro feature). The repository is interpreted on the instance's HOME
+	// node and is initialised lazily, on the first run. The repository
+	// password is generated once and never rotated by this endpoint, since
+	// it is the only key to the existing snapshots.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+	PutApiConstellationDatabasesNameBackupWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameBackupResponse, error)
+
+	// PutApiConstellationDatabasesNameBackupWithResponse Configure backups for a managed database
+	//
+	// Sets the restic repository and schedules for an instance's backups
+	// (Pro feature). The repository is interpreted on the instance's HOME
+	// node and is initialised lazily, on the first run. The repository
+	// password is generated once and never rotated by this endpoint, since
+	// it is the only key to the existing snapshots.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+	PutApiConstellationDatabasesNameBackupWithResponse(ctx context.Context, name string, body PutApiConstellationDatabasesNameBackupJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameBackupResponse, error)
+
+	// PostApiConstellationDatabasesNameBackupRunWithResponse Back up a managed database now
+	//
+	// Starts a backup of the instance on its home node and returns
+	// immediately (Pro feature): a dump plus an upload is unbounded work.
+	// Progress and outcome are reported through the instance's events and
+	// through the snapshot listing.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/backup/run (the `PostApiConstellationDatabasesNameBackupRun` operationId).
+	PostApiConstellationDatabasesNameBackupRunWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameBackupRunResponse, error)
+
+	// GetApiConstellationDatabasesNameBackupSnapshotsWithResponse List a managed database's backup snapshots
+	//
+	// Returns the restic snapshots tagged for this instance, newest first
+	// (Pro feature). An empty list is returned — not an error — while the
+	// repository has not been written to yet.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/databases/{name}/backup/snapshots (the `GetApiConstellationDatabasesNameBackupSnapshots` operationId).
+	GetApiConstellationDatabasesNameBackupSnapshotsWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesNameBackupSnapshotsResponse, error)
+
+	// GetApiConstellationDatabasesNameConnectionWithResponse Get connection info for a managed database
+	//
+	// Returns the superuser credentials and connection URL for an instance,
+	// plus one URL per logical database (Pro feature). This is the only
+	// endpoint that returns secrets.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/databases/{name}/connection (the `GetApiConstellationDatabasesNameConnection` operationId).
+	GetApiConstellationDatabasesNameConnectionWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesNameConnectionResponse, error)
+
+	// PostApiConstellationDatabasesNameDatabasesWithBodyWithResponse Create a logical database and role
+	//
+	// Creates one application database inside an instance, owned by a
+	// freshly generated role scoped to it (Pro feature). Returns the
+	// credentials once, in the response.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+	PostApiConstellationDatabasesNameDatabasesWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameDatabasesResponse, error)
+
+	// PostApiConstellationDatabasesNameDatabasesWithResponse Create a logical database and role
+	//
+	// Creates one application database inside an instance, owned by a
+	// freshly generated role scoped to it (Pro feature). Returns the
+	// credentials once, in the response.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+	PostApiConstellationDatabasesNameDatabasesWithResponse(ctx context.Context, name string, body PostApiConstellationDatabasesNameDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameDatabasesResponse, error)
+
+	// DeleteApiConstellationDatabasesNameDatabasesDatabaseWithResponse Delete a logical database and its role
+	//
+	// Drops one application database inside an instance, terminating its
+	// open sessions first (Pro feature). Destroys that database's data.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/databases/{name}/databases/{database} (the `DeleteApiConstellationDatabasesNameDatabasesDatabase` operationId).
+	DeleteApiConstellationDatabasesNameDatabasesDatabaseWithResponse(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse, error)
+
+	// PostApiConstellationDatabasesNameDatabasesDatabaseRotateWithResponse Rotate a logical database role's password
+	//
+	// Generates a new password for one application role and returns the new
+	// connection URL (Pro feature). Existing sessions keep working until
+	// they reconnect.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/databases/{name}/databases/{database}/rotate (the `PostApiConstellationDatabasesNameDatabasesDatabaseRotate` operationId).
+	PostApiConstellationDatabasesNameDatabasesDatabaseRotateWithResponse(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse, error)
+
 	// GetApiConstellationDeploymentsWithResponse List all cluster deployments
 	//
 	// Returns all deployment definitions from the constellation-deployments KV (Pro feature).
@@ -14558,14 +18960,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/constellation/dns/{key} (the `PutApiConstellationDnsKey` operationId).
 	PutApiConstellationDnsKeyWithResponse(ctx context.Context, key string, body PutApiConstellationDnsKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationDnsKeyResponse, error)
 
-	// PostApiConstellationEditDeviceWithBodyWithResponse Edit the current Constellation device properties
+	// PostApiConstellationEditDeviceWithBodyWithResponse Edit Constellation device properties (this device, or another device's tags)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/constellation/edit-device (the `PostApiConstellationEditDevice` operationId).
 	PostApiConstellationEditDeviceWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationEditDeviceResponse, error)
 
-	// PostApiConstellationEditDeviceWithResponse Edit the current Constellation device properties
+	// PostApiConstellationEditDeviceWithResponse Edit Constellation device properties (this device, or another device's tags)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -14580,6 +18982,51 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /api/constellation/force-reform (the `PostApiConstellationForceReform` operationId).
 	PostApiConstellationForceReformWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostApiConstellationForceReformResponse, error)
+
+	// GetApiConstellationFunctionRuntimesWithResponse performs a GET /api/constellation/function-runtimes (the `GetApiConstellationFunctionRuntimes` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetApiConstellationFunctionRuntimesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionRuntimesResponse, error)
+
+	// GetApiConstellationFunctionsWithResponse performs a GET /api/constellation/functions (the `GetApiConstellationFunctions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetApiConstellationFunctionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionsResponse, error)
+
+	// PostApiConstellationFunctionsWithResponse performs a POST /api/constellation/functions (the `PostApiConstellationFunctions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	PostApiConstellationFunctionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostApiConstellationFunctionsResponse, error)
+
+	// DeleteApiConstellationFunctionsNameWithResponse performs a DELETE /api/constellation/functions/{name} (the `DeleteApiConstellationFunctionsName` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	DeleteApiConstellationFunctionsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationFunctionsNameResponse, error)
+
+	// GetApiConstellationFunctionsNameWithResponse performs a GET /api/constellation/functions/{name} (the `GetApiConstellationFunctionsName` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetApiConstellationFunctionsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionsNameResponse, error)
+
+	// PutApiConstellationFunctionsNameWithResponse performs a PUT /api/constellation/functions/{name} (the `PutApiConstellationFunctionsName` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	PutApiConstellationFunctionsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PutApiConstellationFunctionsNameResponse, error)
+
+	// PostApiConstellationFunctionsNameDeployWithResponse performs a POST /api/constellation/functions/{name}/deploy (the `PostApiConstellationFunctionsNameDeploy` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	PostApiConstellationFunctionsNameDeployWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationFunctionsNameDeployResponse, error)
+
+	// PostApiConstellationFunctionsNameInvokeWithResponse performs a POST /api/constellation/functions/{name}/invoke (the `PostApiConstellationFunctionsNameInvoke` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	PostApiConstellationFunctionsNameInvokeWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationFunctionsNameInvokeResponse, error)
+
+	// GetApiConstellationFunctionsNameVersionsWithResponse performs a GET /api/constellation/functions/{name}/versions (the `GetApiConstellationFunctionsNameVersions` operationId) request.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	GetApiConstellationFunctionsNameVersionsWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionsNameVersionsResponse, error)
 
 	// GetApiConstellationGetNextIpWithResponse Get the next available IP address in the Constellation CIDR range
 	//
@@ -14629,6 +19076,332 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/constellation/public-devices (the `GetApiConstellationPublicDevices` operationId).
 	GetApiConstellationPublicDevicesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationPublicDevicesResponse, error)
 
+	// GetApiConstellationRegistriesWithResponse List package registries
+	//
+	// Returns every registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries (the `GetApiConstellationRegistries` operationId).
+	GetApiConstellationRegistriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesResponse, error)
+
+	// PostApiConstellationRegistriesWithBodyWithResponse Create a package registry
+	//
+	// Claims the name, provisions the backing bucket and marks the registry ready.
+	// A registry is typed storage (docker/npm/static/generic): publish it by creating
+	// an access (Pro feature).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+	PostApiConstellationRegistriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesResponse, error)
+
+	// PostApiConstellationRegistriesWithResponse Create a package registry
+	//
+	// Claims the name, provisions the backing bucket and marks the registry ready.
+	// A registry is typed storage (docker/npm/static/generic): publish it by creating
+	// an access (Pro feature).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+	PostApiConstellationRegistriesWithResponse(ctx context.Context, body PostApiConstellationRegistriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesResponse, error)
+
+	// DeleteApiConstellationRegistriesNameWithResponse Delete a package registry
+	//
+	// Removes the record and every metadata key. Refused while an access
+	// still publishes it. Stored blobs are PRESERVED unless purgeData=true,
+	// which best-effort empties the backing bucket (the bucket itself is
+	// left in place) (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/registries/{name} (the `DeleteApiConstellationRegistriesName` operationId).
+	DeleteApiConstellationRegistriesNameWithResponse(ctx context.Context, name string, params *DeleteApiConstellationRegistriesNameParams, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistriesNameResponse, error)
+
+	// GetApiConstellationRegistriesNameWithResponse Get one package registry
+	//
+	// Returns the registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries/{name} (the `GetApiConstellationRegistriesName` operationId).
+	GetApiConstellationRegistriesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameResponse, error)
+
+	// PostApiConstellationRegistriesNameGcWithResponse Run a registry's garbage collection now
+	//
+	// Starts a mark-and-sweep of the registry's blob store and reconciles its
+	// stored-size and package counters. Returns 202 immediately; the outcome
+	// arrives as a cosmos.registry.gc event. Blobs younger than 24 hours are
+	// never collected, whether or not anything references them (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/gc (the `PostApiConstellationRegistriesNameGc` operationId).
+	PostApiConstellationRegistriesNameGcWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameGcResponse, error)
+
+	// GetApiConstellationRegistriesNamePackagesWithResponse List the packages of a generic or pypi registry
+	//
+	// Returns every package with its versions and their files (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/packages (the `GetApiConstellationRegistriesNamePackages` operationId).
+	GetApiConstellationRegistriesNamePackagesWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNamePackagesResponse, error)
+
+	// GetApiConstellationRegistriesNamePackagesPackageWithResponse Get or delete one generic or pypi package
+	//
+	// GET returns the package with its versions and files; DELETE removes the
+	// package and every version (the stored files are reclaimed by the next
+	// GC pass) (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/packages/{package} (the `GetApiConstellationRegistriesNamePackagesPackage` operationId).
+	GetApiConstellationRegistriesNamePackagesPackageWithResponse(ctx context.Context, name string, pPackage string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNamePackagesPackageResponse, error)
+
+	// PostApiConstellationRegistriesNamePackagesPackageVersionsWithResponse Upload files into a generic package version
+	//
+	// Stores one or more files under a version. Accepts a multipart form (every
+	// file part is stored under its own filename) or a single raw file as the
+	// request body, in which case the filename query parameter is required.
+	// Query parameters: version (default: a UTC timestamp), filename. A file
+	// that already exists in the version is refused (409): upload a new version
+	// or delete it first. Accepts a Cosmos token with the Resources permission
+	// OR a registry deploy token with push scope on an access that exposes this
+	// registry (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/packages/{package}/versions (the `PostApiConstellationRegistriesNamePackagesPackageVersions` operationId).
+	PostApiConstellationRegistriesNamePackagesPackageVersionsWithResponse(ctx context.Context, name string, pPackage string, params *PostApiConstellationRegistriesNamePackagesPackageVersionsParams, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNamePackagesPackageVersionsResponse, error)
+
+	// DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionWithResponse Delete one generic or pypi package version
+	//
+	// Removes the version and its file entries; the stored files are reclaimed
+	// by the next GC pass. "latest" is re-pointed at the newest remaining
+	// version (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/registries/{name}/packages/{package}/versions/{version} (the `DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion` operationId).
+	DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionWithResponse(ctx context.Context, name string, pPackage string, version string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse, error)
+
+	// GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileWithResponse Download or delete one file of a generic or pypi package version
+	//
+	// GET streams the file (the version may be "latest"); accepts a Cosmos token
+	// with the Resources read permission OR a registry deploy token with pull
+	// scope. DELETE removes the file entry — and the version, when it was its
+	// last file; the stored bytes are reclaimed by the next GC pass (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/packages/{package}/versions/{version}/files/{file} (the `GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile` operationId).
+	GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileWithResponse(ctx context.Context, name string, pPackage string, version string, file string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse, error)
+
+	// PutApiConstellationRegistriesNameSettingsWithBodyWithResponse Update a registry's storage settings
+	//
+	// Replaces the quota. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+	PutApiConstellationRegistriesNameSettingsWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistriesNameSettingsResponse, error)
+
+	// PutApiConstellationRegistriesNameSettingsWithResponse Update a registry's storage settings
+	//
+	// Replaces the quota. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+	PutApiConstellationRegistriesNameSettingsWithResponse(ctx context.Context, name string, body PutApiConstellationRegistriesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistriesNameSettingsResponse, error)
+
+	// GetApiConstellationRegistriesNameSitesWithResponse List the sites of a static registry
+	//
+	// Returns every site with its deployments, which one is active, and its
+	// route configuration (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/sites (the `GetApiConstellationRegistriesNameSites` operationId).
+	GetApiConstellationRegistriesNameSitesWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameSitesResponse, error)
+
+	// GetApiConstellationRegistriesNameSitesSiteWithResponse Get, configure or delete one static site
+	//
+	// GET returns the site with its deployments; PUT replaces its route
+	// configuration (host, internal, spa, tags — absent fields keep their
+	// stored value); DELETE removes the site and all its deployments (the
+	// stored zips are reclaimed by the next GC pass) (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/sites/{site} (the `GetApiConstellationRegistriesNameSitesSite` operationId).
+	GetApiConstellationRegistriesNameSitesSiteWithResponse(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameSitesSiteResponse, error)
+
+	// PostApiConstellationRegistriesNameSitesSiteActivateWithBodyWithResponse Activate a static-site deployment
+	//
+	// Moves the site's active pointer. This is BOTH deploy and rollback: the
+	// deployments are immutable, so switching between them is instant and
+	// cannot half-apply. Accepts a Cosmos token with the Resources permission
+	// OR a registry deploy token with push scope (Pro feature).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+	PostApiConstellationRegistriesNameSitesSiteActivateWithBodyWithResponse(ctx context.Context, name string, site string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameSitesSiteActivateResponse, error)
+
+	// PostApiConstellationRegistriesNameSitesSiteActivateWithResponse Activate a static-site deployment
+	//
+	// Moves the site's active pointer. This is BOTH deploy and rollback: the
+	// deployments are immutable, so switching between them is instant and
+	// cannot half-apply. Accepts a Cosmos token with the Resources permission
+	// OR a registry deploy token with push scope (Pro feature).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+	PostApiConstellationRegistriesNameSitesSiteActivateWithResponse(ctx context.Context, name string, site string, body PostApiConstellationRegistriesNameSitesSiteActivateJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameSitesSiteActivateResponse, error)
+
+	// PostApiConstellationRegistriesNameSitesSiteVersionsWithResponse Upload a static-site deployment
+	//
+	// Stores a zip as one immutable deployment. Accepts a multipart form
+	// (field "file") or the raw zip as the request body. Query parameters:
+	// version (default: a UTC timestamp), activate (default true for the
+	// site's first deployment), host/internal/spa/tags to configure the
+	// site's route on first upload. Accepts a Cosmos token with the
+	// Resources permission OR a registry deploy token with push scope on an
+	// access that exposes this registry (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/versions (the `PostApiConstellationRegistriesNameSitesSiteVersions` operationId).
+	PostApiConstellationRegistriesNameSitesSiteVersionsWithResponse(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameSitesSiteVersionsResponse, error)
+
+	// DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionWithResponse Delete one static-site deployment
+	//
+	// Removes the deployment record; the stored zip is reclaimed by the next
+	// GC pass. Refused for the deployment that is currently active (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/registries/{name}/sites/{site}/versions/{version} (the `DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion` operationId).
+	DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionWithResponse(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse, error)
+
+	// GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadWithResponse Download one static-site deployment archive
+	//
+	// Streams the zip exactly as it was uploaded (the version may be "active"
+	// for the one currently served). Accepts a Cosmos token with the Resources
+	// read permission OR a registry deploy token with pull scope (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registries/{name}/sites/{site}/versions/{version}/download (the `GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload` operationId).
+	GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadWithResponse(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse, error)
+
+	// GetApiConstellationRegistryAccessesWithResponse List registry accesses
+	//
+	// Returns every registry endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registry-accesses (the `GetApiConstellationRegistryAccesses` operationId).
+	GetApiConstellationRegistryAccessesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistryAccessesResponse, error)
+
+	// PostApiConstellationRegistryAccessesWithBodyWithResponse Create a registry access
+	//
+	// Publishes one or more registries on a hostname. Every exposed registry
+	// must share ONE type, so an access serves exactly one protocol (several
+	// docker registries are fine — they namespace by path; an npm or generic
+	// access exposes exactly one registry); an empty tag list means every node
+	// serves it; internal restricts the endpoint to the constellation (Pro feature).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+	PostApiConstellationRegistryAccessesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesResponse, error)
+
+	// PostApiConstellationRegistryAccessesWithResponse Create a registry access
+	//
+	// Publishes one or more registries on a hostname. Every exposed registry
+	// must share ONE type, so an access serves exactly one protocol (several
+	// docker registries are fine — they namespace by path; an npm or generic
+	// access exposes exactly one registry); an empty tag list means every node
+	// serves it; internal restricts the endpoint to the constellation (Pro feature).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+	PostApiConstellationRegistryAccessesWithResponse(ctx context.Context, body PostApiConstellationRegistryAccessesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesResponse, error)
+
+	// DeleteApiConstellationRegistryAccessesNameWithResponse Delete a registry access
+	//
+	// Removes the endpoint. The registries it published and everything
+	// stored in them are untouched (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/registry-accesses/{name} (the `DeleteApiConstellationRegistryAccessesName` operationId).
+	DeleteApiConstellationRegistryAccessesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistryAccessesNameResponse, error)
+
+	// GetApiConstellationRegistryAccessesNameWithResponse Get one registry access
+	//
+	// Returns the endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/registry-accesses/{name} (the `GetApiConstellationRegistryAccessesName` operationId).
+	GetApiConstellationRegistryAccessesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistryAccessesNameResponse, error)
+
+	// PutApiConstellationRegistryAccessesNameSettingsWithBodyWithResponse Update a registry access
+	//
+	// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+	// and/or serving tags. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+	PutApiConstellationRegistryAccessesNameSettingsWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistryAccessesNameSettingsResponse, error)
+
+	// PutApiConstellationRegistryAccessesNameSettingsWithResponse Update a registry access
+	//
+	// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+	// and/or serving tags. Absent fields keep their stored value (Pro feature).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+	PutApiConstellationRegistryAccessesNameSettingsWithResponse(ctx context.Context, name string, body PutApiConstellationRegistryAccessesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistryAccessesNameSettingsResponse, error)
+
+	// PostApiConstellationRegistryAccessesNameTokensWithBodyWithResponse Mint a registry deploy token
+	//
+	// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+	// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+	PostApiConstellationRegistryAccessesNameTokensWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesNameTokensResponse, error)
+
+	// PostApiConstellationRegistryAccessesNameTokensWithResponse Mint a registry deploy token
+	//
+	// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+	// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+	PostApiConstellationRegistryAccessesNameTokensWithResponse(ctx context.Context, name string, body PostApiConstellationRegistryAccessesNameTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesNameTokensResponse, error)
+
+	// DeleteApiConstellationRegistryAccessesNameTokensTokenNameWithResponse Delete a registry deploy token
+	//
+	// Revokes the token on every node (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/registry-accesses/{name}/tokens/{tokenName} (the `DeleteApiConstellationRegistryAccessesNameTokensTokenName` operationId).
+	DeleteApiConstellationRegistryAccessesNameTokensTokenNameWithResponse(ctx context.Context, name string, tokenName string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse, error)
+
 	// GetApiConstellationResetWithResponse Reset the Nebula VPN configuration
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -14642,6 +19415,63 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/constellation/restart (the `GetApiConstellationRestart` operationId).
 	GetApiConstellationRestartWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationRestartResponse, error)
+
+	// GetApiConstellationSeaweedfsWithResponse List managed SeaweedFS instances
+	//
+	// Returns every instance with heartbeat-derived status, secrets redacted (Pro feature)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/seaweedfs (the `GetApiConstellationSeaweedfs` operationId).
+	GetApiConstellationSeaweedfsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationSeaweedfsResponse, error)
+
+	// PostApiConstellationSeaweedfsWithBodyWithResponse Create a managed SeaweedFS instance
+	//
+	// Provisions 3 pinned masters on the first three constellation managers,
+	// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+	// deployment behind the tunnel LB, and a managed postgres for the filer
+	// store (Pro feature). Refused when fewer than 3 managers are online.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+	PostApiConstellationSeaweedfsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationSeaweedfsResponse, error)
+
+	// PostApiConstellationSeaweedfsWithResponse Create a managed SeaweedFS instance
+	//
+	// Provisions 3 pinned masters on the first three constellation managers,
+	// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+	// deployment behind the tunnel LB, and a managed postgres for the filer
+	// store (Pro feature). Refused when fewer than 3 managers are online.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+	PostApiConstellationSeaweedfsWithResponse(ctx context.Context, body PostApiConstellationSeaweedfsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationSeaweedfsResponse, error)
+
+	// DeleteApiConstellationSeaweedfsNameWithResponse Delete a managed SeaweedFS instance
+	//
+	// Tears down deployments, masters and (by default) the filer database.
+	// Volume-server data volumes are PRESERVED unless purgeData=true;
+	// keepFilerDB=true keeps the managed database entirely (Pro feature).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/constellation/seaweedfs/{name} (the `DeleteApiConstellationSeaweedfsName` operationId).
+	DeleteApiConstellationSeaweedfsNameWithResponse(ctx context.Context, name string, params *DeleteApiConstellationSeaweedfsNameParams, reqEditors ...RequestEditorFn) (*DeleteApiConstellationSeaweedfsNameResponse, error)
+
+	// GetApiConstellationTagNodesWithResponse Which nodes a tag set selects
+	//
+	// Returns the nodes whose tags satisfy every requested tag (AND
+	// semantics; an empty tag set matches every node), each flagged with
+	// whether it is currently heartbeating, plus the cluster totals the
+	// UI needs for a "matches N of M nodes" hint (Pro feature).
+	// Read-only and answerable from any node.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/constellation/tag-nodes (the `GetApiConstellationTagNodes` operationId).
+	GetApiConstellationTagNodesWithResponse(ctx context.Context, params *GetApiConstellationTagNodesParams, reqEditors ...RequestEditorFn) (*GetApiConstellationTagNodesResponse, error)
 
 	// GetApiConstellationTunnelsWithResponse List all active Constellation tunnels
 	//
@@ -14793,9 +19623,9 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/events (the `GetApiEvents` operationId).
 	GetApiEventsWithResponse(ctx context.Context, params *GetApiEventsParams, reqEditors ...RequestEditorFn) (*GetApiEventsResponse, error)
 
-	// GetApiFaviconWithResponse Get favicon for a URL
+	// GetApiFaviconWithResponse Get favicon for a route or OpenID client
 	//
-	// Fetches and caches the favicon for the given URL, returning it as an image
+	// Fetches and caches the favicon of a configured route or OpenID client, returning it as an image. Exactly one of route or openid must be given.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15300,15 +20130,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/password-reset (the `PostApiPasswordReset` operationId).
 	PostApiPasswordResetWithResponse(ctx context.Context, body PostApiPasswordResetJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiPasswordResetResponse, error)
 
-	// GetApiPingWithResponse Ping a URL
-	//
-	// Checks if a URL is reachable and returns a non-5xx response.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /api/ping (the `GetApiPing` operationId).
-	GetApiPingWithResponse(ctx context.Context, params *GetApiPingParams, reqEditors ...RequestEditorFn) (*GetApiPingResponse, error)
-
 	// GetApiRcloneRestartWithResponse Restart all RClone remote storage mounts
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -15456,6 +20277,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/servapps/{containerId}/export (the `GetApiServappsContainerIdExport` operationId).
 	GetApiServappsContainerIdExportWithResponse(ctx context.Context, containerId string, reqEditors ...RequestEditorFn) (*GetApiServappsContainerIdExportResponse, error)
+
+	// GetApiServappsContainerIdLazyStatusWithResponse Enable or disable lazy start (stop when idle) for a Docker container
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/servapps/{containerId}/lazy/{status} (the `GetApiServappsContainerIdLazyStatus` operationId).
+	GetApiServappsContainerIdLazyStatusWithResponse(ctx context.Context, containerId string, status string, params *GetApiServappsContainerIdLazyStatusParams, reqEditors ...RequestEditorFn) (*GetApiServappsContainerIdLazyStatusResponse, error)
 
 	// GetApiServappsContainerIdLogsWithResponse Retrieve logs for a Docker container
 	//
@@ -17907,6 +22735,867 @@ func (r PostApiConstellationCreateResponse) ContentType() string {
 	return ""
 }
 
+type GetApiConstellationDatabasesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationDatabasesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetApiConstellationDatabasesResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetApiConstellationDatabasesResponse) GetJSON503() *UtilsHTTPErrorResult {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationDatabasesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationDatabasesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationDatabasesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationDatabasesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationDatabasesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationDatabasesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostApiConstellationDatabasesResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostApiConstellationDatabasesResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostApiConstellationDatabasesResponse) GetJSON409() *UtilsHTTPErrorResult {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationDatabasesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationDatabasesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationDatabasesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationDatabasesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationDatabasesRestoreResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationDatabasesRestoreResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostApiConstellationDatabasesRestoreResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostApiConstellationDatabasesRestoreResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostApiConstellationDatabasesRestoreResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostApiConstellationDatabasesRestoreResponse) GetJSON409() *UtilsHTTPErrorResult {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationDatabasesRestoreResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationDatabasesRestoreResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationDatabasesRestoreResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationDatabasesRestoreResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationDatabasesNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationDatabasesNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteApiConstellationDatabasesNameResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteApiConstellationDatabasesNameResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r DeleteApiConstellationDatabasesNameResponse) GetJSON502() *UtilsHTTPErrorResult {
+	return r.JSON502
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationDatabasesNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationDatabasesNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationDatabasesNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationDatabasesNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationDatabasesNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationDatabasesNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetApiConstellationDatabasesNameResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetApiConstellationDatabasesNameResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationDatabasesNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationDatabasesNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationDatabasesNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationDatabasesNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutApiConstellationDatabasesNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutApiConstellationDatabasesNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutApiConstellationDatabasesNameResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutApiConstellationDatabasesNameResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutApiConstellationDatabasesNameResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r PutApiConstellationDatabasesNameResponse) GetJSON502() *UtilsHTTPErrorResult {
+	return r.JSON502
+}
+
+// GetBody returns the raw response body bytes
+func (r PutApiConstellationDatabasesNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutApiConstellationDatabasesNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutApiConstellationDatabasesNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutApiConstellationDatabasesNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationDatabasesNameBackupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationDatabasesNameBackupResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteApiConstellationDatabasesNameBackupResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteApiConstellationDatabasesNameBackupResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationDatabasesNameBackupResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationDatabasesNameBackupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationDatabasesNameBackupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationDatabasesNameBackupResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutApiConstellationDatabasesNameBackupResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutApiConstellationDatabasesNameBackupResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutApiConstellationDatabasesNameBackupResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutApiConstellationDatabasesNameBackupResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutApiConstellationDatabasesNameBackupResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r PutApiConstellationDatabasesNameBackupResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutApiConstellationDatabasesNameBackupResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutApiConstellationDatabasesNameBackupResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutApiConstellationDatabasesNameBackupResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationDatabasesNameBackupRunResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationDatabasesNameBackupRunResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostApiConstellationDatabasesNameBackupRunResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostApiConstellationDatabasesNameBackupRunResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostApiConstellationDatabasesNameBackupRunResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r PostApiConstellationDatabasesNameBackupRunResponse) GetJSON502() *UtilsHTTPErrorResult {
+	return r.JSON502
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationDatabasesNameBackupRunResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationDatabasesNameBackupRunResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationDatabasesNameBackupRunResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationDatabasesNameBackupRunResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationDatabasesNameBackupSnapshotsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+	// JSON502 the response for an HTTP 502 `application/json` response
+	JSON502 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetJSON502 returns the response for an HTTP 502 `application/json` response
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) GetJSON502() *UtilsHTTPErrorResult {
+	return r.JSON502
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationDatabasesNameBackupSnapshotsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationDatabasesNameConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationDatabasesNameConnectionResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetApiConstellationDatabasesNameConnectionResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetApiConstellationDatabasesNameConnectionResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationDatabasesNameConnectionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationDatabasesNameConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationDatabasesNameConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationDatabasesNameConnectionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationDatabasesNameDatabasesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesResponse) GetJSON409() *UtilsHTTPErrorResult {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationDatabasesNameDatabasesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationDatabasesNameDatabasesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationDatabasesNameDatabasesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationDatabasesNameDatabasesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetApiConstellationDeploymentsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -18772,8 +24461,12 @@ type PostApiConstellationEditDeviceResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
 	// JSON403 the response for an HTTP 403 `application/json` response
 	JSON403 *UtilsHTTPErrorResult
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *UtilsHTTPErrorResult
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *UtilsHTTPErrorResult
 }
@@ -18783,9 +24476,19 @@ func (r PostApiConstellationEditDeviceResponse) GetJSON200() *UtilsAPIResponse {
 	return r.JSON200
 }
 
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostApiConstellationEditDeviceResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
 func (r PostApiConstellationEditDeviceResponse) GetJSON403() *UtilsHTTPErrorResult {
 	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostApiConstellationEditDeviceResponse) GetJSON404() *UtilsHTTPErrorResult {
+	return r.JSON404
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -18878,6 +24581,312 @@ func (r PostApiConstellationForceReformResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PostApiConstellationForceReformResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationFunctionRuntimesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationFunctionRuntimesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationFunctionRuntimesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationFunctionRuntimesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationFunctionRuntimesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationFunctionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationFunctionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationFunctionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationFunctionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationFunctionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationFunctionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationFunctionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationFunctionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationFunctionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationFunctionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationFunctionsNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationFunctionsNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationFunctionsNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationFunctionsNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationFunctionsNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationFunctionsNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationFunctionsNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationFunctionsNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationFunctionsNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationFunctionsNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutApiConstellationFunctionsNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r PutApiConstellationFunctionsNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutApiConstellationFunctionsNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutApiConstellationFunctionsNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutApiConstellationFunctionsNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationFunctionsNameDeployResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationFunctionsNameDeployResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationFunctionsNameDeployResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationFunctionsNameDeployResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationFunctionsNameDeployResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationFunctionsNameInvokeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationFunctionsNameInvokeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationFunctionsNameInvokeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationFunctionsNameInvokeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationFunctionsNameInvokeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationFunctionsNameVersionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationFunctionsNameVersionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationFunctionsNameVersionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationFunctionsNameVersionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationFunctionsNameVersionsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19200,6 +25209,976 @@ func (r GetApiConstellationPublicDevicesResponse) ContentType() string {
 	return ""
 }
 
+type GetApiConstellationRegistriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistriesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationRegistriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationRegistriesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationRegistriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationRegistriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationRegistriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationRegistriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationRegistriesNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationRegistriesNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationRegistriesNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationRegistriesNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationRegistriesNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationRegistriesNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistriesNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistriesNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationRegistriesNameGcResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *UtilsAPIResponse
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r PostApiConstellationRegistriesNameGcResponse) GetJSON202() *UtilsAPIResponse {
+	return r.JSON202
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationRegistriesNameGcResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationRegistriesNameGcResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationRegistriesNameGcResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationRegistriesNameGcResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistriesNamePackagesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistriesNamePackagesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesNamePackagesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesNamePackagesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesNamePackagesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesNamePackagesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistriesNamePackagesPackageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistriesNamePackagesPackageResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesNamePackagesPackageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesNamePackagesPackageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesNamePackagesPackageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesNamePackagesPackageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationRegistriesNamePackagesPackageVersionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationRegistriesNamePackagesPackageVersionsResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationRegistriesNamePackagesPackageVersionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationRegistriesNamePackagesPackageVersionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationRegistriesNamePackagesPackageVersionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationRegistriesNamePackagesPackageVersionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutApiConstellationRegistriesNameSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutApiConstellationRegistriesNameSettingsResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PutApiConstellationRegistriesNameSettingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutApiConstellationRegistriesNameSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutApiConstellationRegistriesNameSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutApiConstellationRegistriesNameSettingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistriesNameSitesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistriesNameSitesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesNameSitesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesNameSitesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesNameSitesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesNameSitesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistriesNameSitesSiteResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistriesNameSitesSiteResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesNameSitesSiteResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesNameSitesSiteResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesNameSitesSiteResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesNameSitesSiteResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationRegistriesNameSitesSiteActivateResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationRegistriesNameSitesSiteActivateResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationRegistriesNameSitesSiteActivateResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationRegistriesNameSitesSiteActivateResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationRegistriesNameSitesSiteActivateResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationRegistriesNameSitesSiteActivateResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationRegistriesNameSitesSiteVersionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationRegistriesNameSitesSiteVersionsResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationRegistriesNameSitesSiteVersionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationRegistriesNameSitesSiteVersionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationRegistriesNameSitesSiteVersionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationRegistriesNameSitesSiteVersionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistryAccessesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistryAccessesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistryAccessesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistryAccessesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistryAccessesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistryAccessesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationRegistryAccessesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationRegistryAccessesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationRegistryAccessesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationRegistryAccessesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationRegistryAccessesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationRegistryAccessesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationRegistryAccessesNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationRegistryAccessesNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationRegistryAccessesNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationRegistryAccessesNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationRegistryAccessesNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationRegistryAccessesNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationRegistryAccessesNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationRegistryAccessesNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationRegistryAccessesNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationRegistryAccessesNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationRegistryAccessesNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationRegistryAccessesNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutApiConstellationRegistryAccessesNameSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutApiConstellationRegistryAccessesNameSettingsResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PutApiConstellationRegistryAccessesNameSettingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutApiConstellationRegistryAccessesNameSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutApiConstellationRegistryAccessesNameSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutApiConstellationRegistryAccessesNameSettingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationRegistryAccessesNameTokensResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationRegistryAccessesNameTokensResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationRegistryAccessesNameTokensResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationRegistryAccessesNameTokensResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationRegistryAccessesNameTokensResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationRegistryAccessesNameTokensResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetApiConstellationResetResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -19290,6 +26269,184 @@ func (r GetApiConstellationRestartResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetApiConstellationRestartResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationSeaweedfsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationSeaweedfsResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationSeaweedfsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationSeaweedfsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationSeaweedfsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationSeaweedfsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PostApiConstellationSeaweedfsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostApiConstellationSeaweedfsResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r PostApiConstellationSeaweedfsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiConstellationSeaweedfsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiConstellationSeaweedfsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostApiConstellationSeaweedfsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteApiConstellationSeaweedfsNameResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeleteApiConstellationSeaweedfsNameResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteApiConstellationSeaweedfsNameResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiConstellationSeaweedfsNameResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiConstellationSeaweedfsNameResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteApiConstellationSeaweedfsNameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiConstellationTagNodesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *UtilsHTTPErrorResult
+	// JSON405 the response for an HTTP 405 `application/json` response
+	JSON405 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiConstellationTagNodesResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetApiConstellationTagNodesResponse) GetJSON401() *UtilsHTTPErrorResult {
+	return r.JSON401
+}
+
+// GetJSON405 returns the response for an HTTP 405 `application/json` response
+func (r GetApiConstellationTagNodesResponse) GetJSON405() *UtilsHTTPErrorResult {
+	return r.JSON405
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiConstellationTagNodesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiConstellationTagNodesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiConstellationTagNodesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiConstellationTagNodesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -22689,68 +29846,6 @@ func (r PostApiPasswordResetResponse) ContentType() string {
 	return ""
 }
 
-type GetApiPingResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *UtilsAPIResponse
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *UtilsHTTPErrorResult
-	// JSON405 the response for an HTTP 405 `application/json` response
-	JSON405 *UtilsHTTPErrorResult
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *UtilsHTTPErrorResult
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetApiPingResponse) GetJSON200() *UtilsAPIResponse {
-	return r.JSON200
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r GetApiPingResponse) GetJSON401() *UtilsHTTPErrorResult {
-	return r.JSON401
-}
-
-// GetJSON405 returns the response for an HTTP 405 `application/json` response
-func (r GetApiPingResponse) GetJSON405() *UtilsHTTPErrorResult {
-	return r.JSON405
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r GetApiPingResponse) GetJSON500() *UtilsHTTPErrorResult {
-	return r.JSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r GetApiPingResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r GetApiPingResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetApiPingResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetApiPingResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type GetApiRcloneRestartResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -23666,6 +30761,68 @@ func (r GetApiServappsContainerIdExportResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetApiServappsContainerIdExportResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetApiServappsContainerIdLazyStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *UtilsAPIResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *UtilsHTTPErrorResult
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *UtilsHTTPErrorResult
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *UtilsHTTPErrorResult
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetApiServappsContainerIdLazyStatusResponse) GetJSON200() *UtilsAPIResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetApiServappsContainerIdLazyStatusResponse) GetJSON400() *UtilsHTTPErrorResult {
+	return r.JSON400
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetApiServappsContainerIdLazyStatusResponse) GetJSON403() *UtilsHTTPErrorResult {
+	return r.JSON403
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetApiServappsContainerIdLazyStatusResponse) GetJSON500() *UtilsHTTPErrorResult {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiServappsContainerIdLazyStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiServappsContainerIdLazyStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiServappsContainerIdLazyStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiServappsContainerIdLazyStatusResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -26532,6 +33689,346 @@ func (c *ClientWithResponses) PostApiConstellationCreateWithResponse(ctx context
 	return ParsePostApiConstellationCreateResponse(rsp)
 }
 
+// GetApiConstellationDatabasesWithResponse List all managed databases
+//
+// Returns every managed database record in the cluster, with live/down
+// status merged in from node heartbeats (Pro feature). Secrets are
+// redacted; use the connection endpoint to read them.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/databases (the `GetApiConstellationDatabases` operationId).
+func (c *ClientWithResponses) GetApiConstellationDatabasesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesResponse, error) {
+	rsp, err := c.GetApiConstellationDatabases(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationDatabasesResponse(rsp)
+}
+
+// PostApiConstellationDatabasesWithBodyWithResponse Provision a managed database instance
+//
+// Creates a single-node postgres container on THIS node and records
+// it in the cluster store (Pro feature). Not scheduled: the node that
+// serves this request becomes the instance's home node.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesResponse, error) {
+	rsp, err := c.PostApiConstellationDatabasesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesResponse(rsp)
+}
+
+// PostApiConstellationDatabasesWithResponse Provision a managed database instance
+//
+// Creates a single-node postgres container on THIS node and records
+// it in the cluster store (Pro feature). Not scheduled: the node that
+// serves this request becomes the instance's home node.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases (the `PostApiConstellationDatabases` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesWithResponse(ctx context.Context, body PostApiConstellationDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesResponse, error) {
+	rsp, err := c.PostApiConstellationDatabases(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesResponse(rsp)
+}
+
+// PostApiConstellationDatabasesRestoreWithBodyWithResponse Restore a managed database backup into a new instance
+//
+// Restores one snapshot of an instance's backup into a BRAND-NEW
+// instance on the node serving this request (Pro feature). The source
+// instance is never modified. Each logical database in the snapshot is
+// recreated with a FRESHLY generated role password — the roles in the
+// backup's globals.sql carry password hashes the cluster cannot
+// reproduce, so that file is kept for manual recovery only.
+// The repository must be reachable from this node.
+// Partial failures are reported per database in the response body; the
+// new instance is kept either way.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesRestoreWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesRestoreResponse, error) {
+	rsp, err := c.PostApiConstellationDatabasesRestoreWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesRestoreResponse(rsp)
+}
+
+// PostApiConstellationDatabasesRestoreWithResponse Restore a managed database backup into a new instance
+//
+// Restores one snapshot of an instance's backup into a BRAND-NEW
+// instance on the node serving this request (Pro feature). The source
+// instance is never modified. Each logical database in the snapshot is
+// recreated with a FRESHLY generated role password — the roles in the
+// backup's globals.sql carry password hashes the cluster cannot
+// reproduce, so that file is kept for manual recovery only.
+// The repository must be reachable from this node.
+// Partial failures are reported per database in the response body; the
+// new instance is kept either way.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases/restore (the `PostApiConstellationDatabasesRestore` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesRestoreWithResponse(ctx context.Context, body PostApiConstellationDatabasesRestoreJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesRestoreResponse, error) {
+	rsp, err := c.PostApiConstellationDatabasesRestore(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesRestoreResponse(rsp)
+}
+
+// DeleteApiConstellationDatabasesNameWithResponse Delete a managed database instance
+//
+// Stops and removes the instance's container on its home node and drops
+// the record (Pro feature). The data volume is KEPT unless
+// ?removeVolume=true is passed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/databases/{name} (the `DeleteApiConstellationDatabasesName` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationDatabasesNameWithResponse(ctx context.Context, name string, params *DeleteApiConstellationDatabasesNameParams, reqEditors ...RequestEditorFn) (*DeleteApiConstellationDatabasesNameResponse, error) {
+	rsp, err := c.DeleteApiConstellationDatabasesName(ctx, name, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationDatabasesNameResponse(rsp)
+}
+
+// GetApiConstellationDatabasesNameWithResponse Get a managed database
+//
+// Returns one record with live status and, when the home node answers,
+// its container/server state (Pro feature). Secrets are redacted.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/databases/{name} (the `GetApiConstellationDatabasesName` operationId).
+func (c *ClientWithResponses) GetApiConstellationDatabasesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesNameResponse, error) {
+	rsp, err := c.GetApiConstellationDatabasesName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationDatabasesNameResponse(rsp)
+}
+
+// PutApiConstellationDatabasesNameWithBodyWithResponse Update a managed database instance
+//
+// Changes settings that do not require recreating the container —
+// currently only the constellation restriction, which is re-applied to
+// the instance's proxy route on its home node (Pro feature).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+func (c *ClientWithResponses) PutApiConstellationDatabasesNameWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameResponse, error) {
+	rsp, err := c.PutApiConstellationDatabasesNameWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationDatabasesNameResponse(rsp)
+}
+
+// PutApiConstellationDatabasesNameWithResponse Update a managed database instance
+//
+// Changes settings that do not require recreating the container —
+// currently only the constellation restriction, which is re-applied to
+// the instance's proxy route on its home node (Pro feature).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/databases/{name} (the `PutApiConstellationDatabasesName` operationId).
+func (c *ClientWithResponses) PutApiConstellationDatabasesNameWithResponse(ctx context.Context, name string, body PutApiConstellationDatabasesNameJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameResponse, error) {
+	rsp, err := c.PutApiConstellationDatabasesName(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationDatabasesNameResponse(rsp)
+}
+
+// DeleteApiConstellationDatabasesNameBackupWithResponse Remove a managed database's backup configuration
+//
+// Clears the instance's backup settings and deregisters its scheduled
+// jobs (Pro feature). The restic repository and every snapshot in it
+// are left untouched — but the password is dropped with the record, so
+// recovering those snapshots afterwards means recovering the password
+// from the backup password log.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/databases/{name}/backup (the `DeleteApiConstellationDatabasesNameBackup` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationDatabasesNameBackupWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationDatabasesNameBackupResponse, error) {
+	rsp, err := c.DeleteApiConstellationDatabasesNameBackup(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationDatabasesNameBackupResponse(rsp)
+}
+
+// PutApiConstellationDatabasesNameBackupWithBodyWithResponse Configure backups for a managed database
+//
+// Sets the restic repository and schedules for an instance's backups
+// (Pro feature). The repository is interpreted on the instance's HOME
+// node and is initialised lazily, on the first run. The repository
+// password is generated once and never rotated by this endpoint, since
+// it is the only key to the existing snapshots.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+func (c *ClientWithResponses) PutApiConstellationDatabasesNameBackupWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameBackupResponse, error) {
+	rsp, err := c.PutApiConstellationDatabasesNameBackupWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationDatabasesNameBackupResponse(rsp)
+}
+
+// PutApiConstellationDatabasesNameBackupWithResponse Configure backups for a managed database
+//
+// Sets the restic repository and schedules for an instance's backups
+// (Pro feature). The repository is interpreted on the instance's HOME
+// node and is initialised lazily, on the first run. The repository
+// password is generated once and never rotated by this endpoint, since
+// it is the only key to the existing snapshots.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/databases/{name}/backup (the `PutApiConstellationDatabasesNameBackup` operationId).
+func (c *ClientWithResponses) PutApiConstellationDatabasesNameBackupWithResponse(ctx context.Context, name string, body PutApiConstellationDatabasesNameBackupJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationDatabasesNameBackupResponse, error) {
+	rsp, err := c.PutApiConstellationDatabasesNameBackup(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationDatabasesNameBackupResponse(rsp)
+}
+
+// PostApiConstellationDatabasesNameBackupRunWithResponse Back up a managed database now
+//
+// Starts a backup of the instance on its home node and returns
+// immediately (Pro feature): a dump plus an upload is unbounded work.
+// Progress and outcome are reported through the instance's events and
+// through the snapshot listing.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases/{name}/backup/run (the `PostApiConstellationDatabasesNameBackupRun` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesNameBackupRunWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameBackupRunResponse, error) {
+	rsp, err := c.PostApiConstellationDatabasesNameBackupRun(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesNameBackupRunResponse(rsp)
+}
+
+// GetApiConstellationDatabasesNameBackupSnapshotsWithResponse List a managed database's backup snapshots
+//
+// Returns the restic snapshots tagged for this instance, newest first
+// (Pro feature). An empty list is returned — not an error — while the
+// repository has not been written to yet.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/databases/{name}/backup/snapshots (the `GetApiConstellationDatabasesNameBackupSnapshots` operationId).
+func (c *ClientWithResponses) GetApiConstellationDatabasesNameBackupSnapshotsWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesNameBackupSnapshotsResponse, error) {
+	rsp, err := c.GetApiConstellationDatabasesNameBackupSnapshots(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationDatabasesNameBackupSnapshotsResponse(rsp)
+}
+
+// GetApiConstellationDatabasesNameConnectionWithResponse Get connection info for a managed database
+//
+// Returns the superuser credentials and connection URL for an instance,
+// plus one URL per logical database (Pro feature). This is the only
+// endpoint that returns secrets.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/databases/{name}/connection (the `GetApiConstellationDatabasesNameConnection` operationId).
+func (c *ClientWithResponses) GetApiConstellationDatabasesNameConnectionWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationDatabasesNameConnectionResponse, error) {
+	rsp, err := c.GetApiConstellationDatabasesNameConnection(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationDatabasesNameConnectionResponse(rsp)
+}
+
+// PostApiConstellationDatabasesNameDatabasesWithBodyWithResponse Create a logical database and role
+//
+// Creates one application database inside an instance, owned by a
+// freshly generated role scoped to it (Pro feature). Returns the
+// credentials once, in the response.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesNameDatabasesWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameDatabasesResponse, error) {
+	rsp, err := c.PostApiConstellationDatabasesNameDatabasesWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesNameDatabasesResponse(rsp)
+}
+
+// PostApiConstellationDatabasesNameDatabasesWithResponse Create a logical database and role
+//
+// Creates one application database inside an instance, owned by a
+// freshly generated role scoped to it (Pro feature). Returns the
+// credentials once, in the response.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases/{name}/databases (the `PostApiConstellationDatabasesNameDatabases` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesNameDatabasesWithResponse(ctx context.Context, name string, body PostApiConstellationDatabasesNameDatabasesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameDatabasesResponse, error) {
+	rsp, err := c.PostApiConstellationDatabasesNameDatabases(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesNameDatabasesResponse(rsp)
+}
+
+// DeleteApiConstellationDatabasesNameDatabasesDatabaseWithResponse Delete a logical database and its role
+//
+// Drops one application database inside an instance, terminating its
+// open sessions first (Pro feature). Destroys that database's data.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/databases/{name}/databases/{database} (the `DeleteApiConstellationDatabasesNameDatabasesDatabase` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationDatabasesNameDatabasesDatabaseWithResponse(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse, error) {
+	rsp, err := c.DeleteApiConstellationDatabasesNameDatabasesDatabase(ctx, name, database, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationDatabasesNameDatabasesDatabaseResponse(rsp)
+}
+
+// PostApiConstellationDatabasesNameDatabasesDatabaseRotateWithResponse Rotate a logical database role's password
+//
+// Generates a new password for one application role and returns the new
+// connection URL (Pro feature). Existing sessions keep working until
+// they reconnect.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/databases/{name}/databases/{database}/rotate (the `PostApiConstellationDatabasesNameDatabasesDatabaseRotate` operationId).
+func (c *ClientWithResponses) PostApiConstellationDatabasesNameDatabasesDatabaseRotateWithResponse(ctx context.Context, name string, database string, reqEditors ...RequestEditorFn) (*PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse, error) {
+	rsp, err := c.PostApiConstellationDatabasesNameDatabasesDatabaseRotate(ctx, name, database, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse(rsp)
+}
+
 // GetApiConstellationDeploymentsWithResponse List all cluster deployments
 //
 // Returns all deployment definitions from the constellation-deployments KV (Pro feature).
@@ -26813,7 +34310,7 @@ func (c *ClientWithResponses) PutApiConstellationDnsKeyWithResponse(ctx context.
 	return ParsePutApiConstellationDnsKeyResponse(rsp)
 }
 
-// PostApiConstellationEditDeviceWithBodyWithResponse Edit the current Constellation device properties
+// PostApiConstellationEditDeviceWithBodyWithResponse Edit Constellation device properties (this device, or another device's tags)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -26826,7 +34323,7 @@ func (c *ClientWithResponses) PostApiConstellationEditDeviceWithBodyWithResponse
 	return ParsePostApiConstellationEditDeviceResponse(rsp)
 }
 
-// PostApiConstellationEditDeviceWithResponse Edit the current Constellation device properties
+// PostApiConstellationEditDeviceWithResponse Edit Constellation device properties (this device, or another device's tags)
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -26852,6 +34349,105 @@ func (c *ClientWithResponses) PostApiConstellationForceReformWithResponse(ctx co
 		return nil, err
 	}
 	return ParsePostApiConstellationForceReformResponse(rsp)
+}
+
+// GetApiConstellationFunctionRuntimesWithResponse performs a GET /api/constellation/function-runtimes (the `GetApiConstellationFunctionRuntimes` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetApiConstellationFunctionRuntimesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionRuntimesResponse, error) {
+	rsp, err := c.GetApiConstellationFunctionRuntimes(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationFunctionRuntimesResponse(rsp)
+}
+
+// GetApiConstellationFunctionsWithResponse performs a GET /api/constellation/functions (the `GetApiConstellationFunctions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetApiConstellationFunctionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionsResponse, error) {
+	rsp, err := c.GetApiConstellationFunctions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationFunctionsResponse(rsp)
+}
+
+// PostApiConstellationFunctionsWithResponse performs a POST /api/constellation/functions (the `PostApiConstellationFunctions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) PostApiConstellationFunctionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostApiConstellationFunctionsResponse, error) {
+	rsp, err := c.PostApiConstellationFunctions(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationFunctionsResponse(rsp)
+}
+
+// DeleteApiConstellationFunctionsNameWithResponse performs a DELETE /api/constellation/functions/{name} (the `DeleteApiConstellationFunctionsName` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) DeleteApiConstellationFunctionsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationFunctionsNameResponse, error) {
+	rsp, err := c.DeleteApiConstellationFunctionsName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationFunctionsNameResponse(rsp)
+}
+
+// GetApiConstellationFunctionsNameWithResponse performs a GET /api/constellation/functions/{name} (the `GetApiConstellationFunctionsName` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetApiConstellationFunctionsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionsNameResponse, error) {
+	rsp, err := c.GetApiConstellationFunctionsName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationFunctionsNameResponse(rsp)
+}
+
+// PutApiConstellationFunctionsNameWithResponse performs a PUT /api/constellation/functions/{name} (the `PutApiConstellationFunctionsName` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) PutApiConstellationFunctionsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PutApiConstellationFunctionsNameResponse, error) {
+	rsp, err := c.PutApiConstellationFunctionsName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationFunctionsNameResponse(rsp)
+}
+
+// PostApiConstellationFunctionsNameDeployWithResponse performs a POST /api/constellation/functions/{name}/deploy (the `PostApiConstellationFunctionsNameDeploy` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) PostApiConstellationFunctionsNameDeployWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationFunctionsNameDeployResponse, error) {
+	rsp, err := c.PostApiConstellationFunctionsNameDeploy(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationFunctionsNameDeployResponse(rsp)
+}
+
+// PostApiConstellationFunctionsNameInvokeWithResponse performs a POST /api/constellation/functions/{name}/invoke (the `PostApiConstellationFunctionsNameInvoke` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) PostApiConstellationFunctionsNameInvokeWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationFunctionsNameInvokeResponse, error) {
+	rsp, err := c.PostApiConstellationFunctionsNameInvoke(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationFunctionsNameInvokeResponse(rsp)
+}
+
+// GetApiConstellationFunctionsNameVersionsWithResponse performs a GET /api/constellation/functions/{name}/versions (the `GetApiConstellationFunctionsNameVersions` operationId) request.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) GetApiConstellationFunctionsNameVersionsWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationFunctionsNameVersionsResponse, error) {
+	rsp, err := c.GetApiConstellationFunctionsNameVersions(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationFunctionsNameVersionsResponse(rsp)
 }
 
 // GetApiConstellationGetNextIpWithResponse Get the next available IP address in the Constellation CIDR range
@@ -26938,6 +34534,512 @@ func (c *ClientWithResponses) GetApiConstellationPublicDevicesWithResponse(ctx c
 	return ParseGetApiConstellationPublicDevicesResponse(rsp)
 }
 
+// GetApiConstellationRegistriesWithResponse List package registries
+//
+// Returns every registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries (the `GetApiConstellationRegistries` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesResponse, error) {
+	rsp, err := c.GetApiConstellationRegistries(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesResponse(rsp)
+}
+
+// PostApiConstellationRegistriesWithBodyWithResponse Create a package registry
+//
+// Claims the name, provisions the backing bucket and marks the registry ready.
+// A registry is typed storage (docker/npm/static/generic): publish it by creating
+// an access (Pro feature).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistriesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesResponse, error) {
+	rsp, err := c.PostApiConstellationRegistriesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistriesResponse(rsp)
+}
+
+// PostApiConstellationRegistriesWithResponse Create a package registry
+//
+// Claims the name, provisions the backing bucket and marks the registry ready.
+// A registry is typed storage (docker/npm/static/generic): publish it by creating
+// an access (Pro feature).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registries (the `PostApiConstellationRegistries` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistriesWithResponse(ctx context.Context, body PostApiConstellationRegistriesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesResponse, error) {
+	rsp, err := c.PostApiConstellationRegistries(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistriesResponse(rsp)
+}
+
+// DeleteApiConstellationRegistriesNameWithResponse Delete a package registry
+//
+// Removes the record and every metadata key. Refused while an access
+// still publishes it. Stored blobs are PRESERVED unless purgeData=true,
+// which best-effort empties the backing bucket (the bucket itself is
+// left in place) (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/registries/{name} (the `DeleteApiConstellationRegistriesName` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationRegistriesNameWithResponse(ctx context.Context, name string, params *DeleteApiConstellationRegistriesNameParams, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistriesNameResponse, error) {
+	rsp, err := c.DeleteApiConstellationRegistriesName(ctx, name, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationRegistriesNameResponse(rsp)
+}
+
+// GetApiConstellationRegistriesNameWithResponse Get one package registry
+//
+// Returns the registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries/{name} (the `GetApiConstellationRegistriesName` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameResponse, error) {
+	rsp, err := c.GetApiConstellationRegistriesName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesNameResponse(rsp)
+}
+
+// PostApiConstellationRegistriesNameGcWithResponse Run a registry's garbage collection now
+//
+// Starts a mark-and-sweep of the registry's blob store and reconciles its
+// stored-size and package counters. Returns 202 immediately; the outcome
+// arrives as a cosmos.registry.gc event. Blobs younger than 24 hours are
+// never collected, whether or not anything references them (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registries/{name}/gc (the `PostApiConstellationRegistriesNameGc` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistriesNameGcWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameGcResponse, error) {
+	rsp, err := c.PostApiConstellationRegistriesNameGc(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistriesNameGcResponse(rsp)
+}
+
+// GetApiConstellationRegistriesNamePackagesWithResponse List the packages of a generic or pypi registry
+//
+// Returns every package with its versions and their files (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries/{name}/packages (the `GetApiConstellationRegistriesNamePackages` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesNamePackagesWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNamePackagesResponse, error) {
+	rsp, err := c.GetApiConstellationRegistriesNamePackages(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesNamePackagesResponse(rsp)
+}
+
+// GetApiConstellationRegistriesNamePackagesPackageWithResponse Get or delete one generic or pypi package
+//
+// GET returns the package with its versions and files; DELETE removes the
+// package and every version (the stored files are reclaimed by the next
+// GC pass) (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries/{name}/packages/{package} (the `GetApiConstellationRegistriesNamePackagesPackage` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesNamePackagesPackageWithResponse(ctx context.Context, name string, pPackage string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNamePackagesPackageResponse, error) {
+	rsp, err := c.GetApiConstellationRegistriesNamePackagesPackage(ctx, name, pPackage, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesNamePackagesPackageResponse(rsp)
+}
+
+// PostApiConstellationRegistriesNamePackagesPackageVersionsWithResponse Upload files into a generic package version
+//
+// Stores one or more files under a version. Accepts a multipart form (every
+// file part is stored under its own filename) or a single raw file as the
+// request body, in which case the filename query parameter is required.
+// Query parameters: version (default: a UTC timestamp), filename. A file
+// that already exists in the version is refused (409): upload a new version
+// or delete it first. Accepts a Cosmos token with the Resources permission
+// OR a registry deploy token with push scope on an access that exposes this
+// registry (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registries/{name}/packages/{package}/versions (the `PostApiConstellationRegistriesNamePackagesPackageVersions` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistriesNamePackagesPackageVersionsWithResponse(ctx context.Context, name string, pPackage string, params *PostApiConstellationRegistriesNamePackagesPackageVersionsParams, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNamePackagesPackageVersionsResponse, error) {
+	rsp, err := c.PostApiConstellationRegistriesNamePackagesPackageVersions(ctx, name, pPackage, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistriesNamePackagesPackageVersionsResponse(rsp)
+}
+
+// DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionWithResponse Delete one generic or pypi package version
+//
+// Removes the version and its file entries; the stored files are reclaimed
+// by the next GC pass. "latest" is re-pointed at the newest remaining
+// version (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/registries/{name}/packages/{package}/versions/{version} (the `DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionWithResponse(ctx context.Context, name string, pPackage string, version string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse, error) {
+	rsp, err := c.DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersion(ctx, name, pPackage, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse(rsp)
+}
+
+// GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileWithResponse Download or delete one file of a generic or pypi package version
+//
+// GET streams the file (the version may be "latest"); accepts a Cosmos token
+// with the Resources read permission OR a registry deploy token with pull
+// scope. DELETE removes the file entry — and the version, when it was its
+// last file; the stored bytes are reclaimed by the next GC pass (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries/{name}/packages/{package}/versions/{version}/files/{file} (the `GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileWithResponse(ctx context.Context, name string, pPackage string, version string, file string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse, error) {
+	rsp, err := c.GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFile(ctx, name, pPackage, version, file, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse(rsp)
+}
+
+// PutApiConstellationRegistriesNameSettingsWithBodyWithResponse Update a registry's storage settings
+//
+// Replaces the quota. Absent fields keep their stored value (Pro feature).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+func (c *ClientWithResponses) PutApiConstellationRegistriesNameSettingsWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistriesNameSettingsResponse, error) {
+	rsp, err := c.PutApiConstellationRegistriesNameSettingsWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationRegistriesNameSettingsResponse(rsp)
+}
+
+// PutApiConstellationRegistriesNameSettingsWithResponse Update a registry's storage settings
+//
+// Replaces the quota. Absent fields keep their stored value (Pro feature).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/registries/{name}/settings (the `PutApiConstellationRegistriesNameSettings` operationId).
+func (c *ClientWithResponses) PutApiConstellationRegistriesNameSettingsWithResponse(ctx context.Context, name string, body PutApiConstellationRegistriesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistriesNameSettingsResponse, error) {
+	rsp, err := c.PutApiConstellationRegistriesNameSettings(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationRegistriesNameSettingsResponse(rsp)
+}
+
+// GetApiConstellationRegistriesNameSitesWithResponse List the sites of a static registry
+//
+// Returns every site with its deployments, which one is active, and its
+// route configuration (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries/{name}/sites (the `GetApiConstellationRegistriesNameSites` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesNameSitesWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameSitesResponse, error) {
+	rsp, err := c.GetApiConstellationRegistriesNameSites(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesNameSitesResponse(rsp)
+}
+
+// GetApiConstellationRegistriesNameSitesSiteWithResponse Get, configure or delete one static site
+//
+// GET returns the site with its deployments; PUT replaces its route
+// configuration (host, internal, spa, tags — absent fields keep their
+// stored value); DELETE removes the site and all its deployments (the
+// stored zips are reclaimed by the next GC pass) (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries/{name}/sites/{site} (the `GetApiConstellationRegistriesNameSitesSite` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesNameSitesSiteWithResponse(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameSitesSiteResponse, error) {
+	rsp, err := c.GetApiConstellationRegistriesNameSitesSite(ctx, name, site, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesNameSitesSiteResponse(rsp)
+}
+
+// PostApiConstellationRegistriesNameSitesSiteActivateWithBodyWithResponse Activate a static-site deployment
+//
+// Moves the site's active pointer. This is BOTH deploy and rollback: the
+// deployments are immutable, so switching between them is instant and
+// cannot half-apply. Accepts a Cosmos token with the Resources permission
+// OR a registry deploy token with push scope (Pro feature).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistriesNameSitesSiteActivateWithBodyWithResponse(ctx context.Context, name string, site string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameSitesSiteActivateResponse, error) {
+	rsp, err := c.PostApiConstellationRegistriesNameSitesSiteActivateWithBody(ctx, name, site, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistriesNameSitesSiteActivateResponse(rsp)
+}
+
+// PostApiConstellationRegistriesNameSitesSiteActivateWithResponse Activate a static-site deployment
+//
+// Moves the site's active pointer. This is BOTH deploy and rollback: the
+// deployments are immutable, so switching between them is instant and
+// cannot half-apply. Accepts a Cosmos token with the Resources permission
+// OR a registry deploy token with push scope (Pro feature).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/activate (the `PostApiConstellationRegistriesNameSitesSiteActivate` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistriesNameSitesSiteActivateWithResponse(ctx context.Context, name string, site string, body PostApiConstellationRegistriesNameSitesSiteActivateJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameSitesSiteActivateResponse, error) {
+	rsp, err := c.PostApiConstellationRegistriesNameSitesSiteActivate(ctx, name, site, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistriesNameSitesSiteActivateResponse(rsp)
+}
+
+// PostApiConstellationRegistriesNameSitesSiteVersionsWithResponse Upload a static-site deployment
+//
+// Stores a zip as one immutable deployment. Accepts a multipart form
+// (field "file") or the raw zip as the request body. Query parameters:
+// version (default: a UTC timestamp), activate (default true for the
+// site's first deployment), host/internal/spa/tags to configure the
+// site's route on first upload. Accepts a Cosmos token with the
+// Resources permission OR a registry deploy token with push scope on an
+// access that exposes this registry (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registries/{name}/sites/{site}/versions (the `PostApiConstellationRegistriesNameSitesSiteVersions` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistriesNameSitesSiteVersionsWithResponse(ctx context.Context, name string, site string, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistriesNameSitesSiteVersionsResponse, error) {
+	rsp, err := c.PostApiConstellationRegistriesNameSitesSiteVersions(ctx, name, site, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistriesNameSitesSiteVersionsResponse(rsp)
+}
+
+// DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionWithResponse Delete one static-site deployment
+//
+// Removes the deployment record; the stored zip is reclaimed by the next
+// GC pass. Refused for the deployment that is currently active (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/registries/{name}/sites/{site}/versions/{version} (the `DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionWithResponse(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse, error) {
+	rsp, err := c.DeleteApiConstellationRegistriesNameSitesSiteVersionsVersion(ctx, name, site, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse(rsp)
+}
+
+// GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadWithResponse Download one static-site deployment archive
+//
+// Streams the zip exactly as it was uploaded (the version may be "active"
+// for the one currently served). Accepts a Cosmos token with the Resources
+// read permission OR a registry deploy token with pull scope (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registries/{name}/sites/{site}/versions/{version}/download (the `GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadWithResponse(ctx context.Context, name string, site string, version string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse, error) {
+	rsp, err := c.GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownload(ctx, name, site, version, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse(rsp)
+}
+
+// GetApiConstellationRegistryAccessesWithResponse List registry accesses
+//
+// Returns every registry endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registry-accesses (the `GetApiConstellationRegistryAccesses` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistryAccessesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistryAccessesResponse, error) {
+	rsp, err := c.GetApiConstellationRegistryAccesses(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistryAccessesResponse(rsp)
+}
+
+// PostApiConstellationRegistryAccessesWithBodyWithResponse Create a registry access
+//
+// Publishes one or more registries on a hostname. Every exposed registry
+// must share ONE type, so an access serves exactly one protocol (several
+// docker registries are fine — they namespace by path; an npm or generic
+// access exposes exactly one registry); an empty tag list means every node
+// serves it; internal restricts the endpoint to the constellation (Pro feature).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistryAccessesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesResponse, error) {
+	rsp, err := c.PostApiConstellationRegistryAccessesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistryAccessesResponse(rsp)
+}
+
+// PostApiConstellationRegistryAccessesWithResponse Create a registry access
+//
+// Publishes one or more registries on a hostname. Every exposed registry
+// must share ONE type, so an access serves exactly one protocol (several
+// docker registries are fine — they namespace by path; an npm or generic
+// access exposes exactly one registry); an empty tag list means every node
+// serves it; internal restricts the endpoint to the constellation (Pro feature).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registry-accesses (the `PostApiConstellationRegistryAccesses` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistryAccessesWithResponse(ctx context.Context, body PostApiConstellationRegistryAccessesJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesResponse, error) {
+	rsp, err := c.PostApiConstellationRegistryAccesses(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistryAccessesResponse(rsp)
+}
+
+// DeleteApiConstellationRegistryAccessesNameWithResponse Delete a registry access
+//
+// Removes the endpoint. The registries it published and everything
+// stored in them are untouched (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/registry-accesses/{name} (the `DeleteApiConstellationRegistryAccessesName` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationRegistryAccessesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistryAccessesNameResponse, error) {
+	rsp, err := c.DeleteApiConstellationRegistryAccessesName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationRegistryAccessesNameResponse(rsp)
+}
+
+// GetApiConstellationRegistryAccessesNameWithResponse Get one registry access
+//
+// Returns the endpoint with the nodes currently serving it, token hashes redacted (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/registry-accesses/{name} (the `GetApiConstellationRegistryAccessesName` operationId).
+func (c *ClientWithResponses) GetApiConstellationRegistryAccessesNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiConstellationRegistryAccessesNameResponse, error) {
+	rsp, err := c.GetApiConstellationRegistryAccessesName(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationRegistryAccessesNameResponse(rsp)
+}
+
+// PutApiConstellationRegistryAccessesNameSettingsWithBodyWithResponse Update a registry access
+//
+// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+// and/or serving tags. Absent fields keep their stored value (Pro feature).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+func (c *ClientWithResponses) PutApiConstellationRegistryAccessesNameSettingsWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistryAccessesNameSettingsResponse, error) {
+	rsp, err := c.PutApiConstellationRegistryAccessesNameSettingsWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationRegistryAccessesNameSettingsResponse(rsp)
+}
+
+// PutApiConstellationRegistryAccessesNameSettingsWithResponse Update a registry access
+//
+// Replaces the host, exposed registries, visibility, anonymous-pull toggle
+// and/or serving tags. Absent fields keep their stored value (Pro feature).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/constellation/registry-accesses/{name}/settings (the `PutApiConstellationRegistryAccessesNameSettings` operationId).
+func (c *ClientWithResponses) PutApiConstellationRegistryAccessesNameSettingsWithResponse(ctx context.Context, name string, body PutApiConstellationRegistryAccessesNameSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiConstellationRegistryAccessesNameSettingsResponse, error) {
+	rsp, err := c.PutApiConstellationRegistryAccessesNameSettings(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutApiConstellationRegistryAccessesNameSettingsResponse(rsp)
+}
+
+// PostApiConstellationRegistryAccessesNameTokensWithBodyWithResponse Mint a registry deploy token
+//
+// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistryAccessesNameTokensWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesNameTokensResponse, error) {
+	rsp, err := c.PostApiConstellationRegistryAccessesNameTokensWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistryAccessesNameTokensResponse(rsp)
+}
+
+// PostApiConstellationRegistryAccessesNameTokensWithResponse Mint a registry deploy token
+//
+// Returns the raw token ONCE — only its sha256 is stored. Scopes are
+// pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/registry-accesses/{name}/tokens (the `PostApiConstellationRegistryAccessesNameTokens` operationId).
+func (c *ClientWithResponses) PostApiConstellationRegistryAccessesNameTokensWithResponse(ctx context.Context, name string, body PostApiConstellationRegistryAccessesNameTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationRegistryAccessesNameTokensResponse, error) {
+	rsp, err := c.PostApiConstellationRegistryAccessesNameTokens(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationRegistryAccessesNameTokensResponse(rsp)
+}
+
+// DeleteApiConstellationRegistryAccessesNameTokensTokenNameWithResponse Delete a registry deploy token
+//
+// Revokes the token on every node (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/registry-accesses/{name}/tokens/{tokenName} (the `DeleteApiConstellationRegistryAccessesNameTokensTokenName` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationRegistryAccessesNameTokensTokenNameWithResponse(ctx context.Context, name string, tokenName string, reqEditors ...RequestEditorFn) (*DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse, error) {
+	rsp, err := c.DeleteApiConstellationRegistryAccessesNameTokensTokenName(ctx, name, tokenName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse(rsp)
+}
+
 // GetApiConstellationResetWithResponse Reset the Nebula VPN configuration
 //
 // Returns a wrapper object for the known response body format(s).
@@ -26962,6 +35064,93 @@ func (c *ClientWithResponses) GetApiConstellationRestartWithResponse(ctx context
 		return nil, err
 	}
 	return ParseGetApiConstellationRestartResponse(rsp)
+}
+
+// GetApiConstellationSeaweedfsWithResponse List managed SeaweedFS instances
+//
+// Returns every instance with heartbeat-derived status, secrets redacted (Pro feature)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/seaweedfs (the `GetApiConstellationSeaweedfs` operationId).
+func (c *ClientWithResponses) GetApiConstellationSeaweedfsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConstellationSeaweedfsResponse, error) {
+	rsp, err := c.GetApiConstellationSeaweedfs(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationSeaweedfsResponse(rsp)
+}
+
+// PostApiConstellationSeaweedfsWithBodyWithResponse Create a managed SeaweedFS instance
+//
+// Provisions 3 pinned masters on the first three constellation managers,
+// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+// deployment behind the tunnel LB, and a managed postgres for the filer
+// store (Pro feature). Refused when fewer than 3 managers are online.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+func (c *ClientWithResponses) PostApiConstellationSeaweedfsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiConstellationSeaweedfsResponse, error) {
+	rsp, err := c.PostApiConstellationSeaweedfsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationSeaweedfsResponse(rsp)
+}
+
+// PostApiConstellationSeaweedfsWithResponse Create a managed SeaweedFS instance
+//
+// Provisions 3 pinned masters on the first three constellation managers,
+// a fill-mode volume-server deployment on the chosen tags, a filer+S3
+// deployment behind the tunnel LB, and a managed postgres for the filer
+// store (Pro feature). Refused when fewer than 3 managers are online.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/constellation/seaweedfs (the `PostApiConstellationSeaweedfs` operationId).
+func (c *ClientWithResponses) PostApiConstellationSeaweedfsWithResponse(ctx context.Context, body PostApiConstellationSeaweedfsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiConstellationSeaweedfsResponse, error) {
+	rsp, err := c.PostApiConstellationSeaweedfs(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiConstellationSeaweedfsResponse(rsp)
+}
+
+// DeleteApiConstellationSeaweedfsNameWithResponse Delete a managed SeaweedFS instance
+//
+// Tears down deployments, masters and (by default) the filer database.
+// Volume-server data volumes are PRESERVED unless purgeData=true;
+// keepFilerDB=true keeps the managed database entirely (Pro feature).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/constellation/seaweedfs/{name} (the `DeleteApiConstellationSeaweedfsName` operationId).
+func (c *ClientWithResponses) DeleteApiConstellationSeaweedfsNameWithResponse(ctx context.Context, name string, params *DeleteApiConstellationSeaweedfsNameParams, reqEditors ...RequestEditorFn) (*DeleteApiConstellationSeaweedfsNameResponse, error) {
+	rsp, err := c.DeleteApiConstellationSeaweedfsName(ctx, name, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiConstellationSeaweedfsNameResponse(rsp)
+}
+
+// GetApiConstellationTagNodesWithResponse Which nodes a tag set selects
+//
+// Returns the nodes whose tags satisfy every requested tag (AND
+// semantics; an empty tag set matches every node), each flagged with
+// whether it is currently heartbeating, plus the cluster totals the
+// UI needs for a "matches N of M nodes" hint (Pro feature).
+// Read-only and answerable from any node.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/constellation/tag-nodes (the `GetApiConstellationTagNodes` operationId).
+func (c *ClientWithResponses) GetApiConstellationTagNodesWithResponse(ctx context.Context, params *GetApiConstellationTagNodesParams, reqEditors ...RequestEditorFn) (*GetApiConstellationTagNodesResponse, error) {
+	rsp, err := c.GetApiConstellationTagNodes(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiConstellationTagNodesResponse(rsp)
 }
 
 // GetApiConstellationTunnelsWithResponse List all active Constellation tunnels
@@ -27234,9 +35423,9 @@ func (c *ClientWithResponses) GetApiEventsWithResponse(ctx context.Context, para
 	return ParseGetApiEventsResponse(rsp)
 }
 
-// GetApiFaviconWithResponse Get favicon for a URL
+// GetApiFaviconWithResponse Get favicon for a route or OpenID client
 //
-// # Fetches and caches the favicon for the given URL, returning it as an image
+// Fetches and caches the favicon of a configured route or OpenID client, returning it as an image. Exactly one of route or openid must be given.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -28119,21 +36308,6 @@ func (c *ClientWithResponses) PostApiPasswordResetWithResponse(ctx context.Conte
 	return ParsePostApiPasswordResetResponse(rsp)
 }
 
-// GetApiPingWithResponse Ping a URL
-//
-// Checks if a URL is reachable and returns a non-5xx response.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /api/ping (the `GetApiPing` operationId).
-func (c *ClientWithResponses) GetApiPingWithResponse(ctx context.Context, params *GetApiPingParams, reqEditors ...RequestEditorFn) (*GetApiPingResponse, error) {
-	rsp, err := c.GetApiPing(ctx, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetApiPingResponse(rsp)
-}
-
 // GetApiRcloneRestartWithResponse Restart all RClone remote storage mounts
 //
 // Returns a wrapper object for the known response body format(s).
@@ -28388,6 +36562,19 @@ func (c *ClientWithResponses) GetApiServappsContainerIdExportWithResponse(ctx co
 		return nil, err
 	}
 	return ParseGetApiServappsContainerIdExportResponse(rsp)
+}
+
+// GetApiServappsContainerIdLazyStatusWithResponse Enable or disable lazy start (stop when idle) for a Docker container
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/servapps/{containerId}/lazy/{status} (the `GetApiServappsContainerIdLazyStatus` operationId).
+func (c *ClientWithResponses) GetApiServappsContainerIdLazyStatusWithResponse(ctx context.Context, containerId string, status string, params *GetApiServappsContainerIdLazyStatusParams, reqEditors ...RequestEditorFn) (*GetApiServappsContainerIdLazyStatusResponse, error) {
+	rsp, err := c.GetApiServappsContainerIdLazyStatus(ctx, containerId, status, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiServappsContainerIdLazyStatusResponse(rsp)
 }
 
 // GetApiServappsContainerIdLogsWithResponse Retrieve logs for a Docker container
@@ -30633,6 +38820,657 @@ func ParsePostApiConstellationCreateResponse(rsp *http.Response) (*PostApiConste
 	return response, nil
 }
 
+// ParseGetApiConstellationDatabasesResponse parses an HTTP response from a GetApiConstellationDatabasesWithResponse call
+func ParseGetApiConstellationDatabasesResponse(rsp *http.Response) (*GetApiConstellationDatabasesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationDatabasesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationDatabasesResponse parses an HTTP response from a PostApiConstellationDatabasesWithResponse call
+func ParsePostApiConstellationDatabasesResponse(rsp *http.Response) (*PostApiConstellationDatabasesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationDatabasesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationDatabasesRestoreResponse parses an HTTP response from a PostApiConstellationDatabasesRestoreWithResponse call
+func ParsePostApiConstellationDatabasesRestoreResponse(rsp *http.Response) (*PostApiConstellationDatabasesRestoreResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationDatabasesRestoreResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationDatabasesNameResponse parses an HTTP response from a DeleteApiConstellationDatabasesNameWithResponse call
+func ParseDeleteApiConstellationDatabasesNameResponse(rsp *http.Response) (*DeleteApiConstellationDatabasesNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationDatabasesNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationDatabasesNameResponse parses an HTTP response from a GetApiConstellationDatabasesNameWithResponse call
+func ParseGetApiConstellationDatabasesNameResponse(rsp *http.Response) (*GetApiConstellationDatabasesNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationDatabasesNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutApiConstellationDatabasesNameResponse parses an HTTP response from a PutApiConstellationDatabasesNameWithResponse call
+func ParsePutApiConstellationDatabasesNameResponse(rsp *http.Response) (*PutApiConstellationDatabasesNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutApiConstellationDatabasesNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationDatabasesNameBackupResponse parses an HTTP response from a DeleteApiConstellationDatabasesNameBackupWithResponse call
+func ParseDeleteApiConstellationDatabasesNameBackupResponse(rsp *http.Response) (*DeleteApiConstellationDatabasesNameBackupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationDatabasesNameBackupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutApiConstellationDatabasesNameBackupResponse parses an HTTP response from a PutApiConstellationDatabasesNameBackupWithResponse call
+func ParsePutApiConstellationDatabasesNameBackupResponse(rsp *http.Response) (*PutApiConstellationDatabasesNameBackupResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutApiConstellationDatabasesNameBackupResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationDatabasesNameBackupRunResponse parses an HTTP response from a PostApiConstellationDatabasesNameBackupRunWithResponse call
+func ParsePostApiConstellationDatabasesNameBackupRunResponse(rsp *http.Response) (*PostApiConstellationDatabasesNameBackupRunResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationDatabasesNameBackupRunResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationDatabasesNameBackupSnapshotsResponse parses an HTTP response from a GetApiConstellationDatabasesNameBackupSnapshotsWithResponse call
+func ParseGetApiConstellationDatabasesNameBackupSnapshotsResponse(rsp *http.Response) (*GetApiConstellationDatabasesNameBackupSnapshotsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationDatabasesNameBackupSnapshotsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 502:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON502 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationDatabasesNameConnectionResponse parses an HTTP response from a GetApiConstellationDatabasesNameConnectionWithResponse call
+func ParseGetApiConstellationDatabasesNameConnectionResponse(rsp *http.Response) (*GetApiConstellationDatabasesNameConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationDatabasesNameConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationDatabasesNameDatabasesResponse parses an HTTP response from a PostApiConstellationDatabasesNameDatabasesWithResponse call
+func ParsePostApiConstellationDatabasesNameDatabasesResponse(rsp *http.Response) (*PostApiConstellationDatabasesNameDatabasesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationDatabasesNameDatabasesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationDatabasesNameDatabasesDatabaseResponse parses an HTTP response from a DeleteApiConstellationDatabasesNameDatabasesDatabaseWithResponse call
+func ParseDeleteApiConstellationDatabasesNameDatabasesDatabaseResponse(rsp *http.Response) (*DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationDatabasesNameDatabasesDatabaseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse parses an HTTP response from a PostApiConstellationDatabasesNameDatabasesDatabaseRotateWithResponse call
+func ParsePostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse(rsp *http.Response) (*PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationDatabasesNameDatabasesDatabaseRotateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetApiConstellationDeploymentsResponse parses an HTTP response from a GetApiConstellationDeploymentsWithResponse call
 func ParseGetApiConstellationDeploymentsResponse(rsp *http.Response) (*GetApiConstellationDeploymentsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -31289,12 +40127,26 @@ func ParsePostApiConstellationEditDeviceResponse(rsp *http.Response) (*PostApiCo
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest UtilsHTTPErrorResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest UtilsHTTPErrorResult
@@ -31350,6 +40202,150 @@ func ParsePostApiConstellationForceReformResponse(rsp *http.Response) (*PostApiC
 		}
 		response.JSON500 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationFunctionRuntimesResponse parses an HTTP response from a GetApiConstellationFunctionRuntimesWithResponse call
+func ParseGetApiConstellationFunctionRuntimesResponse(rsp *http.Response) (*GetApiConstellationFunctionRuntimesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationFunctionRuntimesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationFunctionsResponse parses an HTTP response from a GetApiConstellationFunctionsWithResponse call
+func ParseGetApiConstellationFunctionsResponse(rsp *http.Response) (*GetApiConstellationFunctionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationFunctionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationFunctionsResponse parses an HTTP response from a PostApiConstellationFunctionsWithResponse call
+func ParsePostApiConstellationFunctionsResponse(rsp *http.Response) (*PostApiConstellationFunctionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationFunctionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationFunctionsNameResponse parses an HTTP response from a DeleteApiConstellationFunctionsNameWithResponse call
+func ParseDeleteApiConstellationFunctionsNameResponse(rsp *http.Response) (*DeleteApiConstellationFunctionsNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationFunctionsNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationFunctionsNameResponse parses an HTTP response from a GetApiConstellationFunctionsNameWithResponse call
+func ParseGetApiConstellationFunctionsNameResponse(rsp *http.Response) (*GetApiConstellationFunctionsNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationFunctionsNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePutApiConstellationFunctionsNameResponse parses an HTTP response from a PutApiConstellationFunctionsNameWithResponse call
+func ParsePutApiConstellationFunctionsNameResponse(rsp *http.Response) (*PutApiConstellationFunctionsNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutApiConstellationFunctionsNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationFunctionsNameDeployResponse parses an HTTP response from a PostApiConstellationFunctionsNameDeployWithResponse call
+func ParsePostApiConstellationFunctionsNameDeployResponse(rsp *http.Response) (*PostApiConstellationFunctionsNameDeployResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationFunctionsNameDeployResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationFunctionsNameInvokeResponse parses an HTTP response from a PostApiConstellationFunctionsNameInvokeWithResponse call
+func ParsePostApiConstellationFunctionsNameInvokeResponse(rsp *http.Response) (*PostApiConstellationFunctionsNameInvokeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationFunctionsNameInvokeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationFunctionsNameVersionsResponse parses an HTTP response from a GetApiConstellationFunctionsNameVersionsWithResponse call
+func ParseGetApiConstellationFunctionsNameVersionsResponse(rsp *http.Response) (*GetApiConstellationFunctionsNameVersionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationFunctionsNameVersionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil
@@ -31581,6 +40577,610 @@ func ParseGetApiConstellationPublicDevicesResponse(rsp *http.Response) (*GetApiC
 	return response, nil
 }
 
+// ParseGetApiConstellationRegistriesResponse parses an HTTP response from a GetApiConstellationRegistriesWithResponse call
+func ParseGetApiConstellationRegistriesResponse(rsp *http.Response) (*GetApiConstellationRegistriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationRegistriesResponse parses an HTTP response from a PostApiConstellationRegistriesWithResponse call
+func ParsePostApiConstellationRegistriesResponse(rsp *http.Response) (*PostApiConstellationRegistriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationRegistriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationRegistriesNameResponse parses an HTTP response from a DeleteApiConstellationRegistriesNameWithResponse call
+func ParseDeleteApiConstellationRegistriesNameResponse(rsp *http.Response) (*DeleteApiConstellationRegistriesNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationRegistriesNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistriesNameResponse parses an HTTP response from a GetApiConstellationRegistriesNameWithResponse call
+func ParseGetApiConstellationRegistriesNameResponse(rsp *http.Response) (*GetApiConstellationRegistriesNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationRegistriesNameGcResponse parses an HTTP response from a PostApiConstellationRegistriesNameGcWithResponse call
+func ParsePostApiConstellationRegistriesNameGcResponse(rsp *http.Response) (*PostApiConstellationRegistriesNameGcResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationRegistriesNameGcResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistriesNamePackagesResponse parses an HTTP response from a GetApiConstellationRegistriesNamePackagesWithResponse call
+func ParseGetApiConstellationRegistriesNamePackagesResponse(rsp *http.Response) (*GetApiConstellationRegistriesNamePackagesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesNamePackagesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistriesNamePackagesPackageResponse parses an HTTP response from a GetApiConstellationRegistriesNamePackagesPackageWithResponse call
+func ParseGetApiConstellationRegistriesNamePackagesPackageResponse(rsp *http.Response) (*GetApiConstellationRegistriesNamePackagesPackageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesNamePackagesPackageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationRegistriesNamePackagesPackageVersionsResponse parses an HTTP response from a PostApiConstellationRegistriesNamePackagesPackageVersionsWithResponse call
+func ParsePostApiConstellationRegistriesNamePackagesPackageVersionsResponse(rsp *http.Response) (*PostApiConstellationRegistriesNamePackagesPackageVersionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationRegistriesNamePackagesPackageVersionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse parses an HTTP response from a DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionWithResponse call
+func ParseDeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse(rsp *http.Response) (*DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationRegistriesNamePackagesPackageVersionsVersionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse parses an HTTP response from a GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileWithResponse call
+func ParseGetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse(rsp *http.Response) (*GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesNamePackagesPackageVersionsVersionFilesFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePutApiConstellationRegistriesNameSettingsResponse parses an HTTP response from a PutApiConstellationRegistriesNameSettingsWithResponse call
+func ParsePutApiConstellationRegistriesNameSettingsResponse(rsp *http.Response) (*PutApiConstellationRegistriesNameSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutApiConstellationRegistriesNameSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistriesNameSitesResponse parses an HTTP response from a GetApiConstellationRegistriesNameSitesWithResponse call
+func ParseGetApiConstellationRegistriesNameSitesResponse(rsp *http.Response) (*GetApiConstellationRegistriesNameSitesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesNameSitesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistriesNameSitesSiteResponse parses an HTTP response from a GetApiConstellationRegistriesNameSitesSiteWithResponse call
+func ParseGetApiConstellationRegistriesNameSitesSiteResponse(rsp *http.Response) (*GetApiConstellationRegistriesNameSitesSiteResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesNameSitesSiteResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationRegistriesNameSitesSiteActivateResponse parses an HTTP response from a PostApiConstellationRegistriesNameSitesSiteActivateWithResponse call
+func ParsePostApiConstellationRegistriesNameSitesSiteActivateResponse(rsp *http.Response) (*PostApiConstellationRegistriesNameSitesSiteActivateResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationRegistriesNameSitesSiteActivateResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationRegistriesNameSitesSiteVersionsResponse parses an HTTP response from a PostApiConstellationRegistriesNameSitesSiteVersionsWithResponse call
+func ParsePostApiConstellationRegistriesNameSitesSiteVersionsResponse(rsp *http.Response) (*PostApiConstellationRegistriesNameSitesSiteVersionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationRegistriesNameSitesSiteVersionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse parses an HTTP response from a DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionWithResponse call
+func ParseDeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse(rsp *http.Response) (*DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationRegistriesNameSitesSiteVersionsVersionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse parses an HTTP response from a GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadWithResponse call
+func ParseGetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse(rsp *http.Response) (*GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistriesNameSitesSiteVersionsVersionDownloadResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistryAccessesResponse parses an HTTP response from a GetApiConstellationRegistryAccessesWithResponse call
+func ParseGetApiConstellationRegistryAccessesResponse(rsp *http.Response) (*GetApiConstellationRegistryAccessesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistryAccessesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationRegistryAccessesResponse parses an HTTP response from a PostApiConstellationRegistryAccessesWithResponse call
+func ParsePostApiConstellationRegistryAccessesResponse(rsp *http.Response) (*PostApiConstellationRegistryAccessesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationRegistryAccessesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationRegistryAccessesNameResponse parses an HTTP response from a DeleteApiConstellationRegistryAccessesNameWithResponse call
+func ParseDeleteApiConstellationRegistryAccessesNameResponse(rsp *http.Response) (*DeleteApiConstellationRegistryAccessesNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationRegistryAccessesNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationRegistryAccessesNameResponse parses an HTTP response from a GetApiConstellationRegistryAccessesNameWithResponse call
+func ParseGetApiConstellationRegistryAccessesNameResponse(rsp *http.Response) (*GetApiConstellationRegistryAccessesNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationRegistryAccessesNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutApiConstellationRegistryAccessesNameSettingsResponse parses an HTTP response from a PutApiConstellationRegistryAccessesNameSettingsWithResponse call
+func ParsePutApiConstellationRegistryAccessesNameSettingsResponse(rsp *http.Response) (*PutApiConstellationRegistryAccessesNameSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutApiConstellationRegistryAccessesNameSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationRegistryAccessesNameTokensResponse parses an HTTP response from a PostApiConstellationRegistryAccessesNameTokensWithResponse call
+func ParsePostApiConstellationRegistryAccessesNameTokensResponse(rsp *http.Response) (*PostApiConstellationRegistryAccessesNameTokensResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationRegistryAccessesNameTokensResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse parses an HTTP response from a DeleteApiConstellationRegistryAccessesNameTokensTokenNameWithResponse call
+func ParseDeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse(rsp *http.Response) (*DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationRegistryAccessesNameTokensTokenNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetApiConstellationResetResponse parses an HTTP response from a GetApiConstellationResetWithResponse call
 func ParseGetApiConstellationResetResponse(rsp *http.Response) (*GetApiConstellationResetResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -31641,6 +41241,124 @@ func ParseGetApiConstellationRestartResponse(rsp *http.Response) (*GetApiConstel
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationSeaweedfsResponse parses an HTTP response from a GetApiConstellationSeaweedfsWithResponse call
+func ParseGetApiConstellationSeaweedfsResponse(rsp *http.Response) (*GetApiConstellationSeaweedfsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationSeaweedfsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiConstellationSeaweedfsResponse parses an HTTP response from a PostApiConstellationSeaweedfsWithResponse call
+func ParsePostApiConstellationSeaweedfsResponse(rsp *http.Response) (*PostApiConstellationSeaweedfsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiConstellationSeaweedfsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiConstellationSeaweedfsNameResponse parses an HTTP response from a DeleteApiConstellationSeaweedfsNameWithResponse call
+func ParseDeleteApiConstellationSeaweedfsNameResponse(rsp *http.Response) (*DeleteApiConstellationSeaweedfsNameResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiConstellationSeaweedfsNameResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiConstellationTagNodesResponse parses an HTTP response from a GetApiConstellationTagNodesWithResponse call
+func ParseGetApiConstellationTagNodesResponse(rsp *http.Response) (*GetApiConstellationTagNodesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiConstellationTagNodesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON405 = &dest
 
 	}
 
@@ -34117,53 +43835,6 @@ func ParsePostApiPasswordResetResponse(rsp *http.Response) (*PostApiPasswordRese
 	return response, nil
 }
 
-// ParseGetApiPingResponse parses an HTTP response from a GetApiPingWithResponse call
-func ParseGetApiPingResponse(rsp *http.Response) (*GetApiPingResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetApiPingResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest UtilsAPIResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest UtilsHTTPErrorResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 405:
-		var dest UtilsHTTPErrorResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON405 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest UtilsHTTPErrorResult
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseGetApiRcloneRestartResponse parses an HTTP response from a GetApiRcloneRestartWithResponse call
 func ParseGetApiRcloneRestartResponse(rsp *http.Response) (*GetApiRcloneRestartResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -34820,6 +44491,53 @@ func ParseGetApiServappsContainerIdExportResponse(rsp *http.Response) (*GetApiSe
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiServappsContainerIdLazyStatusResponse parses an HTTP response from a GetApiServappsContainerIdLazyStatusWithResponse call
+func ParseGetApiServappsContainerIdLazyStatusResponse(rsp *http.Response) (*GetApiServappsContainerIdLazyStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiServappsContainerIdLazyStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UtilsAPIResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest UtilsHTTPErrorResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
 		var dest UtilsHTTPErrorResult
@@ -36460,323 +46178,431 @@ func ParsePostRcloneVfsStatsResponse(rsp *http.Response) (*PostRcloneVfsStatsRes
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"OIVBOesLkMuk97p3FKFOu/f149f/PwAA//8=",
+	"7L3tbhs5tij6KoTuAdrGleR0umewJ43BhWM7iWdix8dyMthnFORQVUsSxyyyhmTZUQcB9kPsJ9xPcsFF",
+	"sj6kKkkl24mdrh8z7aj4zbUW1/f60otkkkoBwujeiy89Bf/OQJuXMmaAP7yU8cL+N5LCgDD2T5qmnEXU",
+	"MCkO/qWlsL/paA4JtX+ZRQq9Fz05+RdEpvf169d+LwYdKZbaDr0XvXf4hdwyMydTTaYMeEx0ChGbLpiY",
+	"ETMHoiCRBnp9XA9TEPdeGJXB134vUlIM/yYnl26hfxu9O2+1vP+lYNp70ft/Dop9H7iv+qBu7JoN/E1O",
+	"CItBGDZloOoWmRnG9fCQgzL3trjymDWLwg8kkmLKZmTv4t3oikjBF/u96nKef6v1vE9jaiAmtLqu9yvL",
+	"Orp8d36En+95aaWB16zPttpuec+/6fqq66q5zpGg6eXh6fGDnN3S4GvOL7Rssdbn33yxaxf5te9n035d",
+	"UzajKRseKaAGDi9Or+Q1CE8TbJNUyRSU8QSyMlNO/rRRTMzsCcDnlKnFMV3o0mcmDMxA2e8s/cecGeDM",
+	"Dc4MJLp2IP8DVYou7L8FTaC2YQoqYVozKXRlxM0neZH3rJtQAY3fCb4oTTqRkgMV7qtdQWSu5JEU2gDn",
+	"dOlM8sZfyyTzn24jH/vLL0e/dBfH5yN3u43XEGXayOT4fHQijPK/tdh5Zc1+lEXdIcRCH8Yxs80of8ll",
+	"dG1vTre7ulho7PqSU9e//khjoV9Rzic0uq4dNhb6QipT8+3r+tOkej6RVMWXMjOwepZHUhjKBKjTqAGo",
+	"8xaXmRD2t2VEKFoQJqaS7E2lIqOTyw+HFxdE2Wn1fq9fs+fjDej0hsXwSskk30P90b2R2tT2b9zSmYzr",
+	"0em8Cc8uqJlfKJiyz7Wfr6iaQf0i3mtYWmBp6e811I5cRp91lwsctiBbDdSjPWq6h+DOZHJnMvhw1K4N",
+	"Pdt4QIhqzbcBtzkubrFwJT8vsH148vo9OxptPF3EuPOtrrwYqOHei7MYHsMNiwBJ2RI/Xt3exLZooHE4",
+	"RFhaQj+/BTEz896LX573ewkT+T/7q7sSLLoWO/Rc2nFpCdtu2fEGa/d8kU04iyyaNz7UkdSJ1OdVwlNi",
+	"De5yNkzcMM0mHOqPnaX1WKhPPjOztKJyN/2WzeZmLjMNqzTf0nief0f+qpbGM/1W0vgl5VREoJpmugRO",
+	"G3iN8sWvLsEdmw7zL53bKrvU+IQ2AAme3raQchIzsxZOqpdc3c1JkpoFSYAKTcY9M2eaCBnDuEf2phnn",
+	"BGJm9n8jGoxvRL3kTAyd6YE9AGwzXD2GTeDTEhAe4JLtFto8BQ1U2HEhw0JMqh4/VTN9oiOaQrx6/lcq",
+	"A8KmJJJJQkVMmCaUWzZ4QcD1IXv24FFtYUkCofYOQnPOBOyTvX8wEctb7XUcLNof1mIFNYZG85GJQanV",
+	"pRziV1SOaENFTFVMQCmp1o/FxHZDMZFmpk8Seg2apFIj6SCZRv7NgKIRdl47l8zMdpPJzKSZqR0sSuI6",
+	"XtKdp5FEZYLczkHYwZQJ6qL8mi1ubs+Fy4QyUU9HjotvNdgBVjpIJRM1Gz7Jv933ekHcrE73lmlD5JSA",
+	"uGFKigSEITdUMWrvz0ikDUzcZdbPqdQQW0HDIQzn76a9F/9cz6gIaoa2ywhM7+vHftOi3dgkxcG/9ntz",
+	"oNzMozk4dmG7uQokf4PdA1O0Mu2bYnTivkxAk7m8tQflfq6ck8V3tyI8iXnpLV8aOHypo6QJndV0sQTf",
+	"HoGdEJtY0sEMuaWapFTbU5ks8KtjyKQiezCcDUkkMx6TCRC9SCaSs2i/blZOJ8DdfeXS6kWF8K1Kk7VX",
+	"5AZCMDKS4BNUhqMVipvQ6DCOFehVrr93RiPiP4atF3c3FmNxDKmCiBqIX7ipnHKYaRLnX4hmIgJyeHFK",
+	"bn4e/vrrkLzXQE5EjDg3AmOxTA/P8nUQZl9lGg/rzkmAuZXq+phpizA1tOdUE9+GxKFRHeGS4mXGeM0A",
+	"785fvj99e0wSMDSmhhIzp4bcggISw5QJiIkUJTA4ltE1qCnj0ApNZQqigd6/S5H+2G91K9dz4Hy118j+",
+	"TCw/hQ0GU6kSe2uX78/75OjsuE9Ozq8u//Pi3en5VauV4kreiagGKU6nxKgM+iTiUoNbM6FTAwoP6Gfi",
+	"3hqIScSZpXQx05EUAiKj6x9VbWQ6YjNB63aIvyORNDLFd3sFsItt2DZXLIHaV85/IHtMEA2RFLHeXz9w",
+	"ic03ZtH4buZvprb8RaLtoJQYs+gTJiKexfZJcefEppZ+IIto3AHG9WdiX/XVCd9rPGULm4xzfLgcguLb",
+	"u6f3LR6xGKpo2yeUa0l0lloajgzDi5mSWVp3hDeSZwlsQ5UKelJPlfxIZC+RmTB6304cI7AuP3QrA1pU",
+	"ZmJ2zGrO4ChTyoGVgshItSB7F/843i8eUMeH4AFNgHCaCQuNvf6W+re6Z2qFI0V+68YB7HYPoGEJDI8z",
+	"L7avvnv/B5T0AoKRhIk5KGaGJPTQhCqwb7GllhDjQ+SgkwgqpIfnoVOK5MrV6hSX7oMFP3tSIksmoOxN",
+	"WZkIosywGyBTynimwFJUiAH5OfuZxaDKSGIXkAn/8A7HorT8sPZaPEIW6/TeT+/KkmY/KqKfMZCkhpR4",
+	"FU2oIXGmAn+HKyEpKCbjfGUX7p/3uq7yRKvg726bGUY5+x3IBKZSgbevuuvC/tpdRGYBX94KvGjj1VRL",
+	"U4I24YptC9sxBYVPQ4mFoqaRjxqOxaEggHKt5iyCFbjErjFMacbNcCyukAPKwfTFWHz5Sl7kjUuXMBZf",
+	"xr3zd+cn455t4V/rlRZHZ8fjXp9YuW84HNqW8Bki++/MMs/aIz9fhNaD0ZuTt29tH4//to8ljwU5MHOi",
+	"F9pA8pMOS3evZquH0RSvyz1BiH+Vwo2xBEWCW8pMAIaAf7lk4q5Qkjm9ATLPxGzYQM3q7fD1SuZ2uge7",
+	"vTjj7pG6g17Pc+TFcHU6mxjZrWFurqho9vJfa+xNNP1E47idrtp2ipVMW/ZycNagQvQr/NSsZUyzT3pO",
+	"FTQYIKM0K39xpDt8APNp6XtZYEhBxPqT0zk3vejrAHi7wz9287wT9pdeHTB6jV9rI1zrDp80UBXNW/ar",
+	"6Bk2KBNqPueCfbtpnXDdto9R9JMVdFuezYzF9dC1JNHfHRpKQvyyUN4se9foNyVvNpfsID2vwCRn4rrl",
+	"ISY0sjQlCM8r7RNIPnGWMFPHf2mZqcgRdKMoE0bXseB2CAXaMjONu/fy7qekySLqG+gHQfsRKFSIuzlq",
+	"jzYNuqgWVkKpzScmtKFO1m3RU7EbxmEGcbPfA1Wm2ezW2ixZY91bMU5mwr7mtZNadlsxs/gk05YUA+XI",
+	"TzIFUb9VK81+mikawac0Z2br+HCZftK50F0nSSs6g7C+3VFML3Rk7oqnXvquEZObSFqQn9fJt1vdNwqv",
+	"wzP7/3XX4SXVTzFTm+1TjtTtzuFUH9lVdkcKd8D1cN6IA193XtCb6sPRLCOvXlBJSm2QEtfCb5B9duLc",
+	"l4drfQCB8K1aqlAjRBtNurFiNw2ACcJ2+8TSmz83GOLseVbxtWIspkktSHj9xVbAvs2mTy8Oz5qJXuMG",
+	"a5/fe3jC65X99leSZNrKUCQT7N8ZbKcAankCKwc+owZuK9bSEk3NJgLuBQGX3t9VMOSM6ra8Nktvfl3L",
+	"2ljQXNOg9S4+ICmusbY3I8l3hph+z3Fw9RM1+ZJtczCvpKpB3w/3+1g1SpE7yWYgbj5Q1RbImrn9YMK+",
+	"qbmdW0CztzM4UcKEIVoGKw2JqCBsJqQC8qxW63gfYJNA8jbw9U3cdqN/ouWGXzIRMzHbeInBLHtG09K7",
+	"fSE5i+rpSgOvswbsnP3KU5EKTta5vT2gILFOgtBuefphFRe1U29hBNl5Zk/1Vqddc1+uz4aLWkM27+hI",
+	"6lcR4fz+yi7ogksaN7FAR+g215oJavaXpwqEMxxMaQMBXve+ttlnwmaKGriSb6Q2AaWrm5wbU++cZz/o",
+	"zUvA/qF13VJmzMyzyadIJp/o79k1peqT80QcWLQA9Umr6FPuFl/LigR3353B2EcP+WFWeL5isZeSwx1n",
+	"sUOsmYHGCRMVH9/mIAdsmzsqn160fKHoDIQ5a3Sqo5mRzlu4/vuERtdZut2mX2LbYtuu7zv0vDpm9Rgy",
+	"AUPd/A3YhX68EB9ZJmAlyGILPXbpjAvIahmcUWwJTVZqkQdRnOqKC3mNc5naXVW9GrNVh+TU0AnVW7px",
+	"H/vWxYDeZhVowz+oCsEVNZTOtX2Xgjg9Pkab1dqG7zWoMyroDIIquaYpEqk2V3Nc7mEZt4Qy3maAk1IH",
+	"VOcmkNIZtBniTbWPp5RRmxGuri6K3kxE6uUW6MJZBKLhveByNmNi9hZuoF4JllB1DabNNs/KPewIUjAj",
+	"7XgYhHlXUuwCOeuY03yespfUKvAkaSw+1e81jbNPDbzt7WmhlK3xqkLoPkJnn7Z61HelvvUBHok0MHLK",
+	"yC1fknKX4ib863v26rBBb4rPqqOaDeI7tsC3cJ3KdMt4yOX1mTkkrTDqqtRhmb0oY3gF0+pYDRTJhmfe",
+	"9W2Vj+BUmys6u2J1YvPb4mMwYdu3iaArsP3RSmhz5r2LnffcLdXEDkoMnc2gzuevFsQpE8PzHBbrjdmU",
+	"c3lrKcVbGVF+enEYRVVlRTVy72hOOQcxgwslb1jcwJTGQkehYXFDu0uSa81hyBIe2eGmLKIGGkXKRIqZ",
+	"jCeN38vxFysfZcLQQWbRwGxrfStVvTVba47vQQMOQD1fbDhuqunb36FRtP0H43FEVVw6k23juxBkRmCy",
+	"tB5ajs9HR/d5sW2gL+JAS6/4sjeoW8ALgs1CSLT3B9F2R/We+fXcW9PgFZ6NeCfNOq2Xk/wOLWOd07/G",
+	"FWNbglw4egAb7FG33MCKncu4IbimGFbegFIsBu+7JmMgkZWKBZGCJGAUizRR8lYPybHz7tHOGRpIwDfn",
+	"5I9g3/dEiWlyO6eGUKKZmHEY4MDeBkluqaj4rFZIwna0AxpRZY2n+tXVxahu1q1pQ4nraTrPCyWJb0au",
+	"YUH+57/+m9gXrHB1LkWJefijIh6LG8qZSytwwyjJzaEW0t/68bxvGYiYyKkD19pTXCJhS9EdgU/fEFS4",
+	"5JJrwa6uy1qalkptZgr0cUk2aGwUooKbTtbHlYRAMOLAa07t0V74MYK/e3Cx55ZgkNH/fuvuoHYDvuvF",
+	"NhuxgkQj8V9Lwb8PoUa99UsmYneMusaShWQFVdvLfjjloEMpLiHKlPZa5NUWdlQ6yx0rNmvTL0odSgkW",
+	"XkkVQWWuZWePunZEUaZBEypcYBhh7v5xKhJRISQaIBIaA1GhF18QOy3GCta7i4dVnS/tv35N5VY+nKxY",
+	"hJBiUDtzn0wyQ7RhnBMO9KbSK+8xFnuZ4KA1qczCivAUjNfD5+ZfmcCQtdpgu2Y4OeKZNqBKoNLUUArN",
+	"tAHhFOcgssRyx1H42b51EfXe4TFwmFm6hn/jC1Jilz2k93ufB3aYwQ1F/NJ2vNI0rzL0Jy39chTGL/12",
+	"XJqq8rOfNd/Aca4p3SoxgJXF8jPZlY1pPndnV1oNHK+i7WaMKuM5ckLL17l5iCUQ8KxP6a63GKLUYSlx",
+	"ShVrvC+5LmC8wAmLvyESsz62JbcXLsW1OE8wH24auJpSvJlbJHEuH0zMkM1BVLOT9PF9GYuELiy5oD7Y",
+	"wo+gCEWmh6TUzPv233ADwUQWD8fCz+7jUHxgSAjOSNKpJnvBFEqDJ/gN5RnUxrGZ5iQaOFirm70q98hh",
+	"cauetmVuvGk16YdKlzUocFF9PQJFUaliNxSToRV/Kffm9/q9/A+lOb1Bf2f873bkpTTn5UU+eunX2h8v",
+	"R2HS0o91v12O/JrK7dzy8m1fLV1jlQAEH8TtHOKlHr5i3PGuq+7w9ueAAg4Ss9TKJvb19y+wZr/Dy4Wp",
+	"i3AZsd9RPHLoZBtWxurbd2diu2Ik45Vl0UKcUCTFDSASGGmB3qfYEDMfNZBHhjtEGIu4jJlBzBiSVxbb",
+	"PtMk5dC3XzgT2ec+Ro3WzDQWlr2m5Kfrn/rkp+Qni6s/zX4ieiEM/TwkL0fHFtVlNpsjqt6y2L7JBcbe",
+	"MjMfC6cT7pMMeQuCzqWzucG9uvXihi9ARSAMnYELJ6ogf128TjMiXHm0DBhgH4FewL2eR/xevydSltp/",
+	"eyK/Jcjb0V+6Ee2fH8Ko9h9XfmT7txUa4ws3g/33UZglX+eHZWJQZzPdTu1WeZLvyxdFHsm0wY6ls4ml",
+	"31ta9oPXgPcyWN2qFVtO0/q46NOLoLzDZ+P0IoQA10qhUpuQ0mp1KPulMhjGHHpXk36bnZzRdN3hbqVl",
+	"Xj6VOr/ApvlHsMb1FUNgV/uWiduLL72pVAk1vRe9jAnzy/Na35RUSZ/G7rWSWdo2GdRDJVfa1mZul38M",
+	"KZeLYLJa9kBMQojDFi4TaxxTUJ/3+RIwD6F7d5hgiSU/P9eda8JEufHSM1N8PDgrRiUaOESGcEnjwYRi",
+	"oGVmpI4ot4Q+4jRJ3Qvxz4SJfkI/f7REHog2kJIUFImk5C5Ar79hfTVxV3/+dWPclbwVdYHB7+zPJKHq",
+	"Guk/vlgD2zYmcX45PjnBuKeB3gLEU/1inD179kuE+i4RAf4Lxr393xB931xdXaAGT8EUXxZMNeIE8YMM",
+	"bdAHMWYysw9dJeKzBJ0uksHTcP1OXEIi64TTi/qG5Bog9YaFfCc/aeR04zzGWAoSM31t/6vcXWKSnRvK",
+	"iVRjgYl43FJ/I9q4W6TaR0CiW0Ux+MDOOAgjI5UnTj3qvHk0Gjf89yZxHNfwitUF7V8WH18g8IQVS2H5",
+	"dLUglFshA5VHCTXR3MLeFZ1psndMIZFiBGagzYLD/sbp63VrU8uK6GwysKzbCzLu2QMa98ieF3z3yV/9",
+	"UoCzGaaZsav5jYx7E6pg3CN/zREDyATMLYAgPzurzxzGIu+mwdheKEJgN9vfRWNy+vuC4AgDIwe/g5J2",
+	"N4GhmDpJ2ja3v6Kt4mO/zq29CcdPPtPI8AUeceAC5wqK87ab12Rvyj5DTAIJ6Jc2dsZEmTr0CZ5b6f72",
+	"xyLISbjRD1436ps4voKAmEoVeRkPPltWiN0ws9hMI0omxSVG130gmNeSXB69fXd+EtJKIRfl9I8l3PeB",
+	"gESKITmaQ3QN8VjYSx1gwgAmMMQ2M3CYpnwRTA3Bkw1x3pNlojKhUV9MCT4fYjYWfu5UyTizWx0ZajL9",
+	"ijKOQDHl8tauSSEn686BaWSvp5TxAWZOuB6Lf2dUUWGYAJRdh+RcGkJJymmELhH2BgyoF2HLXjHNNPEM",
+	"5kAvRGS3dsMoqZhD+kTLOqAmc08ItJWd/T40mOFY/K8v/gKG54dnJ1+d1gqfM5f0RBMFWnLUhMmSMswu",
+	"3WIztUc5bJl4Q1EDs0Xdlbsv/o3S3oJxEY4m/457CfG0TiRwUedMo9TiIWJIXOYyy6vh9SJFHPeUzEQ8",
+	"UHLCxLiHPSc0uh7YjVPj5Y2/fyDgvIvIrWLGgCgC1/OMMHjDTq7I5eRi7F6/x4FqM5hkuh6zQ26xpXhp",
+	"SwcdFBT3WMCHvVE9JIdl0EdqY/v99Z/j3izNxr2PY4HSGKpwuAVQKVxXcju311tNNYve0UOc2b8C9qBw",
+	"pOFYnGXcsJS7fG4oVx2eH/8UvyBhtv64J24SGPc+Es9SaTKRFrrLueOEHAu/L8QtsXDgyXS+z3agdANK",
+	"ez1F9Qg/uA+YKY04r4YB1ZrNLLuQSCGNFCzK80tMMnwu89epwgD08+e08kSOBdU1L6tfkvPdLkNpRAWJ",
+	"wVjeSxtLeq20rRtE0jJfGtjL/noO1TlVxccvnc9Qc4ZiZbcwWeLLfn7+H7VGUWz7Sgbt18YeLsSnMUYx",
+	"lZoZ6bxPSmP96efnte+eAYHan9wxfEOfr5vOZoN/MYgZExWhP1ibatG3IafWKbqAVK25KROOU0Xm4zci",
+	"LKARJqagFMRkqmRCqH12MIlfkaOlmjGx/sxr2Oxf/2Mjm53Wyrco2xZLT5X8vMAnGMQAxVzKuXRJ0oek",
+	"lBFl3PMfLKMM455fuHv4//ynP/3ypzIj8Oz5r/3agLnGXLfLq8RQihflJB2OymeAjyC+p0wQC3zB5mTH",
+	"I+OeT9mkQZixmFKuLa+H559/k4kl+MjnOULv9rNr/vAKBL6VMxZR3uziXrLPNl/oz3XoInnrXsvZRcPk",
+	"G7dxCWjF3bgN3Wz1RtYC79t7KDD3i1QQ/+Y18g64HFHm7uRIGLrdUyHgtt7/4tx9CAqdIChiIhmkFkNy",
+	"alzYlIUifPKX0PJu2Gbf5st6yM9hG3Mh5VDt/U/2cpSjY2En+C0/0cCsVdjD/ftGyhqFnqCpnktzWpOB",
+	"bhS+Hbtn2Q7MIhK6EBb3CZdiRjDXG25n3OPUgDbjHsEAnWFzvFr95Y7ybz9p4nzPPUPt09WQveJRskwN",
+	"CU4U+3aRmM7LSMv7U0cOwmqd+sAnO8hhhhkNfIpGJ6TvRmb2/a93/6vQDg+dlROsbG0jRvr83k0Iecc8",
+	"4naqS5gxbdTC+XxteErRUexQSLFIZKYvsibX2nlThvz1scCNqkLlFtk6KuA+0vyuHlLIA/m9julxnYYL",
+	"stnAgm2oU9Ls8hPJFO510ZuiBptW8u9MGpqb79aqPNbpi8tLCe7hJWvxksy4SPEJC2YykSYot1gKKxWZ",
+	"gQDFoiG59EQHXx2WJJnB7GSY3PKWqlhv6apcWdwmIF9/IBuHx10cRgZNwI2TlGTBtusv7mMJORFqm/zB",
+	"7HMCLh9WkBZyrbOl3b9Y+V9GlNfKDpMsuoamVEtxU1Lnzw7ZyegXsuQpVXYDrLWoOWLQkDmjWPjqE+o+",
+	"vRoFDilxL07x6hWOpy/dkdiWJRV8hXuuJIhRYOpPd+l5DEfd9Ajma9wUP+rYKa+7bMwjMmUcVNmyUlMu",
+	"aU2Qdwyfm13a6WcPbq9fXoBqLrqQMPFKAYzSplDQNS9gC4atLaEP9u8R+x0wVvzsZRucdkzKY7MCrsZl",
+	"e53oKzRuHjN93VA0gen6kkjBKtou8mBZGrOj52OVen5cs+QzULNmBJgoKqJ564jJubwVDREamTAXjUnj",
+	"ZGp041VS0RAAuIz8Yc2V6daegW3WrADbdTcCEBQanG6bqG6brZYW4Ees22Y132bZBs+E+fOv9cmdFyno",
+	"4WtF07lz7ziuDYQKv+6arV3eDjjcACf+KvJ0432SuhgCVMFfw+IAfXZISpkquSox4fbidbfOd2UQ/JL6",
+	"yLUUZh6f5BZnGri2Y8GEFdtcUz0PWerzxMylGSgnaaZSqX2RFlxGYJBeoDKpLnNzgxqh5NgYNu+WNGwe",
+	"dB2H4m4MdYmnwp5ADSjXidlOvA6Jb0GYgc9ng4ze6bFdJBUuTq108HkhUSec1/WN2Qy0IRHlUcbRmoJq",
+	"M7SG4nA/6WXh2oegYIpwrwl1o2iX1H8BykvZk8VY5PFz+7iwc6wg49L4WmBw08dsOrW9wtzk/15CKo/d",
+	"qP+XTIDLWx/7MhZzyWNdntKF5yVUsCn+hMMrmILCsI58BbUcywemTEa5fftqTA7FxzzTrTSUV3z03PRF",
+	"ynTKeTgFTJo+Fl7bHxM53VCLIGgpfQwSViFwDuzXkJrcrGW5euJMW2zCODMLV6rALXSlJkGJZlAVzZmB",
+	"yGSqLgyl9DX3hqIqvqUKyNHFe1LuXmRjdieA9lUpak+ZZmYu60rP4O95au8SvrkePlcOzSvcQOy40kgm",
+	"9qh8bmEPq+gzXGkbTLdnh6fnV4en5yeXZK+o95BnXy8KI9Su3k4Gdbz7kfuA6CV8LmnKSWKxa+YPKKLC",
+	"G9pXVi4taUtSWVRvaYbT7WLOV4oSlfP4rq2k6G7AkZKlTN/hCrzmLKgqi/V6mC78SrHuSSVw1vWJ+2V4",
+	"917gqBVujxd/2g4vGs7SZ7gpoidbloNpLARzVB17GTTcjvw4pZo9JQLrLsBSjZUbwPBjD0A5JqCPcQV+",
+	"0GlWwQ2TmSZehkZK6eCcTDLGY2dkj8sH7apKKHANCMaY9McC1Qp5+QcmiEt3RdAHWCwSqeDhri8P46wr",
+	"3uQdANpEcOeA6FgGt6qxuHx1RH755Ze/YFmCga9LQPaQLbt8dWQ/nVMh9xvZGrTJ0xvKOL6rbErQhUzk",
+	"JZIchXKnGc5DmjmoW6brUd7pfT402cOPy5/DGQRTdXHZK+jrLvd+sbdu+bOCMW2Rd76Wp11Fs1IL4hiC",
+	"8n3QicxMDduWn4ED8yqa/aS9As1xPfY1cB6JQ5dHrUg0sN1WlhIU1AQNhLI9S4xEKbQSUbAR5lwbbxaK",
+	"0cfO8cgWT1OqzNLIaMkYOoffGmfMXBv0Lg8iGLkggtIYGuEnL0DW8N5L3Qi273QzyG4/+Vi42cke4GtP",
+	"OV8gHfEV8fYb1Giq9h2/wN9XH8HU/35feOJCkQO1sCwBii8JhjYUxZtwkwd+MHfLfDEkV/mgOIYbkU2X",
+	"1pBmnOfeByLwZl4tWnsqquC1a90+w0cnRXBfJ6dZmnBygFt1QRI9j7bMp1duN2fa3fqHJHdSKnpFVIwF",
+	"NgyQjx5wZdkHdLEUy7lmOsO1rNLo6tEBs/TYn+BYBAcOf3bIXdYct5776JtSy1KYPggnBIUd2F9Rde98",
+	"1/Bt1atyWDtLuL3Cq1rHs0v/pXp5bv3ocnmA/l8VquO+Iu3BS/Ln7aUpS4fyw84vyPXBsSzH23BBfe9r",
+	"a4mXXYpDjrHIYVlIN0aN+IZhUO5gI6qhAjljMe5lwiVmGfeWWzLHhbsY4AmUwWyywOM/PW553lKaV6O2",
+	"z9ql67X6ErgPhZde/VsWXibXulylCx8ylDnJ6bErp6RrBdq7SbKkLMgWWsx1OiqsF1lHcj+4D2ExK8Kl",
+	"70j2PBvFF+Tw8gyjV/eHbbQtl/lVLecHshtraUL1drotJs907oC8to5Nc6aNXUtQF15DG5wQ8wk+Nq1/",
+	"Y4Xh5tWvWUP9XKfihm04KwtvV/VXcG8Vuzcfyls5Y2J9baKdb65sSFj2ESx1/Y+td7HBwoAbCqk5LkHD",
+	"ltf9XYqpu9n7W1yRswKD+r639Jd+kysLKG8iXfZ9bePYV3fH1Qkaz2eUxXLt2dwXHG4Gvvca1PNXhxjb",
+	"0WjeMQ3Z65Zmc802TVUG8/VQcRdKEZLQXoJOpdBQ707Ze/HF1Y0wmfeUwRBsKyb9fbtHrjbbbUMamvjQ",
+	"bDb41DkvfE6ZAt3Qm6WV3Kgt3Dcb04GEaMFvZC5ua1+3J/2G6nrbIH4dZdMp+7wtq+CuMI5RRfgKgyl0",
+	"0002HpppehjRKNduKdynUlp2nTE7HDwOdhiZhpOvVH/ZcrSjvM+m6ARMAqnYbAYK4papu5fLuJS9XG5A",
+	"sYYshGaupDGNKzKKRtdMzM4w99sdsn6vnu4q2VyT4aQFJ1t38CtzhVLiTWcZNWYGXobP9aziagbqVYcI",
+	"/HrHpLUjTKy3nOp6NS2zy1u7rcvtSqrnusDzzRUZ678WQUDtQnjumGa/OZH2yuZeMQW3lPOXPtl3TfLd",
+	"ja/G+eHVaL0fV8VB/s26rKVRpo1Mjs9HJzVJx1smD/ejLBrKOxaQiJvHCNjWNSIxSXqelLwxP2y8Nply",
+	"LPSUcm6xpClvbIhsqDFJnEszWojoXMZNmdzXwhpLFRUNXnYhROkcJhmnJ5+ZsbOsL55g5ky7QMfzxocx",
+	"E8JnPLnXUnlft8OFHC5WsOG6wQl1l5e8jKnXTax/XWr4VQajMavp1rlM1+WBvEOuyjF6zI97RCri/n5h",
+	"AXXce8i8k823fLyU0b7WLdVu96LJjUxfs/RCZQLQI6gBnfJGpbJZ2z81J9Wk+TWBCqdYRF3B1dvRDvg8",
+	"VTJpzBNbz3BJw6YLVKI0ed2tvbEGypTp5h1ku1xvKXH/w2dgjiJIzSHn4TJqXq1yMY8WCZux7QhLC5/k",
+	"kbC19UHmPiFbk288NskmnEVNLSIaNeVgjWi6fnT/ZpWyuaFKoDkJelRKZBy6/IMyU88TLHXYLmv6pUuT",
+	"oHSTP3AEmPS4lDr2EoTlcOpXHcw+Zy79xGFm5ktJa5eig9amWw+oUM7EszGgFHMxR1vkYsaGO00RnomQ",
+	"WPcYa1Q3+AzbV7ZN+YCLUgfb38Kjnp8dn4+a6iPw6dXbUWNuYP+9CSqLzxYjtc+K2q7yrRsCc6y8F6Yp",
+	"A73msC65cbQmuXEjH4Gfdl644fpm/aKNyrSB2N5J62i0TMMrieFJEL+qiI1Vwr19euZKoaqAPCVUKcP0",
+	"x7Vk/0QpqS5BZ7w2M1hTGIjz+msoMBA0fNu/Pyvlalal3BlmJmnS2VERNz3btyyegblzZJ1b6VufPKCu",
+	"hEmLSBAljYwkb652vTvjrn002x1rQt9TEc2amjsrx+Tmaiu0uDFdgHSbG6z02/7KMsVbbblSNme18HID",
+	"x4csR1MobLxcnWo5Fm2L8tbxGnJQUhsXMYE/95/3f37W//nn/vNn/ec/93951v/l5/6vz/o/P7P/+/nj",
+	"iiU8TxfqXYlxwxcnl2efDo/PTs97L3re2Umm+gXxtTP7RM8zE8tb0SchbY2x6xGU9/ql7p8uTw6P0V0d",
+	"bgmXMx2+Hr07f3X6+v3l4dXpO5wEzEFKTTT3Lqd9Yh/OusaVIaNQkse1uzw5Pjm/Oj18O6q2UoABB5Rr",
+	"sgfihtxQpft58L3uE3cjej+M9Pbda9z7ocBMEDOIBy7SQ/XJ2atDkt9Suf2nf5wc/r2hk5DYz1X29p0u",
+	"T0bv3l8enYx6L3ousL6U8KcfHAT7xBeT7fuUArpPsKbb8ijLB7PtQP0gIYcR349OLke5E2vf5/nrE4iZ",
+	"we3oPnmOh6DBVDpVloDJDTnT5iAGQxnH7NMe2EriM+anLcNHe3hrmK6/9Q7ucmQ73VwVeJuAvz3wbgGv",
+	"G6HzY33S7CWcLmN5DQxUQKkeUlewoBnba4lGE9JXUHgVPz8WFLTK4i9lsLDv9LdUza30Xa0/mvMHV/io",
+	"t+Rr375sFKnevhwZFl0v1lTpRD1ArgSwsuXVMmdRKRlaMRm2NczVGhzrSovGCVtXuDQz85N1OiLUWh9e",
+	"nB5OMg1rmhzJJJHipTRNtaek0lKxquJoeyt2qIAJNAb1xgoeGytgvoUZjRb2HlwvvbZ1w/bhs1G01P8O",
+	"FdhYDK+UTI6pnk8kVXHbvCJRw9Ek9PNLKuJbVlFUliPXG8u1Ndrwb0DdKmZQleV23xA6beYXCuqt5YH7",
+	"c4xjo4a/3OjSs4TvL0/13UPp9TVL31++PcJ/17dIqDKjOQMeb2lYLDr4HHh2lFTK6Xqln111elF3WpXQ",
+	"/2aLr7dLX4A6YyIzDTkKDEtAZmbTXqrxyrmVZY0BBuI3TXCZaXjz/KhRBbDUr/px04nc5hWVxcQKyy0L",
+	"K9cZQfNjbhYbthKFsb5GW6q9Tthu8Q6WClc/xmQNjTb4VRtGZuTIyDSPu9PNBZqbrOMrKTHbFHhfY6yo",
+	"5sbcJhdmQyK0La3zlRmbgXOVAtUkzVxXjZd+fs3lhPIRSzJuqACZNZjiU1DvNaiXC+Myi6xt5X3yNjfc",
+	"et4rlsDLLK7eqi/qgMYku/sRPgeiakGpVDpgN4zDDGLMcaLbuaqMBE0vD0+PG/09rDTwTrxqol9x2+wN",
+	"K+vYxfcDQ6W8h1MLVXekssnRGkTTCxE1f19ziBsIqT/jtlRp6W5aUKaratnjJedZxRKqFkeSN7hDufDS",
+	"NU2aJ7ZQ3da9s9mwwKk2y5bY6tdgPj+aUzFrnIEzcd2+mm/JVfnkc7q2SePMbUMdfI+PdfXjUOpiZjGy",
+	"QOIO9iVQBeowc3yxPafe3PGyAXV8CgP2u+OEChBK2d/BwhCmj5pKZzoQhqK2ciXLyuXJ6Apjo6dSkSPM",
+	"QE2OuMxin+naZ+hKXPU/www6CfuGI9fk8OK0V8qf3Xs2fP7r8NkgExoTwj179udQ95ymrPei98vw2fCZ",
+	"T0qDuz34hMqhF196nmIuh5KZTAmfdd5NyeUMA2UJ1XkmUwOfDaHG0Gjul+uLUklxGvde9F6DhTmNr5Xz",
+	"jcYpnz97Fs4ouArCZ3OAYyKSI+pWUuNMmKBqUeMnvXK87/5ut/7rs5+3nGK7uv5lO1HNpO8F9bABsZv+",
+	"l285/SupJiyOAen8n7Y+3XuZ+1SEpHYOTrB5BckwZK6MXv/8+PVjv6ezxNJODG+/FVzSuARq6FiEUY7/",
+	"7LnQ7N5HO+YBTdnBpwQSz2mthV7XjGSYocMrMX0WIb9mDHx0weCTDBPT1MHwYcrO3IwbAZmmeW66g39p",
+	"2frAy2EELYD7rtPeC4h/g0VUAP3XZ3/69is4AzOXMVb9OORc3trDaAPrr8EU4OcB1JuM10A85aBMmVzX",
+	"weiha+SeQ9DmpYwbK40WTRhUHO693mR3GG9RjawZvp99+4t9SWNSquT1GMD7L99+BZbR5WyJS9oI1G8x",
+	"1jxU3iKJFFYwdXHFHiYDaJ95O89H75O5CswXUnfQ3EHzE4PmKqU++GJFhq+ONeHgNLBVMD/G33NAPw/h",
+	"nYom4Ew8/1xJoWZbEi/coISCSSZz+STXDAVpyMFpcajLzPPHu2HX8w69Hg96/frtV2CZoFfoltaWBSq8",
+	"DqTyzgSErmAamSxIroZffT42skIdTnU41eFUK5xKszqOLOtwqsOpDqd2wqmcMUzZABMG6CpXuKy6SuQN",
+	"aqRQRYwdSsM3sZApu3JDryDKvZy086KjKRv6KX0Oihy0Vs8cv7s0v0b6o1vB+a+PRZ/2GFCz0+k9Mfpw",
+	"7OlBCVVLFKCE7yVmtV5RTTnPMwNDXAynyd4tM/OQFY5GJsMsoBa15lTPAX1UaxngCkXoVNaPArxbKyEs",
+	"XBTA0AxcaW0Q9Wsfg6gJJQJuSw8K1htG216ePr3k8IPmEFWyACp66zvu6bm8FS67phQRrIJf0N59sxfJ",
+	"uaRv/SK5HNpYmzE4tXdvUvcmPWLVZZ1F9xss4B7sug41l6lPExlbZZRLWlQvly6BCvLmyCznxfrzaX7S",
+	"pNS6XyZwfXJ6QXJvUeTtK4lk8jqszs2jVhgO9G0bebjghR9MHr5noupOdgui+ooBj7Vl8Z2g1JHTjpz+",
+	"QCy+w4OtWPxAvkopyerZMkcVLVNWqWjs8oMLZhjl7HefeadU3ZhNiQCIIc6rgGqSKkhYlhDOIkyg7QoC",
+	"iEFRTySRMVacqGXSXvqlPgw1aU6uVocpq7Wd752UdEq8B/Mwe4L8yKQe5AJuB9xYQexBUZ5pvUxPEppi",
+	"tTbOaycr1UDzfm8hWPUaFi5fve9m+YNhg6Dv13kUQl8fx2P7BOXs2itqARAlZnUDXGgkifX17OtBYqvL",
+	"34YTfVkA1H2yoh3IPTnLxgY4XLVoNMN/NfZpjVXeD3FZtH8ML/rTpVX5wTPQuU6PKcJldL3qVLrNBXoi",
+	"dqAFTfVcbnQ5XblRS4RGeeftqRHZC/W6lMvEVmJ99x8JqfoBoO37k6mnyz3m2JcjBxZIXEHGBdkr4ajF",
+	"vv1dsdDQHTEQO3bY12HfD4N9lmUpoZhFDaYNizTZ0+x36LvYtEhmwvQJmGi4FdIdQOwCkNe6ovvuJ7bt",
+	"99eVOJ1U3CTAdjqTR6gzaQPpFswqJo1dNRVtnND9IE9Thuyehj/00+B85pb16UGSDWU3dUkq2RZ1DhRg",
+	"+eBtXwiLPpe+y/fBot2epo1I4jdF/ARO2Awnehr3iUuT42p+5hXQXXlJIC7qvHuaOp/cH47yOLTAAuK+",
+	"DnOgQgE72pCblmqXXZUt3bPdIc8j0acUupSpVIQGh8TIY1Eb5MkEl67O0bZP9XvXo0OcDnGeEuI4sK3X",
+	"PCrHC2tDOZZ4v95O+Rhw6EvAx68HU8lDGtN2L9Er3/Gbo1V/pQS6XxE5Pa6fovRG32GaY8xCao/fjo68",
+	"sa+xXxofZ/93Bmj08tP7xXSEoiMUD/fCejyu2Cp24U0rpEHlLg7b65UK+oC9HxV5IEaSaVjXfRGKDns7",
+	"7L0D9jo8IXsOx/bLzHEAxyWRU5UdK3ZBbJ1NHLkYeMXXQLPfoT0LMArjeAF5ZEf5w/AD+e47fqCjKI/P",
+	"hupUVhax0YqaS9451HqApduxCREVAw0iHuS5Z9e6P97OwcxBlX0c51QT7EzsOEzMSERTOmGcWfgsBcY2",
+	"eEEeUTECEWP900fjAfuIUhMW/s9ziK4Jmy6dNtMkJI5ek4JwS7dne6/TjPOqA2swxuxpEJoZdgNk6iKH",
+	"EqqvIUYYxMiFvDiPKyvUFN98P/7OlPN3U0SblvfeX6kB7HN3rxtnxsw8m3yKZPKJ/p5dU6o+RZjVd+DO",
+	"6pNW0ae8rLSz/q/Q5Y+PPcT6iebkrAPXEjp46P/oyphE81UEuAA1lSrRBAsdkRxoNdmjcdy3zBmnUal2",
+	"ViJv4FOW+j9ieSv2iRQE66QSXy1pJXDHzl0F/4cPA8QaSmtiAPG7j/8r9t1FAnaRgD+QyzxinsftbYhE",
+	"VvtGIglwj6R95RQ0PJP+VSy9hv65pApIqgB7xU78y/2E3Bj7DRHLD0oydnnaVmEjK6VBcQfhX71HS0o6",
+	"NH5Mb/4TNum4x3NbJqTKkx/ELqdYE2NifwZNjs9HAwUcfUdDlWTvomOpRyqV6ZMp5XxCo+s+wTp9nGmj",
+	"nVdPlGljqY0wim3kTI6/RSqy85GbbA1rcnw+Wg6w6xIWdGzKH6DOgKcoKwiwgZwUSVAOJlu5U1QqK770",
+	"/hQPhPjFRMNjLASM83mA/dvo3XktCcCWjpwdZAL/S1K64JLGjxf5uxD/3R5ShAgiFQk3TUkFQn0F6SoW",
+	"lEqDNiHDivarQSlVdOki8n8IgHoNLvdilCkFwpBzmGScrqOp20GTgMi0I65HvtO25PXzYEETXuvo3Vw9",
+	"y2/vPw/P3j5wZFEH2d87G4qDJ2LmTBMhY0zUW447qhLODxfnRIC5leq6Pbxj4pWW4O76PGBQQ3V/eWJI",
+	"zxuQPfdUnNME+oTpt2w2N3OZaeiTuS/f3CcsvaRihnkwOzGiS1j0kAmL7g8dY2rohHrAXGvNgxtQC1+Q",
+	"MiahH1EQSRUT79UQ8UwbUH0XFcTZDRzE8laMhUtBQRJQtjfz2W2Q1MyBKjMBajTZu1CSTIGaTMH+kIwg",
+	"UmBQ0zkWCmIaGYh/I5kGN5mjWvYIQMSpZMK4uHUa2+/JsNlgWJzAcX4AnSIxF7T/9D3Q1OKGFc/eC3pD",
+	"GacTDjtmZVgG0nKcX/Fbc7bkIi2fy4szQDi1bWfKeSH4lHpSkKs3pyMHxy5VssUGPRbMLKEEcb4WSxBu",
+	"ZXp7UHHGIX6B7d3zO6dmLFAHqN2rHMLtJhDJxNsNmEUrEcFPmsxl4ro2ZvhbA/X3L6GnSg7P3C0cv3TH",
+	"uUY1d+r3QWKYYtrDzmT4BHRxT6aI24WSN0xjAPDq+xVwqIFEbHg166KCa8NlNZGicPrDXICijL/ebZMJ",
+	"y3iTl5eH58eD85N/jEVoY2lNTh4sYbBseYUyLJGWqzkQLTMVQWkQy97DjUsGisneh+SERnPC5YxFlJeP",
+	"peKlSJi2L7CvOO5ed0peXZ6M3rz9TzLz2eVjoiQHkvrq4eR//uu/XepSyUH7IcfCbfUnTWZcTijXQ/1v",
+	"TiKqMGjC93QVDSr0M6JCSGNXkSoZZxH0iZZIKF2+D6bJNaQG3YcSKjLKkRoj1yIFXwzH4qqaRjXJkJ5a",
+	"hiGa2+cmpNzzQtBwLC6ociZXynhmb5EqN4QyLlH+yokFIkUmMl785nZsWbbyFeA6gaHz2y1dtCTZRVT5",
+	"g1NuP9U6h49qNHhHth892f7eHrNP6OEIwF3zbFTpdRnBd3xI6hK0LPHHRqahIIerDLXEA1b4UmZKTCH2",
+	"ipVM9Vg4IoVCW82LYRdEbiTPEqRUfz+5uCKZ4KD1WPx/bt4P+PWvFrttE0uzIR42V6Sqp2LbpJc5Xn6k",
+	"HzQk4JBrSWLQRskFHm3pLBq89MsHUuetP5GSAxWPKTdqR4NQvn3+fZ6D19TALV3sVlyqNfO6odSU5Ug9",
+	"JcjVNT5XqCUYfXI7B8fUlAmJvgWl+1bCLVGcA++uYnvDGjUOCVqcdrqZ704sOvR9POjbPrvxMt40q4Pq",
+	"XDWP5lTMQBeOUihzxJIIaYgHIeJlIyeUQekp/p//+u+x8BZD7iSR0KK+yoxFOxbNCUp2AzxazMfpXu7S",
+	"c1/yDl998Kso2OwH+miR7YElG+/O3izYhNSK4dY7yaaTbH4oriLUs7l3lZiPJfZZe9YINEccqFqRYkJe",
+	"gkBtUXQBBTOmDSYvMLpQmY/Fv+RE1wkylqKyqKzusQM5I1ah1bJkcywsY8JhakgmjMzs2Ki6mvham7lW",
+	"imkUotKgAStEqT7REhVk8gaUewSkhlJKIzo1oG6pijVJgApNKm2LOcYiL/vgDyKfncvZTlLWy5A+qWOf",
+	"Ojq1YzrNZRpR4GmT99MWjNXICgWmEVcDkvuo5Bp1uR6LWswvCmVpwoQBlSqwb7lXoZfGefPu7GQschUJ",
+	"tndltzTEhNPfGV/0Q78pU9oQlYnlecaiTCIKbbjMC3Ghzl1J47I1L5yOORit+0QzgWp6Y/vbqZBNvIYF",
+	"MdJFCAVHnJyitOfpHgsdeGDOzm1zDWf3TQqMddzdH5dqHoUsBYFM+bQKW4qhrfirA5WJZuPjyFBlSuUF",
+	"5bRCAOv1xL7c81iwJIGYUQN8UeWwXhBK4ixJScpRVUSyFN3kmCaZmNgDsxySVNfDsbhQcqZAOz5OZiay",
+	"c1WsaGauZDabL5NmuLGXZrtZybdokjNv3JHEltazghJeZqJjijoS0wmQOwqQFotIltZJkELe3gtxq0uC",
+	"3JxrxLORhdBl6GzmE4ogwxWwuE8E3II2jqNbYSIPBYEkNQukME4PZyfxUqGQriSDPVX84XbOODhDf4n1",
+	"nFONTScAgtwqZgwIy80twLTXfTuCtXV+545sdWSrI1trvUTXSLR11SF2IGGFd/JWxEtnKahMgyplenBM",
+	"U8nN+f3l22VhuD8WyIVJAfg5BbXqzbUiJVtiWEiaY1H4T8+pCRwg0c5w155eHRV770hVRyZ2sdqVoJ6J",
+	"qXwQEaoS/LDeFdyiV+nAKspyhoJTibuQt8KpeehYTBXoOV8s+0jqSKauzB5b8dwskYWxKFMDiaMvORru",
+	"IP+Uvb9/bGXQW0cJ12iD3i7Tys4HvWN9fkRnxjyAbIU7QKWP5PdFTA++hD/XujMeK5m2pKsGVMKE87Jg",
+	"Ro+FTEEQDVq7Gvqon18ipsfOoS94bRTcnv1zJ3ta/o/j4hF6RG6MKwStebLSK9oxVT86U5V7EdbiPzP6",
+	"gWjAgTN7NbNYrz1npL0jdW5LsyzfMn1A5qmkpXYxMXA7Fkti0hIZOMkNaIFaXAOkqKS2v2bCMI4eVgu0",
+	"zONQd+Gswh+XbvMdhegoxOO39iOs1lEIi3U/6Rwz2xEJSLlcJHYnGxUhlHNStC+x4prkbjGV0Qel0cnf",
+	"P1Sxfiu1RWl1Hdg+mkxrO4V9h0jBuHKnOaSWft0m9Ns+RbWwmAd27w6Ite/IEiQ+jGRczFKfIK1mv50Y",
+	"3IVi37sQarFrFV8b0XXj03IwB8rNfOMLE4O2gExu9JDQyLgoYTwsggmZEfbTyqLQy2EsgjuaIv/OqKLC",
+	"MAH18S6XQOOBFHzxgmg6xVxKEeXcu3ZSsUBfiz6aB/+VaedkWgzPgcaghi1frzdu/90b9sSTmBx5pHDw",
+	"7NTeFa5I3wFJNgeZXvrQUlpGgPvgvRoUK8UQW4WdFGvqzESdRiNoNFo8JBtCIkPGnwbO7y7iRQffHXzv",
+	"Ery4Ctxksgjg0Sjc1Pnbu4gfXUnsuAuc1zmaPxo4/x5iU4gVrNCfTmbqTIf3QwfySL17FZjyUvkTJa/X",
+	"JrBaxxHmYstPuiIXgXHZmTD70WfjlOoR40CiRcSBUGMgSQ1WX0DBizBD6IwysTF0eb3uxBXzd3vqXtuu",
+	"BFz7cgkYlloB9wpst0Y5Kw/qNunij32XLqv2007Zi4rpupID2rukF6nk0fFzz8v6bEponDCxvyabb79F",
+	"+uwyPH2bYhyVjJ8bqnEsJ9vussv/gVJXO3xAg35wkERXhAiUYVO7tUry3i1zWjt4P/jC4q8HqX2V2xPf",
+	"0/jCdtzIQeDyLY9w0FRInMVdeMVTTRbf1RffFect9jQU3EF7CJaf9olXGbcjtsZy0Y6pEh1DdRfbuiv5",
+	"V73P4/NRqQjgvbAqD1YsMK84WprsfHQijFo0VQu0W8MMDFG5/kin03mkpPppGsHrMWoncnjw5RoWS9a9",
+	"rYxwQv8dFht5nRwjrrFxDavjPjxBXqerfr2D1a0BcskkQEjzg9Di0e4gs4PMVvYyb8C9A3R649lmo9d3",
+	"hc7vziIFq1f5zeoYpE6WvUeLV2MFwt35JIiZGfjKr62KEJ7EzByHirHfSpFqJ91OjWr39fhVqB0idkql",
+	"3ZVKFhvqVUqpsghsGGiyh6l+3O99gskyJFbacT/9hGmB9H5rwjGVKoKBgqlUSbO1/M2hKzZEXmZJ6jNs",
+	"pAMuZwRSGc37rgoH4TKinPwNzMgooInzI+67yuS+F67Z5TtQoeyHdvnczg+vRn3CgRZFoDB7261iBusY",
+	"MUHsMt0RJVgxSqKfs/dw1iSigkyAgFCSc4iH5FiCS1iEGXBxCUeHfcuz6L7PlWgP0593ffBsHdl8ZY/t",
+	"0p1aR4W6Oqh3pQEITzUZ9LHw58CCGaHKEjqHFx6B2mN7JjCWdKAyYVjSzoD/yne+DH2rgP91w5w7zbU6",
+	"SRu9a/MoG5Za61K+jdIpn3Ebf8HQ+AH9dL62UEs8xrVvK7Q+vrVvB2Hed60dz17ZrHP3ekpbZuJmyTWv",
+	"5ZZP3QBPaMs3oPTOJNBu+UMY4PFuegZmIOCzGbC0zTZfgzmHz+Y07eyYT5yHeQ3G5634bEgeJ0ZOLwiN",
+	"Y0yW7EOMq7LO0enxJVFUzKA1O8PlrBVKvZWzzlz+I4DZOUwyTsmHi3NXNDgCwt3dtgMgQY0euNpwjTG2",
+	"xxBxqjCrXSq5nC3InpIc+uTNIQqh+31XYs6Kr8QVjDuIOANhDnJJ+ODvH4IwXEroEsnM5wIn10Leilwu",
+	"3ipK9pwaPXJL70C6rQfIMRjKOMR4awdVjUXmHFljmGSzmXOXawlVMoZdIhFQ27FNDIJXm4DRLmHYlDJO",
+	"tN3BtY9PILXhCUyTqQIoohNupbp26fLHYucwhXO73RYBCudYyc2pXPa7GIUuRmElRsEiwl2iE9p6x3qn",
+	"2I6ItrwudHdkrvoGPn/u3atkudWE2uexNRFNswln0WCHQJML7PnYwk0eReqIJxxx4uABsyYHEwCdyMz5",
+	"cQopBmhlgLg+NKU1+LnKfOgDuin5iqu+5zssihp6NIpAa9Bu6Xru8nvmeQmxCHs80Ox3zETGs7QfUpPn",
+	"9YTbh+ZfFut+DJDf/pppdE1nQFR5H+Hqwhmvy3TFKUt8/kSaQJ+kSt4wlxsxlB+0FzHJomvPSSVUXYdS",
+	"G/4OFdB4MRyLw+InponlN2K8N7vCvdjCmzoQaXJg2UYWHWCwB4v2X4Qrt/c9WZBQRHcsqPBgsQujtXS3",
+	"DxMT7idZVIKd6q43NHzsrsQ7+bAugeGiHgg3kY4WmWmKopulip4JGIrl+q9hMSSXMM00xL4ySw5JY6EN",
+	"4zyAHFiZYEhGSF3IhMuJK1F+cXkyOrn8cHJMMsEtAKaZmmFmz78iXz0WrkDzBLQZwHQqlcF6MQxqEWcP",
+	"f3N/M6OBTwnTY4H1Rplw4sX+JiCvt6EUYL6NMj8Hw4fMLXrItSTuCkOx1eJ8w6T/zgABxc+an2+vZqqJ",
+	"lByoeCxCy06estvhSH+bCkeP7On8XnD35GDhNRjMZXyv5PJgFm1R+8++2gMq4oG+BchrAIbZftKImg5S",
+	"vL7E60K8zqQMQ/Z72AIq5UDpomDF82fPSalo4G/OkcXV/BsLqhRD9Y1dVCR1IvUwrGI4i1zBvyF5iYR4",
+	"ITMxA0XMnAry/Fcyl5lC8jwWrphqJDkHC759cjsHdJaRyhfnWhjEAwVTUCAiR5eTuzESFtJfR48D1p9/",
+	"W1g/jCJITVsVxWUmCC2D2YyqiYMbvDm0vVXqxO2AAB4WtxU9Augi+bT0MZgbEbDNHJgiU4T8O9LEi7Cu",
+	"jjZuKc64Iuju1CyNosTLCBat00XK7olkhjkOvvi/vjbCzuuTq0qa+fXQg3DzGzk+eXtydUJUwa2ORehY",
+	"8Ku+p2MOPYfkAM+VRo2scBZKRTsd9Vi8PsIM3Pv3BZz+v4+Cb/RrWTNHmq/2R2cTVGCgLcOwjAXFMdwr",
+	"ElQcL5oYCql8JSypSGLZBQeymYhBERqAekjcg4G8R8YNS6ky6I9K9hD6x8L2I/gzCzyqH8WilbwVOLJd",
+	"6z568IagHkVv8YvlIXzBTZS6yUTGC6yM5USziGrwJdvdMARFDpLDuavq6cBoOBb/u/pVvygQNIYpzbh5",
+	"QSh5f3VE0J/P0CTd7+eDD8kh/j0WWGOGclSKuNCF3JQfBsSJnXi69+uzv+y/CMWTXTiobzYWBRQwX6e0",
+	"fK5HyD4RI69BFMLAJWiZKcvvpKASpt1I7y5L77DPalTumWZ67uqRESkKadkVzIHPqdRIx6zQmo9yZ1Zq",
+	"iQZt67XzhGnRyjQfVkCsCmAN0rKHkF6ruV55UO3nUO8L6lmMssjTMFkA8d4PRWXfO4xz1IsJI0vcRnir",
+	"i2N+GDp78MX/tbXSK1CQINsjIfTpF5yo1cxIjEWJkyCekRiScY9TA9qMe44uDbAIKMSEBgclLJOsIKFM",
+	"oFo2p4t311c1kIAP+cH/0ShB/QwFIP7AfM/xRobnGyLkASLQwRf7n/XSAXqSeCMKouNeGVETuiATKCHZ",
+	"/m/4tq4+4WNR84ZbLqL0kJPN7zjnY4EP+bBGDCnoxQLLlnuJN6wW1SjCMhu31Ct+OMUS6Rwq1GWyMOvE",
+	"lEBcNlGItlLKEnmwD5q2//cHpBMY1eZg6v5IRiPLUD/F1B39Q5EkGRkwA4deVdLkjNq9F70JE9QpA5Zm",
+	"ujsxkrcCGYSqJIb4U6uZuFcSpcEYJpy7bm0a70sXx+eQ+t+ZNHRIDica0/Iy4LEvbee0WR5pbyjPYCPX",
+	"nm1AyVFY2vfSaj2sITdsb40pNzRxOcy8K/YTN+Xm6aVLutpgutfFjd8FpJnZWkVr2xYatpIPW9/L9hYV",
+	"mSY0MuwG+oEbHgslMwM+UjVzUH1XRdmImU6F206Fi1ftqKRz9bgntS2Oe/DF/md7hW0jLP1GLt5fhYBo",
+	"7YufZgawimgZfuZSm74VEdEzq090SvsYP+5YqAaqG2xmjuzu1ymF3dos8GLG3+rykI3MB/mdpVvwW/v3",
+	"Auz2/x4FR2UXsmYCzcyPrwnu59QMllgRj1r+FO4JrQ6QpK4t1XtWAd+fAhUmTm2ghuRqzrSlzi/fXb0J",
+	"IoovL84nNLp+4dS2ZVi3kM2SJMPMBX2iJdG3zERowZ2AuQUQznxrR8byuOjeMBYRFUIaMqd8OrCXt/gG",
+	"CtI76z1zLDsMh/3DYtsDM2uIAuEU17BspSoPRhJaHPsTZ9vC1vOXdoBPSm1tkLtShq2NQ9S+VoQ6K1GO",
+	"1aVFNRuHxmIPH1IyRuFy3EPTD7qq0NswrPNcKWw+Q7JiuinpKNfYbgIc5I2IBYKQl38sPH1Dw0tp+ft9",
+	"YlmCg8ARHOiUHiA/YAWCnFqXh3B8qRR+LGft2UiqxqKOVpG2tpyxaDLmkPuz5eQ07VFZcf7wHMT7YFf8",
+	"ZuShvU2jVFLI+fRWVI0W6RFS17lDFO6+oahGaVAEe6ZDnQ2+CBzLPdgvVsD+MVku7hv6+2uKJ9105otl",
+	"1vybIttB7BWWjYLxqGSnsEgFn2mEyKCDwt89SxA3WDAc1ox7YxGQzO61wCqM5o73W3DgY7GLfWM7Nnx7",
+	"WXcJdYPm94+Kwi5fHt7198Lm311SlO+k8G9EYEJVNK9GZ26LyItBcNJvGyAHIkbJukAfDJhfwjvn8t/3",
+	"qDKnGNlyZ+f+xWFY9JPUReZnSItttAiOu8hDhMrubgVlRu4aRQHnAHaCF+f46ziffCySTBui51QBeXd+",
+	"gnFxqOIovKyQcuqcImOMgJJGRpKTPW0BgvKxcBF05QVQdL8TgIpIMwdHi3RKI7BskkXb3+w0Ik3s+r3J",
+	"KpcHgihQnjcsex87QpKaBTF0Rrg90ARoDqAWCsfCr5yZ33IFKaaoVCwy7qnJ4dfImox9u8sdVdh8WD2D",
+	"m2pjjN+hF7N+wAi/JVS6EwVsGecXAGhIruYV9GMmj+IrhQFi2EeuN2deb2gxJROY1nSZHrZk/HO42ybs",
+	"yUPEH9kqlAfAbQVCW8S/PYoHsbv8VhFvD0A+WvpIOCPe0uPMQPfJDdPMlR/rEyqkWCQy0wMUNIyczTiM",
+	"BRXxgVQ5XNm1P7i7RQXUtnW6eCCQ+xava+d4cf8ogsRPr0umVQorpreeWL47PzpBjlIKvnARxHP6/E9/",
+	"LuI0hmRkRXAfi2lR5SDN9LxPJI5MOV+Qf2eUsylzCruCm4XhbEjGPcfLvrC9xr39+2ADLZpcuf3+uEiC",
+	"G9zIh2IriyQJQ63TE0eRM/vYN2iF7hFNDr7gf88386Y38tq/Kg5hpCjJRBt4i+15SwfMV2FN3x6qV3RF",
+	"Dq6aZzCltf6hONrdIVI7bnfbZF2X2KHLvdY29xqem0u8VuRCrbh57ZDyCgtxtLw97NLd3w73Z09u+QZD",
+	"Nlsr/NvJfULZ1nepgd4CxNNtlbPOBSnyfoVzoMpMgJpBDIrdYNIrajJ9H1lWRvnKnqQG1qXojYnfxqtR",
+	"fnRlBrc4/jXK2CIx2S8kZUJATBKq7WNo318X26LQAVXBspYxZArujwUlU8b5AOvh3EieJTBwQFPW8/sB",
+	"o7nUlpGiM90n2BHU/zv6pey6RiYwZz6IxmRCACdvXzqHZJrv3u5opkDnxmkcyeuolnjfUt4qEGQKtyH/",
+	"yS+lOkAKLG/OBGzHKleB6GH41PyGN3KnpwF5fkQ9aTPAN8D7BoK0ha70CqjSJJa3ouopH7DDwuLexDIp",
+	"6OO0X0AgVnCaUA3DsfhQxQVqqEePrfKh/TYW1wDpKzvq8Uv8CTUijksOhxKmIyAMU8AXuylic3Dehi3O",
+	"oe3BE545x27nfFI+vop0cLfsZysT/91rnQjNjBzkyRt9/G9xwQ3Tlu7sR027dk8IaehsgGrmjRxCoZC+",
+	"tc+HCxTQ1DA9XeS2XSSOEKNlbe/w/HgsNCRUGBbpJbub5VsTaqI5lA1v+30CNJqTKaczuzvLh4xFyIHF",
+	"ltydcgaFiVmfpDxzq4x4ZikEMdJQ7nNpvD8lAiDWPjPAuBfmPidySs7czsY9MrcyeRV7x+ISaDxApRG+",
+	"f0LfgkLXT8zSToVb+1auGld0honSN6H3kUwSOtBgG/kD1X1yeH6MFQhmeB4NwI+X3yVI/4ETpP8DY8Uc",
+	"MtIcmzRwiIxumSTdMXetMmtf+S6duNdW3EPZgXIeHDWrSapNfq4bpTzldrXuxlTuyVRii+s2XzRhkNfJ",
+	"vnx3foRqhOe9uzKtNI6Z055f5IVMAy/iSZOc/Asi01W13FRb9y/ffgUWCjjDy2kL6FJ5OYhYcCL/kpOq",
+	"aqoM6QiuHzeWdeyAugPqJwfUZardqqSokltZSPKFPKjlrz2WdUjWVWV3VdlbxwZn6D3QL0UG0wZ8I5Pc",
+	"UX3lLdnAHnW41eFWh1s74ta6kswdbnW41eHWrrgV2MWY6vlEUhVvVM3mLX08drk6Flpy7QFSJkCVK1uO",
+	"Ti4/HF5cuD66QXl5nC/irjjB+bspHmJLvU//Sy8tYdGXXkwNjsgMJHrTrbszpykb5ju5tPu10OVRkSpF",
+	"F3jXS7j58bGrLr8/ej5B5elrMCWEiZ1tqqRwsw9ACQmZvt6kHD3GNo/hzeiKSd+htCDlnMT+KgM8jFyq",
+	"uGWAOAhxm00OyK/wu88mlELkHIZt3yK6Y8ZuwOWC1wttICFu0CE+wUyBxgwAt1LF7uXwFH1IQsBzquQM",
+	"C6rLzKSZafSZQPh0K3ogRwmfUW/oJrHz/W307rwBXBJq3En4lezgJWHgszlIOWVLa9wYPOuODmJiR/Dn",
+	"RkDETMzcxfzz3cXJ5eHV6btzMnp/dHRycnxy/LGeIWtaxMOwYj9/y9k3PzUPOv0GmvKgc98DNfEwTh2U",
+	"S4XFINiSM2YNZRHNRvgLUJY6aELJ8fmIcCmvszR3u3KU5P3lW1/iqlxTTUt+AzE5vbj5ldA4Vi4Eo/YZ",
+	"2xxhYKcwMozaYH/OFP+mftL3z1mu+MW04QwfCUv0+B7jstOrBR+EZOeO8f7ybdlrBZ/DKmYMojlE1434",
+	"8QGUfWJ9Kig7MNMkkkoBBoDnyaviVZxpxgYsbL0lSuDywo4eCWJ0fhp/CLxqV6fdgmhVEbEdCmJc28A7",
+	"ppcZ33qWE5uPfOuHYTrdkoaVqTY66fp2vhazFCSlC58U59szofkiHCP6GNjMjs/bwTnagWAetbGH69Iw",
+	"4Owa9p1cIcDcSnWt+8F91vnS54q5itsWDldCPiweukkLceIabXiusHAqwdBcJsjlq6NffvnlL17yJHvP",
+	"nz378+DZz4Nnz69+/tOLZ7++ePan/9NUqmmqZNKuTtOJiO9lZiPbzXvGBEuyhHA5IxxugJO9GCbZrI+K",
+	"0j7RGYYY9sktVQJdSVmSSmWoMH0CFi6aVsLl7K0dsLIe74/ee9Gzw9ekdFqtRpFxPkCJVANV0ZwYUEnD",
+	"lK5F6wJZBpSrTWsFc+L52PoZwj9blQiZMeFIWZQpLRUWwxOGsLjp6FJXMOQBxYLOCNMp9VzdZe1o8BTR",
+	"gImZr/QcYLZEes/AKBaVvWWn9IZFFW/LpaMC50eO1JzinxiH4rq5YgEl8cMnzFXkXQri9JhEnIElM05o",
+	"DwXO7XCEJXQGQ3JSSmIlp8UAMgXBYoJJuCZenmlyQX/lN7HhcTinCYQS2strbkDj8K0FsTg9rpmjchwN",
+	"c7kd9x5xIZ5NFsvmCe/bcrkJbR94JfeAvq/B5FjkyznW4s46qWUqVRRivwbONtuss79SbObCEElCRUa5",
+	"F+px8hvKOIZ8+EAyN5huUrm/shO7vbtEKL1Olu8Ml3czXCJMlWByBRIb0WAGZjCh0XWWbhXl5ZqSCHPc",
+	"Drww4xhHXxmt7o15Dealm+OOoH4H2tsBd6cqu6+3x2OBh/hGB4GZklm6OXqSck6iTBuZECU5ENeN7OE/",
+	"To/JOHv27Bf4K/mlKXvCazdP94w8GkzbycFgFq4xAJT/oTlBhNMyaV9CfQWGvHrJcu4o1eQpx/WGpBye",
+	"UynB1cMkUHDrx2nW6GXxe6EQjcFQxvXjTKDwWBQDHQ4+rfihXF9sERmRt44OVB+Wgy8sXpslw0ULWfKw",
+	"QhqG5JVFIsKmJNMhv4o2jHNCtWYzgbHkhJnhtrndHLE43VhCwGHz6XG9UzeLtzGDMmFgBuox2UE7pI87",
+	"v3ARPzGyk6cMaSQ5/fo8w05zgbpI+My0YWLmxvjJpWNE16bt+Y3MfF8K8jDsjTukTezNK5dM2UgvrneM",
+	"TUfjOhp3fzQuzza9ka1Cq0opCnu91E5SBTdMZpoviipSOEQpfqdOXD+1bbbK44WDYfl9pKl7TEQ8Q4dk",
+	"+GxAWNK6/13S7D+IdeQ72iRakZkHXks797YHXswuurunYT+iYglr12nJscEmL5tT16iFIdU7BzmiYcUt",
+	"odNm5wtWohuPw1PUzqWHuO9Tv/QuAuneodUfbeFMtvzINDqHObA9SDPOt4LdC9vwDvCbuv7fEnjv7mmJ",
+	"VU/KXpadn+P2sGkhZhkwXebDPFP8lgA6YNMBiotitjWsnk7PfI8OaDugvRPQurovU59HVEhDKFdA44Vl",
+	"87HoEZcR5Xw9OIsbts6N5DUIC865xcajiLNrXIPLIVqqJ6NBxM7fCwd28WI+7hPrKBBIKONN9ptTt5yH",
+	"UXBkGtTQzeA556a4znMWXedGKCsfYDnIx6vm6FQMj0TF0Pkq3JHQXVrKFQfqwZm4LlEvtPuUiNe/5GST",
+	"hPM326RLZrCTdd9OGGccYvIvd4oNqV3s14PCorc2lMreh1Ph75L5MlJSDP8mJxXy3d3u00X33JrzLzlx",
+	"XLjldzHHUFPdnzrg8wRgI+S9BtOB3Q/15D5lnzzvFoRMJpcz7cIrfIKVyKLEBrBXmdgK7C8z0YF9R217",
+	"ZxgIwBfEuOAAT3eNJCoTm2FNbFZ0eGgTTsHRcV0tua6iGIg/7m04L21kuhUZGNmGHR3o6IAFBELLMNYM",
+	"YpxpM4iZ2oD4FnyPmdocsI15grxx2McWv3CKqqbYWp+Oq11Y3jFTEBmpFiSlZl6a6qA5hNfMH38Ib8fx",
+	"PekAXh8najCMF9m9OADq2mxaiIWJD+fdjIkh8LeD2B8gi2MRrekAgFzDwgkNZg5MEU4n1To7q2HfXM6Y",
+	"aFby2wWAMPZMUNGfaVA+EqOsCA+K/D7RYDT52z+uSCTlNQMiRUg70aTYf4sreEC9Pk6wQa2PbUikILa7",
+	"pY85IqNLUvUkkr+9t5jCPWwH/LPHWEU+mZlG77y3KPln/m1wAoDDwMmCRByoy/FQoCjmJUG8a8p9+NbN",
+	"+Fhg+RFFJ69cnDunhptLqLoGs104pGubchoB0TJTEZRpdGnLulTbUc/lbUS1d0AIIcpcZnFT7oszv6Tu",
+	"ZX/auj+sBpumFbDhLiqh8pTj5zJIwlZB76mS6IRbzp0f0pTkOoYSTYEYSU4T0MHjy5e/eRyL4k8yEX73",
+	"7N4DglVe0pC6rIHMg5pttlyeYauHzTiOc6wJvMHvd8g03uUY6x6mdfYBBK8k44alHErJ/DXJtOVCsYF6",
+	"NVqrq9hOTVGoKFpVjuZYtXBaEYUxh7dRDBqTeCf5ZJ16757sFRiQMJspmOG9+BNerkCyqopIpnRdAPgl",
+	"lud3TMzzV4foYujyZRWFJ5Ck79E4YYLkoLUmzvtsSh9S82D5jOevDi9Bg1lDu3OfQs+H4S5c+nkwuFeX",
+	"a7tTSDxeF8On7FWXw5hX8K3yQ/16uWLZBfjq3dVFjpcrSovlmg2pkjdMM4mWpuYE9QFHO1B/4py3gxUE",
+	"FE+/6wCtXg/9gXLmg/QdlBl5DaIezowkdq/oPoYcy2BKI2Ohu6Ipa9JHf5s3AZPUr3kTik12hP8HxAas",
+	"47FAPAiX3CSCsplFm8Hc48V6SdQ1fiO1edhiBH5VV9JOdSbjWjixR4lU3/4xIqlUZsV3s8sO0cmq9y2r",
+	"OtgkR6g0L9UENZJYLAo1Ckhi4XZNBFQiM7EFzmGrB9b+2DnWaX/s907702HUA2EUghctqX3Wq3ls841a",
+	"HteoU638AH4oeOEQl9WCawHEE+CDL/6P0+Ol1H8N6ppz1/w89NoYKe0JfVN6LVEa6AmWK+vg9o6hRT5o",
+	"OvADk4WDlEaGIBQ32kDazkOzDlB+EAJXBZTaGlb99VxiBSYeTCzDvMLg57rwFd/qNM4e4u+hOlwnkHVo",
+	"1CYfcBWV1lPb2xBesAG1blvGF9xnOMEFRc1jXIkq2DWQYLWimeSxPS2aYHoXh99Nheqw7bctSdwFLvyR",
+	"AxcqiJ2D3zq+//ZUaENdBq96Tf8bKmIO2mvutYE0FIBhrqt7sIrskTE1dEI1EA0mS/te2VjRM7oalM4s",
+	"jCaC8O412QDOi4U+zHudUCaGxSxNbumn5S3jWXgr+iN9pbuSMI/fMf1CyQi0Rpxly/C1trySkIZNg6/y",
+	"Jhmo0nbD21xTVrM8F2GunLl/C8sj71y0tXv5nrgXZwUMckNwreNyAOgqTDbA9YECGrcB7kug8a6+aktQ",
+	"rptS98X66bF1ncTWsZZ3SUihrpdwnGqiHK5tQmhfQHWrWmUrpVmPpBAQGV91s8pINoVVvQsVWx9ZKARD",
+	"VfxW1+p2f+RKjRahEVQpuniSsRJPMK1apd5rmRXzAL1t8bQtILlJ8ilB8gM4QNVAWg0UlU/hgR1Gvkf0",
+	"0dL+W2FWV7WkK8e2azk20VhPOicv1Qd0Y0224JJfDL2O5OT2tQbrriM9m0smVenD3UonPT6jboddj4Bv",
+	"3sWavAV69TdV4dFMzDjs9H6XGdEnikNP7THuUPWJoaovlVMF/mWvjzKvndViK8bkV8sF7sRxZ48DY78X",
+	"n+9qmcWk4/c7fr8jc/dI5kKRwBYMf0jgNcCY02br7MgV8ait3EGMLMJX2dT/yHRJx9akdbjww2E04kNG",
+	"X1UmalPqw21mulK0pIvO6hKW3Mkc64FwBaeaI8JUxKUAi6mGKrPBVHWJjS99287o2TI22p4aqmYvj+w5",
+	"EgWJNEC8pxhJQhBDs8+LK4sEqpmmHvlgVe0oZ6WOkkuuQVeLK+2V6qDsN5HVyzD3A1LUMMcGYnpZ3kBI",
+	"b1848YRT8lHBHUntSOpdSKoHJmcNqU9pUOCnhm0T6CLX0GXQ/VGyXmDoks9OgzzeDSZf3pioZvXlXYrd",
+	"dzUUNJbpphFMMx58GFX+EDfA1308050u+of0KdyFdcFUogh6JYh28tgqQA98yy3g2vcIGYswrDqh0ZwJ",
+	"QN+9Umrq2zmIvKAAE5rFQGgRlb2/HhdGYfEdRnS5ju5O9XOkKEPsOp9XJTMDuq0rUark5wXxfRvgO3x8",
+	"ui5DF3aXuI8jR1E6t6Hv4ja0BG0Blv0P2zoNlUbZzlWoBMEPZUJYhbAaybJ2xU/fbFCz98500LkKfRNX",
+	"oWWCUEdVqi/kwRdBE9jOW6iZ1JDJIgRoNjgJOaLjy9ivNZg6ulAO91xK/nD/pfA7JrQzyK1NOLEBpbb1",
+	"D1qLP8zoehwq851PEoGe4ivc4epT9BGqYFjxJtVx1lu7CLV/9JyD0PdG2O/J2wcXIdXx+B2P31G4+3UP",
+	"2pbB16BuaJpuMo6NQrMNVOqMfmZJlhCRJRNQRE4LXXAo2JAp0RAJy1nCTF1gNxMGZljVp0vP9oNl3SrA",
+	"Y122oAClB1/y9qfx14Mtgfao6LM5ljvkkz09JlKteW+jyqBdgsE/DASfCp1CZAqBbRmSN6cabABnmhk5",
+	"yJCAH3zRhppMf20P4oeZke4VGOEQ3x/k+zWFZ8NGidsn2bOD2OmnlGvYr1+ADhvq0O0Pg24nAg3NUpGY",
+	"afyzhCa+rskyBu6Ae9Ecoms/anucw4IPDum6F6YD+btmXrPQRG7nYObo55YDwk+asITOgMypN+yBIjeg",
+	"NJOicMrYAfrhcyo3ehvXwP2J69eBfAfyd6TyCEhlWF9SoyHAW+hlEZAYpkwwryhqC+uc/r64A3v1lv6+",
+	"eLSMlV3cQ3NUK5OexhxInOs7YSoVuMJN+QEwTbSRaQox2Xst88Z9Ap/Jz/P9xsxYvGW+1kugMROgNTEs",
+	"AZkZQqfOV/iWXsPq3H9+1phkDr2JrtwovSdBe7qcXD8Sl8s9KitD9izuOFdLixL798f1cjnTO5BAOXuM",
+	"xG9V98jljHBLD+5D9biavplxS1vsGVqRXwNV0Zz49TUQFWzTjqZZGqQNTVK7iSmYaO6mzIRhvGk7VJtL",
+	"iIDdQLitVlTUnhSRglsIjEG5TTbMBRba3wm+qJtkIiUHKjoW7UdwsHW1lh303RsJSqigMzj4QiO71K+N",
+	"zriH+F2/QEai7yhjP7iq98k147yPEXw30CcpzTT0SSb8HwpccvU+yYKQviWtO8PluckfJc2zy0tAGELD",
+	"Gmvmy781TwUiS9BJ2sjUYnIRq+L/sieMP9gjxqPItP2vP2T8lKew98f8sd+xSx27dP+06ALUVKqEUJIs",
+	"IwCxwuJ9EKaVOlbxdnWsaojIUmmr+BESkm2raT1RvUyH7E+5opeh0Xy1otdUyaSsMdqhcFOHq50O9YfB",
+	"k0NTjydGbsKS7V7CHTQFpcJonYWgg+57cRwK0IhR/WYOpR+qGufI5euDmBi5A9Tjyu7iiDHCAR6trSC8",
+	"Im6f8R/GEaNjBZ8uERiBsaCZCQ1FpXempS9ydF+iX+EG0pZ7fFQ+IA9WiTRf/yupkoYARb9B76fTlSDt",
+	"qMKDUYXc530Z9X/SRIMxTMw2eBebLG1O4eaVTRqZDRCGKSDofkC5K0tImCi8QSPK+Yu8bqGvWNgv1Sfs",
+	"E5m63FDkSAptIJRo8/yKq2eYt3EdDy9OiZHXIPLqhkPyTvDFciqWIiWM5YCYIEUZQpLIGIZN8f4jPIMH",
+	"rIeIEzQlkMOPDxwC1JGKH5hU5LTgnYCBnksTsCBV8ob9/+xdS0/kOBD+K1afGClsa1fay9xY2FkhDcyq",
+	"GfqymoO74zSeTezIjwxoxH9fuey8aOfFEmjAlxkBduLYVeWqcvn7JOXMHsp2QsHIDAt1HJtR9vv5pt0Z",
+	"SQJC3OSLl1cXJ6uvCCsl6EarZhWXPU48+XoCpu9yfUFQLGhB+sE3JcO5wHSIz++qbLZn3HwTUjehpJwW",
+	"84TVyfmZvcb32+I+MPAFK/S/cxncMRUTVMrXPh3dvvAPJbSDsAdhfzPC/tDSe3Fouo5hXZ8xd+sfjGne",
+	"W/aPU8Sgh0EPnyRK5gLFJWKNXxc9mBiT95+gdUHrgtY9mdZ1bIS+qsm+EMho5bhSxhl1M/JXdkKJtn6C",
+	"+sU7toVKZKE3i2iR0NtFtCDMXYxz1fVzFCYGVX+HcCsrzZoa7UoQj4wQRghkMEIJvY2QlcCovN7xoV/N",
+	"7fHqEC4x3LHSQhBWpbvcIW7NvdGyMVAvzbXYEkRZwm2m2abCoGdnXXR93BsgEuODw41vZdlagtCb8dQx",
+	"7z70WJFj88WEKfNRRNbkXz+oujE/0QZbluJoJzBTiKSkAFCvI/P4DygnIqNSetn1S5fRjGNGDhvz/AH+",
+	"mpI4DNKQZuDuOw76GCJowSHz1Yy++GcVxmgQCF7GY9LNZ6MZkFINViZcu3bzqJUjyPrlwryjch184gKj",
+	"QG4MTw/qFzyudx5cOQHDKKEpcTtcn2Ol85TjZhrRv/ldQzNA+LR4G+bxJQOm22CPpM5zLpRE3/NdhL7n",
+	"ZBehnO0itKNJhDZZHiFZ7CL0g2zyCCmaJBHCBU06Cd3sW8dkTv7A0kKBwoYFOzP0JTGM9DkAQjOdKppj",
+	"oZYJF9lxiYpZP62NmgnTuD/R563ZtR9hgjYuMqwWHxcbyjDcNd0LIhvf8Y97+jev1ociggDu+SoYoF5z",
+	"jsvobWUt+4IO45GPINxBKRwaJVDwDX1s2FFVRZX39X3R6rW0aJITgUrtaw4Ao/RFaX/M5AWqn2BXDurK",
+	"h5ZtfFj781juI8ha4O0WXEUwIx7KXeNIWdbd4w2WJEacbTgWsS0b8/trblSzZS7sZwzkLswoqqLQknw3",
+	"ZC2CbRhnG16Yv+gVgzQ22ZQesBCX9qnl9Sx/Mrr9d5BIyRawGNvVslubO1R27+ZPAot0WTfr9YDAcDSe",
+	"6QsZ678GJqVgat6pG1IRPHVo+QCxE6hxSYpf5mtkTrY0oSTu1upGMPPaVfol2FdsIBMCl2Axnt9iWJop",
+	"UPz2vu0JYLDa3vgy0DFEMC3jIfX2BmGJSIZpCmf3gqceZinzyIMyHTPFR3/GVA1ER58oSWNpk8vuZm4I",
+	"jILtecsHyjFV3b5KGZEUPNUZWf60/1+OrqpfQ/t11WvIrJg2iCfg89h3GV10r/FamaL57IDv8o5QvpyX",
+	"7S5xO2nZr4rdu75tWw6hE61dqyAnb4tArKjWdSr4W1MiZoPKsC9pZXJ9E2Ob1XncgJcRymaeJ3XZUqMu",
+	"M5vyHR9VjnzKZcZlWSNjulnmjr8v/6oOh/es82fz9EHBhu7LnO3akzpcK9Ihw7+PfcOzYReYsNFNYGqn",
+	"xHuOLrYpZ2RpK7uXDnK5tyJwBT3slabTEqL5sUZvsLJuRTJeEfraAzezhUfI9LQ15w2fMRQFBus2n3Vb",
+	"nRrJB1z4Fg+u/b1XoZoHM33RUFOpzsqAZjal+gJ/qbXJBFX2q1oBVdClA9Slx4RB7FGiq7O8Lwxqiaxp",
+	"G0BsJq2NznLwchKdpuX6PAStGrFMKZXKLqscu1qfG13Cok2OF1u6JNERWFDAj73LCRDdRIhxE37FhCmK",
+	"U/lh3FJKXEzwva5wQcLyTUP8xIUlk3u8ujXQPLVvkXRrja6b5wRz+scOGbPe0YNjHBzj54DJZIjcUqko",
+	"2030MQSBm8mjNi0LfB02q9d+jL1L+QZXzo4SmMnEXS+WAwJTyYZc4g3Xasw++aXqc7KxxJuTcVygZTCW",
+	"wVjuyb4Zza8vAy1xnuUpsFSReLoOuvu2SEvzL2UJd/R7LgFwpLjCaYS0JHGEEkHIkPdaJLI25UM6uU5k",
+	"bcuDMr6LNIQRu/WnK2vnnbTBXVsS93kL8AqjcrYWQIt08XGx3EJOe3H/7f6/AAAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

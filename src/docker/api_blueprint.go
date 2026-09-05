@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os/user"
 	"errors"
+	"reflect"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
 	"github.com/docker/docker/api/types/mount"
@@ -575,9 +576,10 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			hostPorts = generatePorts(ports[len(ports)-2])
 			containerPorts = generatePorts(ports[len(ports)-1])
 
+			// compose "ip:hostPort:containerPort": everything before the last two segments is the bind address
 			ipExposed := ""
-			if len(portStuff) > 2 {
-				ipExposed = strings.Join(portStuff[0:len(portStuff)-2], ":")
+			if len(ports) > 2 {
+				ipExposed = strings.Join(ports[0:len(ports)-2], ":")
 			}
 
 			for i := 0; i < utils.Max(len(hostPorts), len(containerPorts)); i++ {
@@ -769,6 +771,11 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		}
 
 
+		// docker must not auto-restart a container Cosmos put to sleep
+		if IsLazyLabels(containerConfig.Labels) {
+			hostConfig.RestartPolicy = conttype.RestartPolicy{Name: conttype.RestartPolicyMode("no")}
+		}
+
 		if container.Runtime != "" {
 			hostConfig.Runtime = strings.Join(strings.Fields(container.Runtime), " ")
 		}		
@@ -940,6 +947,9 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 				// return errors.New("Route already exist")
 
 				//overwrite route
+				if !reflect.DeepEqual(configRoutes[existsAt], (utils.ProxyRouteConfig)(route)) {
+					needsHTTPRestart = true
+				}
 				configRoutes[existsAt] = (utils.ProxyRouteConfig)(route)
 				utils.Warn("CreateService: Route " + route.Name + " already exist, overwriting.")
 				OnLog(utils.DoWarn("%s", "Route " + route.Name + " already exist, overwriting.\n"))
