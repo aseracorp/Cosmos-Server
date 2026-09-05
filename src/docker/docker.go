@@ -28,6 +28,7 @@ import (
 
 var DockerClient *client.Client
 var DockerContext context.Context
+
 var DockerNetworkName = "cosmos-network"
 
 func getIdFromName(name string) (string, error) {
@@ -163,6 +164,14 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 	if(oldContainerID != "") {
 		utils.Log("EditContainer - inspecting previous container " + oldContainerID)
 
+		// Reject nested mount targets (a mount inside another mount's target
+		// directory) with a clear error instead of a cryptic runc ENOTDIR at
+		// container start.
+		if err := ValidateMountConflicts(FromDockerMountSlice(newConfig.HostConfig.Mounts)); err != nil {
+			utils.Error("EditContainer: Invalid volume configuration", err)
+			return "", err
+		}
+
 		// create missing folders
 		
 		for _, newmount := range newConfig.HostConfig.Mounts {
@@ -201,6 +210,61 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 								utils.Error("EditContainer: Unable to change ownership of directory", err)
 							}
 						}	
+					}
+				}
+			}
+		}
+
+		// Auto-create missing volume subpaths (mirrors CreateService). Subpaths
+		// live inside the Docker volume's mountpoint; resolve it via
+		// VolumeInspect, then MkdirAll the subpath (or just its parent for a
+		// file-like subpath).
+		for _, newmount := range newConfig.HostConfig.Mounts {
+			if newmount.Type != "volume" || newmount.VolumeOptions == nil || newmount.VolumeOptions.Subpath == "" {
+				continue
+			}
+			sub := newmount.VolumeOptions.Subpath
+
+			vol, err := DockerClient.VolumeInspect(DockerContext, newmount.Source)
+			if err != nil {
+				utils.Error("EditContainer: Unable to inspect volume for subpath creation", err)
+				continue
+			}
+			if vol.Mountpoint == "" {
+				utils.Warn("EditContainer: Volume " + newmount.Source + " has no mountpoint; cannot auto-create subpath")
+				continue
+			}
+
+			mountRoot := vol.Mountpoint
+			if utils.IsInsideContainer {
+				if _, err := os.Stat("/mnt/host"); os.IsNotExist(err) {
+					utils.Error("EditContainer: Unable to create volume subpath. Please mount the host / in Cosmos with  -v /:/mnt/host to enable folder creations, or create the subpath folder yourself", err)
+					continue
+				}
+				mountRoot = "/mnt/host" + mountRoot
+			}
+
+			utils.Log(fmt.Sprintf("Checking subpath %s for volume %s", sub, newmount.Source))
+
+			created, err := EnsureSubpathExists(mountRoot, sub)
+			if err != nil {
+				utils.Error("EditContainer: Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume", err)
+				return "", errors.New("Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume")
+			}
+			// Ownership similar to the bind-mount block above.
+			for _, cp := range created {
+				utils.Log(fmt.Sprintf("Created subpath entry %s for volume %s", cp, newmount.Source))
+				if newConfig.Config.User != "" {
+					userInfo, err := user.Lookup(newConfig.Config.User)
+					if err != nil {
+						utils.Error("EditContainer: Unable to lookup user", err)
+					} else {
+						uid, _ := strconv.Atoi(userInfo.Uid)
+						gid, _ := strconv.Atoi(userInfo.Gid)
+						err = os.Chown(cp, uid, gid)
+						if err != nil {
+							utils.Error("EditContainer: Unable to change ownership of subpath path", err)
+						}
 					}
 				}
 			}
@@ -299,6 +363,8 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 	)
 	if createError != nil {
 		utils.Error("EditContainer - Failed to create container", createError)
+		// Surface volume-subpath failures with an actionable message in the
+		// streamed log so users don't see a bare daemon error.
 	}
 	
 	utils.Log("EditContainer - Container recreated. Re-connecting networks " + createResponse.ID)

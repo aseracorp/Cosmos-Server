@@ -15,6 +15,7 @@ import (
 
 	"github.com/azukaar/cosmos-server/src/utils"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/mount"
 
 	conttype "github.com/docker/docker/api/types/container"
 	strslice "github.com/docker/docker/api/types/strslice"
@@ -278,30 +279,47 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			// Volumes
 			Volumes: func() []CosmosMount {
 					mounts := []CosmosMount{}
-					// Fetch the raw inspect payload too: the daemon reports
-					// SubPath there but the pinned SDK's MountPoint struct
-					// does not carry it.
-					_, rawInspect, rawErr := DockerClient.ContainerInspectWithRaw(DockerContext, containerID, false)
-					subPaths := map[int]string{}
-					if rawErr == nil {
-						subPaths = mountSubPathFromRaw(rawInspect)
+					// Use HostConfig.Mounts (mount.Mount) rather than the
+					// top-level Mounts (MountPoint): the MountPoint struct has
+					// no SubPath field, so the daemon-reported volume subpath
+					// would be silently dropped from the export.
+					hostMounts := []mount.Mount{}
+					if detailedInfo.HostConfig != nil {
+						hostMounts = detailedInfo.HostConfig.Mounts
+					}
+					// Fall back to ContainerInspectWithRaw if HostConfig.Mounts
+					// wasn't populated (defensive; it normally is).
+					if len(hostMounts) == 0 && len(detailedInfo.Mounts) > 0 {
+						_, rawInspect, rawErr := DockerClient.ContainerInspectWithRaw(DockerContext, containerID, false)
+						subPaths := map[int]string{}
+						if rawErr == nil {
+							subPaths = mountSubPathFromRaw(rawInspect)
+						}
+						for i, m := range detailedInfo.Mounts {
+							cm := CosmosMount{
+								Type:     string(m.Type),
+								Source:   m.Source,
+								Target:   m.Destination,
+								SubPath:  subPaths[i],
+								ReadOnly: !m.RW,
+							}
+							if m.Type == mount.TypeVolume {
+								nodata := strings.Split(strings.TrimSuffix(m.Source, "/_data"), "/")
+								cm.Source = nodata[len(nodata)-1]
+							}
+							mounts = append(mounts, cm)
+						}
+						return mounts
 					}
 
-					for i, m := range detailedInfo.Mounts {
-						cm := CosmosMount{
-							Type:     string(m.Type),
-							Source:   m.Source,
-							Target:   m.Destination,
-							SubPath:  subPaths[i],
-							ReadOnly: !m.RW,
-						}
-
-						if m.Type == "volume" {
-							nodata := strings.Split(strings.TrimSuffix(m.Source, "/_data"), "/")
-							cm.Source = nodata[len(nodata)-1]
-						}
-
+					for _, m := range hostMounts {
+						cm := FromDockerMount(m)
+						// For native volume mounts the daemon reports Source as
+						// the durable volume name, so source is already the
+						// compose volume name (no /_data munging).
 						mounts = append(mounts, cm)
+						utils.Debug(fmt.Sprintf("ExportContainer mount: type=%s source=%s target=%s subpath=%q readOnly=%v (raw VolumeOptions=%+v)",
+							cm.Type, cm.Source, cm.Target, cm.SubPath, cm.ReadOnly, m.VolumeOptions))
 					}
 					return mounts
 			}(),
