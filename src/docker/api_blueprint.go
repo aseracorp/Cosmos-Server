@@ -1145,57 +1145,37 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 				mountRoot = "/mnt/host" + mountRoot
 			}
 
-			fullPath := filepath.Join(mountRoot, newmount.SubPath)
+			utils.Log(fmt.Sprintf("Checking subpath %s for volume %s", newmount.SubPath, newmount.Source))
+			OnLog(fmt.Sprintf("Checking subpath %s for volume %s\n", newmount.SubPath, newmount.Source))
 
-			// Like the bind-mount logic, distinguish a file subpath from a
-			// directory subpath: if it doesn't exist yet and its basename has
-			// a dot (e.g. config/app.conf), treat it as a file and create only
-			// the parent directory. Docker won't create the file either.
-			createDir := fullPath
-			if fi, err := os.Stat(fullPath); err == nil {
-				// exists: only create it if it's a directory (nothing to do otherwise)
-				if !fi.IsDir() {
-					utils.Log(fmt.Sprintf("Subpath %s for volume %s exists and is a file; nothing to create", fullPath, newmount.Source))
-					continue
-				}
-			} else if os.IsNotExist(err) {
-				base := filepath.Base(fullPath)
-				parent := filepath.Dir(fullPath)
-				if pfi, perr := os.Stat(parent); perr == nil && pfi.IsDir() && strings.Contains(base, ".") {
-					createDir = parent
-				}
+			created, err := EnsureSubpathExists(mountRoot, newmount.SubPath)
+			if err != nil {
+				utils.Error("CreateService: Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume", err)
+				OnLog(utils.DoErr("Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume: %s\n", err.Error()))
+				Rollback(rollbackActions, OnLog)
+				return err
 			}
-
-			utils.Log(fmt.Sprintf("Checking subpath %s for volume %s", createDir, newmount.Source))
-			OnLog(fmt.Sprintf("Checking subpath %s for volume %s\n", createDir, newmount.Source))
-
-			if _, err := os.Stat(createDir); os.IsNotExist(err) {
-				utils.Log(fmt.Sprintf("Not found. Creating subpath %s for volume %s", createDir, newmount.Source))
-				OnLog(fmt.Sprintf("Not found. Creating subpath %s for volume %s\n", createDir, newmount.Source))
-
-				if err := os.MkdirAll(createDir, 0750); err != nil {
-					utils.Error("CreateService: Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume", err)
-					OnLog(utils.DoErr("Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume: %s\n", err.Error()))
-					Rollback(rollbackActions, OnLog)
-					return err
-				}
+			for _, cp := range created {
+				utils.Log(fmt.Sprintf("Created subpath entry %s for volume %s", cp, newmount.Source))
+				OnLog(fmt.Sprintf("Created subpath entry %s for volume %s\n", cp, newmount.Source))
 
 				// Ownership: mirror the bind-mount handling so the container
-				// user can actually use the created directory.
+				// user can actually use the created directory / file.
+				chownPath := cp
 				if container.UID != 0 {
-					err = os.Chown(createDir, container.UID, container.GID)
+					err = os.Chown(chownPath, container.UID, container.GID)
 					if err != nil {
-						utils.Error("CreateService: Unable to change ownership of subpath directory", err)
-						OnLog(utils.DoErr("Unable to change ownership of subpath directory: " + err.Error()))
+						utils.Error("CreateService: Unable to change ownership of subpath path", err)
+						OnLog(utils.DoErr("Unable to change ownership of subpath path: " + err.Error()))
 					}
 				} else if container.User != "" && strings.Contains(container.User, ":") {
 					uidgid := strings.Split(container.User, ":")
 					uid, _ := strconv.Atoi(uidgid[0])
 					gid, _ := strconv.Atoi(uidgid[1])
-					err = os.Chown(createDir, uid, gid)
+					err = os.Chown(chownPath, uid, gid)
 					if err != nil {
-						utils.Error("CreateService: Unable to change ownership of subpath directory", err)
-						OnLog(utils.DoErr("Unable to change ownership of subpath directory: " + err.Error()))
+						utils.Error("CreateService: Unable to change ownership of subpath path", err)
+						OnLog(utils.DoErr("Unable to change ownership of subpath path: " + err.Error()))
 					}
 				} else if container.User != "" {
 					userInfo, err := user.Lookup(container.User)
@@ -1205,10 +1185,10 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 					} else {
 						uid, _ := strconv.Atoi(userInfo.Uid)
 						gid, _ := strconv.Atoi(userInfo.Gid)
-						err = os.Chown(createDir, uid, gid)
+						err = os.Chown(chownPath, uid, gid)
 						if err != nil {
-							utils.Error("CreateService: Unable to change ownership of subpath directory", err)
-							OnLog(utils.DoErr("Unable to change ownership of subpath directory: " + err.Error()))
+							utils.Error("CreateService: Unable to change ownership of subpath path", err)
+							OnLog(utils.DoErr("Unable to change ownership of subpath path: " + err.Error()))
 						}
 					}
 				}

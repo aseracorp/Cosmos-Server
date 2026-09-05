@@ -6,7 +6,6 @@ import (
 	"time"
 	"bufio"
 	"os"
-	"path/filepath"
 	"os/user"
 	"io"
 	"fmt"
@@ -243,30 +242,16 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 				mountRoot = "/mnt/host" + mountRoot
 			}
 
-			fullPath := filepath.Join(mountRoot, sub)
-			createDir := fullPath
-			if fi, err := os.Stat(fullPath); err == nil {
-				if !fi.IsDir() {
-					// existing file subpath: nothing to create
-					continue
-				}
-			} else if os.IsNotExist(err) {
-				base := filepath.Base(fullPath)
-				parent := filepath.Dir(fullPath)
-				if pfi, perr := os.Stat(parent); perr == nil && pfi.IsDir() && strings.Contains(base, ".") {
-					createDir = parent
-				}
+			utils.Log(fmt.Sprintf("Checking subpath %s for volume %s", sub, newmount.Source))
+
+			created, err := EnsureSubpathExists(mountRoot, sub)
+			if err != nil {
+				utils.Error("EditContainer: Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume", err)
+				return "", errors.New("Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume")
 			}
-
-			utils.Log(fmt.Sprintf("Checking subpath %s for volume %s", createDir, newmount.Source))
-
-			if _, err := os.Stat(createDir); os.IsNotExist(err) {
-				utils.Log(fmt.Sprintf("Not found. Creating subpath %s for volume %s", createDir, newmount.Source))
-				if err := os.MkdirAll(createDir, 0750); err != nil {
-					utils.Error("EditContainer: Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume", err)
-					return "", errors.New("Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume")
-				}
-				// Ownership similar to the bind-mount block above.
+			// Ownership similar to the bind-mount block above.
+			for _, cp := range created {
+				utils.Log(fmt.Sprintf("Created subpath entry %s for volume %s", cp, newmount.Source))
 				if newConfig.Config.User != "" {
 					userInfo, err := user.Lookup(newConfig.Config.User)
 					if err != nil {
@@ -274,9 +259,9 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 					} else {
 						uid, _ := strconv.Atoi(userInfo.Uid)
 						gid, _ := strconv.Atoi(userInfo.Gid)
-						err = os.Chown(createDir, uid, gid)
+						err = os.Chown(cp, uid, gid)
 						if err != nil {
-							utils.Error("EditContainer: Unable to change ownership of subpath directory", err)
+							utils.Error("EditContainer: Unable to change ownership of subpath path", err)
 						}
 					}
 				}

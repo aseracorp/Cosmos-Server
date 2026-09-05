@@ -3,6 +3,7 @@ package docker
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -339,4 +340,67 @@ func FromDockerMountSmart(m mount.Mount) CosmosMount {
 	}
 
 	return cm
+}
+
+// EnsureSubpathExists creates the missing parent directories and, when the
+// final subpath component looks like a file (basename contains a dot), the
+// file itself, inside the given mount root (a named volume's _data dir).
+//
+// Docker's volume-subpath mount requires the subpath to already exist inside
+// the volume: safepath.Join refuses nonexistent paths with ErrNotAccessible,
+// and if a file subpath was wrongly created as a directory the daemon fails
+// with "mount a directory onto a file". This helper mirrors what compose users
+// expect from Cosmos's bind-mount auto-creation, extended to also create the
+// target FILE (empty) so mounting a file subpath works out of the box.
+//
+// Returns the paths that were created.
+func EnsureSubpathExists(mountRoot, subpath string) ([]string, error) {
+	created := []string{}
+	if subpath == "" {
+		return created, nil
+	}
+	clean := strings.TrimPrefix(filepath.Clean(subpath), string(filepath.Separator))
+	if clean == "." || clean == "" {
+		return created, nil
+	}
+
+	// Walk each component so we create parents before the final component.
+	dirs := filepath.Dir(clean)
+	if dirs != "." && dirs != "" {
+		p := filepath.Join(mountRoot, dirs)
+		if err := os.MkdirAll(p, 0o750); err != nil {
+			return created, err
+		}
+		created = append(created, p)
+	}
+
+	full := filepath.Join(mountRoot, clean)
+	if _, err := os.Stat(full); err == nil {
+		return created, nil // already exists (dir or file)
+	} else if !os.IsNotExist(err) {
+		return created, err
+	}
+
+	base := filepath.Base(clean)
+	if strings.Contains(base, ".") {
+		// Looks like a file (e.g. config.yaml, app.conf) → create it empty.
+		dir := filepath.Dir(full)
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return created, err
+		}
+		f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY, 0o640)
+		if err != nil {
+			return created, err
+		}
+		f.Close()
+		created = append(created, full)
+	} else {
+		// Looks like a directory → create it.
+		if err := os.MkdirAll(full, 0o750); err != nil {
+			return created, err
+		}
+		created = append(created, full)
+	}
+
+	return created, nil
 }
