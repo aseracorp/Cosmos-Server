@@ -25,6 +25,10 @@ type CosmosMount struct {
 	SubPath string `json:"subpath,omitempty"`
 	// ReadOnly mounts the source read-only (compose short-syntax `:ro`).
 	ReadOnly bool `json:"readOnly,omitempty"`
+	// NoCopy is the volume-nocopy mount option. It is auto-enabled for
+	// subpath mounts (moby#52546: Docker's seed-from-image copy step fails
+	// when the subpath resolves to a file) and preserved through export.
+	NoCopy bool `json:"noCopy,omitempty"`
 }
 
 // UnmarshalJSON implements a compatibility layer that accepts both lowercase
@@ -75,6 +79,7 @@ func (c *CosmosMount) UnmarshalJSON(data []byte) error {
 	// legacy "SubPath" / mixed "subPath" spellings case-insensitively.
 	c.SubPath = getStr("subpath")
 	c.ReadOnly = getBool("readOnly", "read_only", "readonly")
+	c.NoCopy = getBool("noCopy", "nocopy", "no_copy")
 	if v, ok := raw["mode"]; ok {
 		if mode, ok := v.(string); ok {
 			for _, seg := range strings.Split(mode, ",") {
@@ -99,8 +104,19 @@ func (c CosmosMount) ToDockerMount() mount.Mount {
 	// Docker engine 26.0+ supports mounting a subpath of a named volume
 	// (volume-subpath). docker-compose exposes this as the `subpath` option.
 	if c.SubPath != "" {
+		// moby#52546: when volume-subpath resolves to a FILE, Docker's
+		// seed-from-image copy step tries to treat the resolved path as a
+		// directory and fails with "not a directory". Setting NoCopy (the
+		// `volume-nocopy` mount option) skips that seeding step entirely,
+		// which moby's maintainers confirmed as the correct workaround and
+		// fix. It's also semantically right: the image's target-path contents
+		// must never be copied into a subpath mount anyway, so subpath mounts
+		// always enable NoCopy. The flag is kept on the CosmosMount so the
+		// compose/HJSON export round-trips it (it matches what the daemon
+		// reports back).
 		m.VolumeOptions = &mount.VolumeOptions{
 			Subpath: c.SubPath,
+			NoCopy:  true,
 		}
 	}
 
@@ -136,6 +152,7 @@ func FromDockerMount(m mount.Mount) CosmosMount {
 	}
 	if m.VolumeOptions != nil {
 		cm.SubPath = m.VolumeOptions.Subpath
+		cm.NoCopy = m.VolumeOptions.NoCopy
 	}
 	return cm
 }
