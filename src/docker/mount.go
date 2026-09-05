@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types/mount"
+	"github.com/azukaar/cosmos-server/src/utils"
 )
 
 // CosmosMount mirrors mount.Mount but uses lowercase JSON tags to match
@@ -258,6 +259,10 @@ func SupportsVolumeSubpath() bool {
 // exists). The result is identical to what Docker 26 does internally.
 func ToDockerMountSliceConvertible(mounts []CosmosMount) []mount.Mount {
 	if SupportsVolumeSubpath() {
+		for _, m := range mounts {
+			utils.Debug(fmt.Sprintf("ToDockerMountSliceConvertible native: type=%s source=%s target=%s subpath=%q readOnly=%v",
+				m.Type, m.Source, m.Target, m.SubPath, m.ReadOnly))
+		}
 		return ToDockerMountSlice(mounts)
 	}
 

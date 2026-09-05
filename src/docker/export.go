@@ -318,6 +318,8 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 						// durable volume name in HostConfig.Mounts, so source
 						// is already the compose volume name (no /_data munging).
 						mounts = append(mounts, cm)
+						utils.Debug(fmt.Sprintf("ExportContainer mount: type=%s source=%s target=%s subpath=%q readOnly=%v (raw VolumeOptions=%+v)",
+							cm.Type, cm.Source, cm.Target, cm.SubPath, cm.ReadOnly, m.VolumeOptions))
 					}
 					return mounts
 			}(),
