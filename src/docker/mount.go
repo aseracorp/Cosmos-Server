@@ -201,6 +201,17 @@ func FriendlySubpathError(err error, mounts []CosmosMount) error {
 			"Please upgrade Docker Engine to 26.0+ to use subpath mounts, or remove the 'subpath' from the volume. (%s)", msg)
 	}
 
+	// (1.5) runc start error: mounting the safe-mount onto a file target fails
+	// with ENOTDIR when the subpath inside the volume is actually a directory
+	// (or the destination type mismatches). Explain what's wrong.
+	if strings.Contains(msg, "not a directory") && strings.Contains(msg, "mount") {
+		if sub := subpathFromMounts(mounts); sub != "" {
+			return fmt.Errorf("Could not mount volume subpath '%s': Docker refuses to mount a directory subpath onto a file target "+
+				"(ENOTDIR). Check that the subpath inside the volume is a regular file, not a directory — if it was created as a "+
+				"directory, empty it (or delete it) and retry, and Cosmos will recreate it as a file. (%s)", sub, msg)
+		}
+	}
+
 	// (2) Subpath does not exist inside the volume.
 	if strings.Contains(msg, "no such file or directory") ||
 		strings.Contains(msg, "ErrNotAccessible") ||
@@ -392,14 +403,40 @@ func EnsureSubpathExists(mountRoot, subpath string) ([]string, error) {
 	}
 
 	full := filepath.Join(mountRoot, clean)
-	if _, err := os.Stat(full); err == nil {
-		return created, nil // already exists (dir or file)
-	} else if !os.IsNotExist(err) {
-		return created, err
+	fi, statErr := os.Stat(full)
+	if statErr == nil {
+		// Already exists. If it's a file subpath but exists as a DIRECTORY
+		// (left over from earlier auto-create bugs that MkdirAll'd the whole
+		// file path), replace it: Docker would otherwise resolve a directory
+		// subpath and fail mounting it onto the file target at container start
+		// (ENOTDIR: "mount source that is a directory, destination is a file").
+		if looksLikeFile(clean) && fi.IsDir() {
+			// The subpath is a directory but the mount intends a file (its
+			// basename has a dot). If empty, we can safely replace it with a
+			// file; if not, we must not delete user data — fail with a clear
+			// message instead of the cryptic runc ENOTDIR.
+			entries, derr := os.ReadDir(full)
+			if derr == nil && len(entries) == 0 {
+				if rerr := replaceDirWithEmptyFile(full, 0o640); rerr != nil {
+					return created, rerr
+				}
+				created = append(created, full)
+			} else if derr == nil {
+				return created, fmt.Errorf(
+					"subpath '%s' exists as a non-empty directory inside the volume, but it is mounted as a FILE. "+
+						"empty it (or remove it) and retry; Docker cannot mount a directory onto a file target. "+
+						"(%d entries present)", subpath, len(entries))
+			} else {
+				return created, derr
+			}
+		}
+		return created, nil
+	} else if !os.IsNotExist(statErr) {
+		return created, statErr
 	}
 
 	base := filepath.Base(clean)
-	if strings.Contains(base, ".") {
+	if looksLikeFile(clean) {
 		// Looks like a file (e.g. config.yaml, app.conf) → create it empty.
 		dir := filepath.Dir(full)
 		if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -418,6 +455,29 @@ func EnsureSubpathExists(mountRoot, subpath string) ([]string, error) {
 		}
 		created = append(created, full)
 	}
+	_ = base
 
 	return created, nil
+}
+
+// looksLikeFile reports whether a subpath's basename looks like a file
+// (contains a dot), matching how bind-mount auto-creation detects files.
+func looksLikeFile(subpath string) bool {
+	base := filepath.Base(subpath)
+	return strings.Contains(base, ".")
+}
+
+// replaceDirWithEmptyFile replaces a (potentially non-empty) directory at path
+// with an empty regular file, so a file-subpath resolves to the right type.
+// Only safe because fixing the type mismatch is exactly what's needed to let
+// Docker mount the subpath onto its (file) target.
+func replaceDirWithEmptyFile(path string, mode os.FileMode) error {
+	if err := os.RemoveAll(path); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
