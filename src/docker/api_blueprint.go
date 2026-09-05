@@ -1388,7 +1388,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 
 		hostConfig := &conttype.HostConfig{
 			PortBindings: PortBindings,
-			Mounts:       ToDockerMountSlice(container.Volumes),
+			Mounts:       ToDockerMountSliceConvertible(container.Volumes),
 			RestartPolicy: conttype.RestartPolicy{
 				Name: conttype.RestartPolicyMode(container.RestartPolicy),
 			},

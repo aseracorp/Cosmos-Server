@@ -3,6 +3,8 @@ package docker
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/docker/docker/api/types/mount"
@@ -151,6 +153,17 @@ func FriendlySubpathError(err error, mounts []CosmosMount) error {
 	}
 	msg := err.Error()
 
+	// (0) Pre-emptive engine check: if the requested subpath would be silently
+	// ignored by the daemon (engine < 26 / API < 1.45), say so clearly instead
+	// of letting it mount the whole volume without the subpath.
+	if hasSubpath(mounts) && !SupportsVolumeSubpath() {
+		return fmt.Errorf("Volume subpaths require Docker Engine 26.0 or newer (API 1.45+). "+
+			"Your engine (API %s) does not support mounting a subpath of a volume, so the "+
+			"subpath '%s' would be silently ignored and the whole volume mounted instead. "+
+			"Upgrade Docker Engine to 26.0+, or remove the 'subpath' from the volume. (%s)",
+			EngineAPIVersionOrUnknown(), firstSubpath(mounts), msg)
+	}
+
 	// (1) Daemon API too old for volume subpaths.
 	if strings.Contains(msg, "VolumeOptions.Subpath needs API v1.45") ||
 		strings.Contains(msg, "VolumeOptions.Subpath") && strings.Contains(msg, "v1.45") {
@@ -175,6 +188,29 @@ func FriendlySubpathError(err error, mounts []CosmosMount) error {
 	return err
 }
 
+// hasSubpath reports whether any mount carries a subpath.
+func hasSubpath(mounts []CosmosMount) bool {
+	for _, m := range mounts {
+		if m.SubPath != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// firstSubpath returns the first non-empty subpath among the given mounts.
+func firstSubpath(mounts []CosmosMount) string {
+	return subpathFromMounts(mounts)
+}
+
+// EngineAPIVersionOrUnknown returns the negotiated API version or "unknown".
+func EngineAPIVersionOrUnknown() string {
+	if dockerAPIVersion == "" {
+		return "unknown"
+	}
+	return dockerAPIVersion
+}
+
 // subpathFromMounts returns the first non-empty subpath among the given mounts.
 func subpathFromMounts(mounts []CosmosMount) string {
 	for _, m := range mounts {
@@ -191,4 +227,101 @@ func subpathFromMounts(mounts []CosmosMount) string {
 // just to build a friendly error message.
 func CosmosMountsFromDocker(mounts []mount.Mount) []CosmosMount {
 	return FromDockerMountSlice(mounts)
+}
+
+// EngineAPIVersion returns the negotiated Docker Engine API version (e.g.
+// "1.45") captured at Connect time, or "" if not yet known.
+func EngineAPIVersion() string {
+	return dockerAPIVersion
+}
+
+// SupportsVolumeSubpath reports whether the connected Docker engine supports
+// mounting a subpath of a named volume. That feature landed in API v1.45
+// (Docker Engine 26.0+); on older engines the daemon silently ignores
+// VolumeOptions.Subpath and mounts the whole volume. When dockerAPIVersion is
+// unknown (not yet connected) we optimistically assume support, matching the
+// pre-existing behavior, and the daemon's inspect output will tell us the
+// truth at export time.
+func SupportsVolumeSubpath() bool {
+	if dockerAPIVersion == "" {
+		return true
+	}
+	return dockerAPIVersion >= "1.45"
+}
+
+// ToDockerMountSliceConvertible converts CosmosMounts to Docker mount.Mounts.
+// On engines that support VolumeOptions.Subpath (API 1.45+, Docker Engine
+// 26.0+) it behaves exactly like ToDockerMountSlice. On older engines, where
+// the daemon would silently ignore the subpath and mount the whole volume, it
+// emulates the subpath by converting each volume+subpath mount into a bind
+// mount of the volume's data directory + subpath (which the caller ensures
+// exists). The result is identical to what Docker 26 does internally.
+func ToDockerMountSliceConvertible(mounts []CosmosMount) []mount.Mount {
+	if SupportsVolumeSubpath() {
+		return ToDockerMountSlice(mounts)
+	}
+
+	out := make([]mount.Mount, 0, len(mounts))
+	for _, m := range mounts {
+		if m.Type == string(mount.TypeVolume) && m.SubPath != "" {
+			// Resolve the volume's real mountpoint so we can bind-mount the
+			// subpath. If resolution fails, fall back to the plain volume mount
+			// (the daemon will mount the whole volume, matching old-engine
+			// behavior — and FriendlySubpathError already warns the user).
+			vol, err := DockerClient.VolumeInspect(DockerContext, m.Source)
+			if err == nil && vol.Mountpoint != "" {
+				out = append(out, mount.Mount{
+					Type:     mount.TypeBind,
+					Source:   filepath.Join(vol.Mountpoint, m.SubPath),
+					Target:   m.Target,
+					ReadOnly: m.ReadOnly,
+				})
+				continue
+			}
+		}
+		out = append(out, m.ToDockerMount())
+	}
+	return out
+}
+
+// volumeDataDirPattern matches a bind mount source that points inside a
+// Docker named volume's data directory:
+//
+//	<data-root>/volumes/<name>/_data[/<subpath>...]
+//
+// On engines < 26 ToDockerMountSliceConvertible emulates a volume subpath by
+// bind-mounting exactly this path. FromDockerMountSmart reverses that so the
+// export (and therefore the compose/HJSON editor) shows volume+subpath again.
+var volumeDataDirPattern = regexp.MustCompile(`^/var/lib/docker/volumes/([^/]+)/_data(/.*)?$`)
+
+// FromDockerMountSmart converts a daemon-reported mount.Mount into a
+// CosmosMount, reconstructing a volume+subpath from the bind-mount emulation
+// used on engines < 26. On engines that natively support subpaths
+// (HostConfig.Mounts[].VolumeOptions.Subpath) it behaves like FromDockerMount.
+func FromDockerMountSmart(m mount.Mount) CosmosMount {
+	cm := FromDockerMount(m)
+
+	// Native subpath already carried in VolumeOptions → nothing to do.
+	if m.Type == mount.TypeVolume && cm.SubPath != "" {
+		return cm
+	}
+
+	// Emulated subpath: a bind mount into a volume's _data directory.
+	if m.Type == mount.TypeBind {
+		if groups := volumeDataDirPattern.FindStringSubmatch(m.Source); groups != nil {
+			volName := groups[1]
+			sub := strings.TrimPrefix(groups[2], "/")
+			if len(groups) > 2 && groups[2] != "" && sub != "" {
+				cm = CosmosMount{
+					Type:     "volume",
+					Source:   volName,
+					Target:   m.Target,
+					SubPath:  sub,
+					ReadOnly: m.ReadOnly,
+				}
+			}
+		}
+	}
+
+	return cm
 }

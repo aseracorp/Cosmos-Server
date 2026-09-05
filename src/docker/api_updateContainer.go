@@ -126,7 +126,7 @@ func UpdateContainerRoute(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		if(form.Volumes != nil) {
-			container.HostConfig.Mounts = ToDockerMountSlice(form.Volumes)
+			container.HostConfig.Mounts = ToDockerMountSliceConvertible(form.Volumes)
 			container.HostConfig.Binds = []string{}
 		}
 		if(form.Interactive != 0) {

@@ -29,6 +29,11 @@ import (
 
 var DockerClient *client.Client
 var DockerContext context.Context
+
+// dockerAPIVersion is the negotiated Docker Engine API version (e.g.
+// "1.45"), captured after Connect. Empty until the first successful ping.
+var dockerAPIVersion = ""
+
 var DockerNetworkName = "cosmos-network"
 
 func getIdFromName(name string) (string, error) {
@@ -61,6 +66,7 @@ func Connect() error {
 		// check if connection is still alive
 		ping, err := DockerClient.Ping(DockerContext)
 		if ping.APIVersion != "" && err == nil {
+			dockerAPIVersion = ping.APIVersion
 			DockerIsConnected.Store(true)
 			return nil
 		} else {
@@ -82,6 +88,7 @@ func Connect() error {
 
 		ping, err := DockerClient.Ping(DockerContext)
 		if ping.APIVersion != "" && err == nil {
+			dockerAPIVersion = ping.APIVersion
 			DockerIsConnected.Store(true)
 			utils.Log("Docker Connected")
 		} else {
