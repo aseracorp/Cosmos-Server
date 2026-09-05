@@ -466,27 +466,30 @@ func replaceDirWithEmptyFile(path string, mode os.FileMode) error {
 	return f.Close()
 }
 
-// ValidateMountConflicts checks a service's volume list for the most common
-// Docker mount configuration error: a mount whose target is nested inside
-// another mount's target directory.
+// ValidateMountConflicts checks a service's volume list for the ONE mount
+// combination Docker's volume-subpath cannot handle: a VOLUME mount whose
+// subpath resolves to a FILE, with its target nested inside another mount's
+// target directory.
 //
-// Example (invalid):
+// Everything else is intentionally allowed:
+//   - plain nested mounts (e.g. -v /a:/a -v /a/b:/a/b) work in Docker
+//   - volume + directory subpath works, even nested
+//   - volume + file subpath works when NOT nested (verified via CLI:
+//     volume-subpath=config/config.yaml + volume-nocopy onto a fresh target)
+//   - bind mounts are never affected (no subpath mechanism)
 //
-//	volumes:
-//	  - source: somevol, target: /volumes        # folder mount
-//	  - source: cfg, target: /volumes/config.yaml, subpath: app.yaml
-//	                                             # file mount INTO that folder
-//
-// Docker cannot mount a path inside a directory that is itself a mount point:
-// runc fails at container start with a cryptic ENOTDIR ("mount a directory
-// onto a file (or vice-versa)"). This helper rejects the combination up front
-// with a clear message instead.
-//
-// It returns an error describing the first offending pair, or nil if the
-// mounts don't nest.
+// The failing case is specific: runc's bind of the volume-subpath "safe-mount"
+// onto a target that sits inside a directory which is itself another mount's
+// target aborts with a cryptic ENOTDIR ("mount a directory onto a file (or
+// vice-versa)"). This helper rejects exactly that combination up front.
 func ValidateMountConflicts(mounts []CosmosMount) error {
 	for i := range mounts {
-		targetI := filepath.Clean(mounts[i].Target)
+		m := mounts[i]
+		// Only VOLUME mounts with a FILE subpath are affected.
+		if m.Type != "volume" || m.SubPath == "" || !looksLikeFile(m.SubPath) {
+			continue
+		}
+		targetI := filepath.Clean(m.Target)
 		if targetI == "" || targetI == "." || targetI == "/" {
 			continue
 		}
@@ -498,14 +501,13 @@ func ValidateMountConflicts(mounts []CosmosMount) error {
 			if targetJ == "" || targetJ == "." || targetJ == "/" {
 				continue
 			}
-			// targetJ is a strict, component-wise parent of targetI -> the
-			// two mounts would nest (targetI sits inside the mount at targetJ).
+			// The file-subpath mount's target sits inside another mount's target.
 			if isStrictPathInside(targetI, targetJ) {
 				return fmt.Errorf(
-					"Invalid volume configuration: mount %d target '%s' (source '%s'%s) is inside another mount's target '%s' (source '%s'). "+
-						"Docker cannot mount a path inside a directory that is already a mount point; this fails at container start. "+
-						"Choose distinct, non-nested target directories.",
-					i+1, mounts[i].Target, mounts[i].Source, subpathDesc(mounts[i]),
+					"Invalid volume configuration: volume subpath mount target '%s' (source '%s', subpath '%s') is inside another mount's target '%s' (source '%s'). "+
+						"Docker cannot mount a VOLUME FILE subpath into a directory that is already another mount point; this fails at container start. "+
+						"Move it to a distinct, non-nested target (or mount the whole directory subpath instead of a single file).",
+					m.Target, m.Source, m.SubPath,
 					mounts[j].Target, mounts[j].Source)
 			}
 		}
