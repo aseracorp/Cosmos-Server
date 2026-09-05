@@ -700,6 +700,9 @@
   "mgmt.urls.edit.tunnelViaSelection.tunnelViaLabel": "別のConstellation Cosmosノードを介してトンネル",
   "mgmt.urls.edit.tunneledHostInput.tunneledHostLabel": "トンネルするためのホスト名（ユーザーが直面するトンネルのホスト名は何ですか）",
   "mgmt.config.general.licenceInput.licenceLabel": "ライセンスキー",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.config.general.licenceInput.manageLicenceButton": "ライセンスを管理",
   "language.selectLanguage": "言語を選択"
 }

@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "Addeth Header",
   "mgmt.backup.passwordTitle": "Passwordeth",
   "sudo.required": "Enableth Admin privileges with thine button on yon top right to employ this function",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "The Compose editor requireth access to container secrets (environment variables, secrets). Prithee enable Admin privileges using yon button on the top right to view and edit the Compose configuration.",
   "mgmt.servapps.compose.credentialsDenied": "The Compose editor requireth access to container secrets (environment variables, secrets). Thy current role hath no permission to vieweth secrets."
 }

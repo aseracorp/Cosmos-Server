@@ -131,11 +131,21 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
                     volumes.push(volume);
                   } else {
                     let volumeSplit = volume.split(':');
+                    // Compose short syntax: SOURCE:TARGET[:MODE...] where MODE
+                    // may include subpath (volume subpath) and ro (read-only).
                     let volumeObj = {
                       source: volumeSplit[0],
-                      target: volumeSplit[1],
+                      target: volumeSplit[1] || "",
                       type: (volume[0] === '/' || volume[0] === '.') ? 'bind' : 'volume',
                     };
+                    const modeSegments = (volumeSplit[2] || '').split(',').map((m) => m.trim()).filter(Boolean);
+                    const subpath = modeSegments.find((m) => m.indexOf('/') > -1 || (m !== 'ro' && m !== 'rw' && m !== 'z' && m !== 'Z' && m !== 'cached' && m !== 'delegated' && m !== 'consistent'));
+                    if (subpath) {
+                      volumeObj.subpath = subpath;
+                    }
+                    if (modeSegments.includes('ro')) {
+                      volumeObj.readOnly = true;
+                    }
                     volumes.push(volumeObj);
                   }
                 });
@@ -1173,6 +1183,9 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
                               type: value.volumes[k].type || (k.startsWith('/') ? 'bind' : 'volume'),
                               source: value.volumes[k].source || "",
                               target: value.volumes[k].target || "",
+                              subpath: value.volumes[k].subpath || "",
+                              readOnly: !!value.volumes[k].readOnly || value.volumes[k].read_only || false,
+                              VolumeOptions: value.volumes[k].subpath ? { Subpath: value.volumes[k].subpath } : undefined,
                             }
                           }) || [],
                         }
@@ -1187,6 +1200,8 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
                                 type: v.type,
                                 source: v.source,
                                 target: v.target,
+                                subpath: v.subpath || "",
+                                readOnly: !!v.readOnly,
                                 existing: v.type == 'volume' && volumes.find(v2 => v2.source === v.name),
                               }
                             })

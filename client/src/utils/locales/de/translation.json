@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "Header hinzufügen",
   "mgmt.backup.passwordTitle": "Passwort",
   "sudo.required": "Aktivieren Sie Admin-Rechte mit der Schaltfläche oben rechts, um diese Funktion zu nutzen",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "Der Compose-Editor erfordert Zugriff auf Container-Zugangsdaten (Umgebungsvariablen, Geheimnisse). Bitte aktivieren Sie Admin-Rechte mit der Schaltfläche oben rechts, um die Compose-Konfiguration anzuzeigen und zu bearbeiten.",
   "mgmt.servapps.compose.credentialsDenied": "Der Compose-Editor erfordert Zugriff auf Container-Zugangsdaten (Umgebungsvariablen, Geheimnisse). Ihre aktuelle Rolle hat keine Berechtigung, Zugangsdaten anzuzeigen."
 }

@@ -1111,6 +1111,9 @@
   "mgmt.urls.edit.advancedSettings.extraHeaders.add": "添加头部",
   "mgmt.backup.passwordTitle": "密码",
   "sudo.required": "使用右上角的按钮启用管理员权限以使用此功能",
+  "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
+  "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
+  "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
   "mgmt.servapps.compose.credentialsRequired": "Compose 编辑器需要访问容器凭证（环境变量，秘密）。请使用右上角的按钮启用管理员权限以查看和编辑 Compose 配置。",
   "mgmt.servapps.compose.credentialsDenied": "Compose 编辑器需要访问容器凭证（环境变量，秘密）。您当前的角色没有查看凭证的权限。"
 }
