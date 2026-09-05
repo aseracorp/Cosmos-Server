@@ -6,19 +6,29 @@ import { getOrigin, getFullOrigin, IsRouteSocketProxy } from "../utils/routes";
 import { isContainerRunning } from "../utils/container-status";
 import StatusDot from "./statusDot";
 
+// Green (service is up): 2xx/3xx (incl. opaqueredirect for cross-origin login
+// redirects) and the 4xx codes that mean the reverse proxy answered while
+// refusing this caller/method (401, 403, 405, 407, 429, 511) - the app is
+// running and reachable, it just won't serve this HEAD/probe.
+// A 503 from the lazy probe means "container is dormant" -> still reachable
+// (sleeping), handled by the caller.
+// Red (service is down): 404, 408, genuine 5xx, and network errors.
+function classifyProbeStatus(res) {
+  if (res.type === 'opaqueredirect') return true;
+  const s = res.status;
+  if (s >= 200 && s < 400) return true;
+  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511) return true;
+  return false;
+}
+
 // Probes the route through the Cosmos reverse proxy without waking a lazy
-// (sleeping) container: the proxy answers the __cosmos_probe HEAD request
-// itself with X-Cosmos-Container: sleeping when the container is dormant.
-//
-// A response is "online" only when we get a _successful_ HTTP status back.
-// Any error, 4xx/5xx (bookmarked/dead route), or redirect-to-nowhere must
-// show as offline. CORS failures alone are NOT proof of offline: retried
-// with an opaque (no-cors) request that itself succeeds.
+// (sleeping) container. The proxy answers the __cosmos_probe HEAD request
+// itself with X-Cosmos-Container: sleeping (HTTP 503) when the container is
+// dormant - that is "reachable but asleep", not "offline".
 const probeRoute = async (route) => {
   const origin = getFullOrigin(route);
   const probeUrl = origin + (origin.includes('?') ? '&' : '?') + '__cosmos_probe=1';
 
-  // Primary probe: same-origin CORS request so we can read the header.
   try {
     const res = await fetch(probeUrl, {
       method: 'HEAD',
@@ -27,27 +37,16 @@ const probeRoute = async (route) => {
       redirect: 'manual',
       cache: 'no-store',
     });
-    // NOTE: Do NOT treat a transparent redirect as failure here. The proxy
-    // answers __cosmos_probe itself for the origin path; if it returns a
-    // redirect opaquely we still consider the proxy reachable.
-    return {
-      sleeping: res.headers.get('X-Cosmos-Container') === 'sleeping',
-      online: res.ok, // 2xx => online; 403/404/5xx => offline
-    };
+    const sleeping = res.headers.get('X-Cosmos-Container') === 'sleeping';
+    // A sleeping lazy container is 503 + sleeping header: reachable, not offline.
+    const online = sleeping || classifyProbeStatus(res);
+    return { sleeping, online };
   } catch (e) {
-    // CORS error might mean the proxy answered but hid the headers (e.g.
-    // cross-origin route, header-hardening). Fall back to an opaque HEAD
-    // that reports reachability without exposing status.
+    // CORS error: the proxy answered but hid the status (cross-origin route,
+    // header hardening). Fall back to an opaque no-cors probe of the same URL.
     try {
-      const opaque = await fetch(origin, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-      // An opaque response with status 0 can still be a real 403/404: probe
-      // again with a no-cors GET to a probe path that the app itself must
-      // 404/200 on (most servers respond to both). Keep it conservative.
-      const opaque2 = await fetch(probeUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
-      return {
-        sleeping: false,
-        online: opaque && opaque2 ? true : false,
-      };
+      await fetch(probeUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+      return { sleeping: false, online: true };
     } catch (e2) {
       return { sleeping: false, online: false };
     }
@@ -61,9 +60,8 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
   const isSocketProxy = route && IsRouteSocketProxy(route);
 
   // Container run state gating: when a container is passed and it is not
-  // actually running, show a grey dot and do not probe (e.g. the app is
-  // stopped). Socket proxies show green once the container is running (no
-  // HTTP layer to probe).
+  // actually running, show a grey dot and do not probe. Socket proxies show
+  // green purely from container run state (no HTTP layer to probe).
   const containerDown = container && !isContainerRunning(container);
 
   useEffect(() => {
