@@ -1229,6 +1229,7 @@
 	"mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
 	"mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
 	"mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+	"mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
 	"mgmt.servapps.compose.credentialsRequired": "The Compose editor requires access to container credentials (environment variables, secrets). Please enable Admin privileges using the button on the top right to view and edit the Compose configuration.",
 	"mgmt.servapps.compose.credentialsDenied": "The Compose editor requires access to container credentials (environment variables, secrets). Your current role does not have permission to view credentials."
 }

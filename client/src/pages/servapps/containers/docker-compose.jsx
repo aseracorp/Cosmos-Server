@@ -1185,7 +1185,8 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
                               target: value.volumes[k].target || "",
                               subpath: value.volumes[k].subpath || "",
                               readOnly: !!value.volumes[k].readOnly || value.volumes[k].read_only || false,
-                              VolumeOptions: value.volumes[k].subpath ? { Subpath: value.volumes[k].subpath } : undefined,
+                              noCopy: !!value.volumes[k].noCopy || !!value.volumes[k].nocopy,
+                              VolumeOptions: value.volumes[k].subpath ? { Subpath: value.volumes[k].subpath, NoCopy: !!value.volumes[k].noCopy || !!value.volumes[k].nocopy } : undefined,
                             }
                           }) || [],
                         }
@@ -1202,6 +1203,7 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
                                 target: v.target,
                                 subpath: v.subpath || "",
                                 readOnly: !!v.readOnly,
+                                noCopy: !!v.noCopy,
                                 existing: v.type == 'volume' && volumes.find(v2 => v2.source === v.name),
                               }
                             })

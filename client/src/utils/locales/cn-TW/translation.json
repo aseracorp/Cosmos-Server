@@ -965,6 +965,7 @@
   "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
   "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
   "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+  "mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
   "mgmt.backup.autoStopContainers2": "自動停止使用該資料夾的容器以進行備份/還原操作（建議用於數據庫資料夾和配置資料夾，媒體和文檔則不需要）",
   "mgmt.scheduler.list.status.jobsInProgress": "共有 {{number}} 個工作正在進行中。您對排程所做的任何更改，僅會在目前的工作完成執行後生效！"
 }

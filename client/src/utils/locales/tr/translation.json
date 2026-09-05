@@ -1114,6 +1114,7 @@
   "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
   "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
   "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+  "mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
   "mgmt.servapps.compose.credentialsRequired": "Compose düzenleyici, konteyner kimlik bilgilerine (çevresel değişkenler, gizli bilgiler) erişim gerektirir. Compose yapılandırmasını görüntülemek ve düzenlemek için sağ üstteki düğmeyle Yönetici ayrıcalıklarını etkinleştirin.",
   "mgmt.servapps.compose.credentialsDenied": "Compose düzenleyici, konteyner kimlik bilgilerine (çevresel değişkenler, gizli bilgiler) erişim gerektirir. Mevcut rolünüz, kimlik bilgilerini görüntüleme iznine sahip değil."
 }

@@ -703,6 +703,7 @@
   "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
   "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
   "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+  "mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
   "mgmt.config.general.licenceInput.manageLicenceButton": "ライセンスを管理",
   "language.selectLanguage": "言語を選択"
 }

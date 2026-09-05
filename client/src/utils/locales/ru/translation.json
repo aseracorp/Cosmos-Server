@@ -1114,6 +1114,7 @@
   "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
   "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
   "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+  "mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
   "mgmt.servapps.compose.credentialsRequired": "Редактор Compose требует доступа к учетным данным контейнера (переменные окружения, секреты). Пожалуйста, включите привилегии администратора, используя кнопку в правом верхнем углу, чтобы просматривать и изменять конфигурацию Compose.",
   "mgmt.servapps.compose.credentialsDenied": "Редактор Compose требует доступа к учетным данным контейнера (переменные окружения, секреты). Ваша текущая роль не имеет разрешения на просмотр учетных данных."
 }

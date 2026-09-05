@@ -78,6 +78,7 @@ const VolumeContainerSetup = ({
           target: m.Target || m.target || m.Destination || m.destination,
           subpath: (m.VolumeOptions && m.VolumeOptions.Subpath) || m.SubPath || m.Subpath || m.subpath || "",
           readOnly: m.ReadOnly || m.readOnly || false,
+          noCopy: (m.VolumeOptions && m.VolumeOptions.NoCopy) || m.NoCopy || m.noCopy || m.nocopy || false,
         })),
         ...(containerInfo.HostConfig.Binds || []).map((bind) => {
           const [source, destination, mode] = bind.split(":");
@@ -87,6 +88,7 @@ const VolumeContainerSetup = ({
             target: destination,
             subpath: "",
             readOnly: mode && (mode.split(",").includes("ro") || mode.split(",").includes("readonly")),
+            noCopy: false,
           };
         }),
       ],
@@ -121,6 +123,7 @@ const VolumeContainerSetup = ({
           target: volume.target,
           subpath: volume.subpath || "",
           readOnly: !!volume.readOnly,
+          noCopy: !!volume.noCopy,
         })),
       };
       return API.docker
@@ -195,6 +198,7 @@ const VolumeContainerSetup = ({
                                     target: "",
                                     subpath: "",
                                     readOnly: false,
+                                    noCopy: false,
                                     rw: true,
                                   },
                                 ]);
@@ -367,6 +371,28 @@ const VolumeContainerSetup = ({
                                     id="ReadOnly"
                                     disabled={frozenVolumes.includes(r.source)}
                                     checked={!!r.readOnly}
+                                    onChange={formik.handleChange}
+                                  />
+                                </div>
+                              ),
+                            },
+                            {
+                              title: t('mgmt.servapps.newContainer.volumes.noCopyTitle'),
+                              field: (r, k) => (
+                                <div
+                                  style={{
+                                    fontWeight: "bold",
+                                    wordSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  <Checkbox
+                                    className="px-2 my-2"
+                                    name={`volumes[${k}].noCopy`}
+                                    id="NoCopy"
+                                    disabled={frozenVolumes.includes(r.source) || r.type !== "volume"}
+                                    checked={!!r.noCopy}
                                     onChange={formik.handleChange}
                                   />
                                 </div>

@@ -29,6 +29,73 @@ import (
 var DockerClient *client.Client
 var DockerContext context.Context
 
+// dockerServerVersion is the Docker Engine server version (e.g. "29.6.1")
+// captured after Connect. Empty until the first successful ping. Used to gate
+// behavior on engine capabilities that are not exposed via the API version
+// (e.g. the moby#52584 volume-subpath file fix that landed in Engine 29.5.0).
+var dockerServerVersion = ""
+
+// captureDockerServerVersion records the daemon's engine version (e.g.
+// "29.6.1") at Connect time, if it is not already set.
+func captureDockerServerVersion() {
+	if dockerServerVersion != "" {
+		return
+	}
+	if sv, err := DockerClient.ServerVersion(DockerContext); err == nil {
+		dockerServerVersion = sv.Version
+	}
+}
+
+// SupportsBuiltinFileSubpathFix reports whether the connected engine has the
+// moby#52584 fix built in: skipping the seed-from-image copy step for file
+// volume-subpaths. The fix landed in Docker Engine 29.5.0 (released with the
+// fix on 2026-05-14). On older engines Cosmos must set NoCopy (volume-nocopy)
+// itself to work around moby#52546. The comparison is a best-effort semantic
+// version check; if the version is unknown (not yet connected) we assume the
+// fix is present, which is the safe default (NoCopy is then only set when the
+// user explicitly asks for it).
+func SupportsBuiltinFileSubpathFix() bool {
+	if dockerServerVersion == "" {
+		return true
+	}
+	return dockerVersionAtLeast(dockerServerVersion, "29.5.0")
+}
+
+// dockerVersionAtLeast reports whether ver >= min using semantic versioning
+// (numeric comparison of major/minor/patch). Non-numeric segments are treated
+// as 0 so "29.6.1", "29.5.0-rc.1", etc. compare sanely.
+func dockerVersionAtLeast(ver, min string) bool {
+	vp := parseVersionParts(ver)
+	mp := parseVersionParts(min)
+	for i := 0; i < 3; i++ {
+		if vp[i] > mp[i] {
+			return true
+		}
+		if vp[i] < mp[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func parseVersionParts(v string) [3]int {
+	var p [3]int
+	// strip any trailing suffix after "-" (pre-release) or "+" (build)
+	base := v
+	if i := strings.IndexAny(base, "-+"); i >= 0 {
+		base = base[:i]
+	}
+	parts := strings.Split(base, ".")
+	for i := 0; i < len(parts) && i < 3; i++ {
+		n, err := strconv.Atoi(strings.TrimSpace(parts[i]))
+		if err != nil {
+			n = 0
+		}
+		p[i] = n
+	}
+	return p
+}
+
 var DockerNetworkName = "cosmos-network"
 
 func getIdFromName(name string) (string, error) {
@@ -61,6 +128,7 @@ func Connect() error {
 		// check if connection is still alive
 		ping, err := DockerClient.Ping(DockerContext)
 		if ping.APIVersion != "" && err == nil {
+			captureDockerServerVersion()
 			DockerIsConnected.Store(true)
 			return nil
 		} else {
@@ -82,6 +150,7 @@ func Connect() error {
 
 		ping, err := DockerClient.Ping(DockerContext)
 		if ping.APIVersion != "" && err == nil {
+			captureDockerServerVersion()
 			DockerIsConnected.Store(true)
 			utils.Log("Docker Connected")
 		} else {

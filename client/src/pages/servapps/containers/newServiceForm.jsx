@@ -299,6 +299,7 @@ const NewDockerServiceForm = () => {
                     target: volume.target,
                     subpath: volume.subpath || "",
                     readOnly: !!volume.readOnly,
+                    noCopy: !!volume.noCopy,
                   };
                 }),
               },

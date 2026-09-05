@@ -1114,6 +1114,7 @@
   "mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
   "mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
   "mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+  "mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
   "mgmt.servapps.compose.credentialsRequired": "El editor de Compose requiere acceso a las credenciales del contenedor (variables de entorno, secretos). Por favor, habilite los privilegios de administrador utilizando el botón en la parte superior derecha para ver y editar la configuración de Compose.",
   "mgmt.servapps.compose.credentialsDenied": "El editor de Compose requiere acceso a las credenciales del contenedor (variables de entorno, secretos). Su rol actual no tiene permiso para ver las credenciales."
 }

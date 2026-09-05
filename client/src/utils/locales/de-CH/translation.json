@@ -9,6 +9,7 @@
 	"mgmt.servapps.newContainer.volumes.subpathTitle": "Subpath",
 	"mgmt.servapps.newContainer.volumes.subpathPlaceholder": "e.g. config/app.conf",
 	"mgmt.servapps.newContainer.volumes.readOnlyTitle": "RO",
+	"mgmt.servapps.newContainer.volumes.noCopyTitle": "NoCopy",
 	"navigation.monitoring.resourceDashboard.reasonBySmartShield": "Smart Shield (verschiedene Missbrauchsmetriken wie Zeit, Grösse, Brute-Force, gleichzeitige Anfragen, usw...). Es beinhaltet keine Sperrung für gesperrte IP, um Ressourcen im Falle von potenziellen Angriffen zu sparen.",
 	"navigation.monitoring.resourceDashboard.reasonByWhitelist": "Nach IP-Whitelists (einschliesslich der auf Constellation beschränkten)"
 }
