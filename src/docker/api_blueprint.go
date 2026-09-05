@@ -1018,6 +1018,16 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 			hostPortsBound[hostPort + "/" + protocol] = true
 		}
 
+		// Reject nested mount targets (a mount inside another mount's target
+		// directory) with a clear error instead of a cryptic runc ENOTDIR at
+		// container start.
+		if err := ValidateMountConflicts(container.Volumes); err != nil {
+			utils.Error("CreateService: Invalid volume configuration", err)
+			OnLog(utils.DoErr(err.Error() + "\n"))
+			Rollback(rollbackActions, OnLog)
+			return err
+		}
+
 		// Create missing folders for bind mounts. A single-file bind (source
 		// is an existing file, or its parent is a directory and the basename
 		// looks like a file) must not be MkdirAll'd — only its parent dir.

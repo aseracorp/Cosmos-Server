@@ -170,6 +170,14 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 	if(oldContainerID != "") {
 		utils.Log("EditContainer - inspecting previous container " + oldContainerID)
 
+		// Reject nested mount targets (a mount inside another mount's target
+		// directory) with a clear error instead of a cryptic runc ENOTDIR at
+		// container start.
+		if err := ValidateMountConflicts(CosmosMountsFromDocker(newConfig.HostConfig.Mounts)); err != nil {
+			utils.Error("EditContainer: Invalid volume configuration", err)
+			return "", err
+		}
+
 		// create missing folders
 		
 		for _, newmount := range newConfig.HostConfig.Mounts {

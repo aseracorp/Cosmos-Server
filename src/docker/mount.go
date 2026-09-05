@@ -465,3 +465,65 @@ func replaceDirWithEmptyFile(path string, mode os.FileMode) error {
 	}
 	return f.Close()
 }
+
+// ValidateMountConflicts checks a service's volume list for the most common
+// Docker mount configuration error: a mount whose target is nested inside
+// another mount's target directory.
+//
+// Example (invalid):
+//
+//	volumes:
+//	  - source: somevol, target: /volumes        # folder mount
+//	  - source: cfg, target: /volumes/config.yaml, subpath: app.yaml
+//	                                             # file mount INTO that folder
+//
+// Docker cannot mount a path inside a directory that is itself a mount point:
+// runc fails at container start with a cryptic ENOTDIR ("mount a directory
+// onto a file (or vice-versa)"). This helper rejects the combination up front
+// with a clear message instead.
+//
+// It returns an error describing the first offending pair, or nil if the
+// mounts don't nest.
+func ValidateMountConflicts(mounts []CosmosMount) error {
+	for i := range mounts {
+		targetI := filepath.Clean(mounts[i].Target)
+		if targetI == "" || targetI == "." || targetI == "/" {
+			continue
+		}
+		for j := range mounts {
+			if i == j {
+				continue
+			}
+			targetJ := filepath.Clean(mounts[j].Target)
+			if targetJ == "" || targetJ == "." || targetJ == "/" {
+				continue
+			}
+			// targetJ is a strict, component-wise parent of targetI -> the
+			// two mounts would nest (targetI sits inside the mount at targetJ).
+			if isStrictPathInside(targetI, targetJ) {
+				return fmt.Errorf(
+					"Invalid volume configuration: mount %d target '%s' (source '%s'%s) is inside another mount's target '%s' (source '%s'). "+
+						"Docker cannot mount a path inside a directory that is already a mount point; this fails at container start. "+
+						"Choose distinct, non-nested target directories.",
+					i+1, mounts[i].Target, mounts[i].Source, subpathDesc(mounts[i]),
+					mounts[j].Target, mounts[j].Source)
+			}
+		}
+	}
+	return nil
+}
+
+func isStrictPathInside(child, parent string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func subpathDesc(m CosmosMount) string {
+	if m.SubPath != "" {
+		return " (subpath '" + m.SubPath + "')"
+	}
+	return ""
+}
