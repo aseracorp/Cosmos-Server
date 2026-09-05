@@ -1255,7 +1255,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 				OnLog(fmt.Sprintf("Waiting for dependency %s (%s) before starting %s\n", depName, cond, container.Name))
 				if err := WaitForDepCondition(DockerContext, depName, cond); err != nil {
 					utils.Error("CreateService: Start Container", err)
-					OnLog(utils.DoErr("Rolling back changes because of -- dependency wait error: "+err.Error()))
+					OnLog(utils.DoErr("%s", "Rolling back changes because of -- dependency wait error: "+err.Error()))
 					Rollback(rollbackActions, OnLog)
 					return err
 				}
