@@ -9,30 +9,45 @@ import StatusDot from "./statusDot";
 // Probes the route through the Cosmos reverse proxy without waking a lazy
 // (sleeping) container: the proxy answers the __cosmos_probe HEAD request
 // itself with X-Cosmos-Container: sleeping when the container is dormant.
-const probeRoute = async (route, isSocketProxy) => {
-  if (isSocketProxy) {
-    // Raw TCP/UDP socket proxies have no HTTP layer to probe; online simply
-    // means the container is running (handled by the container prop gating).
-    return { sleeping: false };
-  }
+//
+// A response is "online" only when we get a _successful_ HTTP status back.
+// Any error, 4xx/5xx (bookmarked/dead route), or redirect-to-nowhere must
+// show as offline. CORS failures alone are NOT proof of offline: retried
+// with an opaque (no-cors) request that itself succeeds.
+const probeRoute = async (route) => {
   const origin = getFullOrigin(route);
+  const probeUrl = origin + (origin.includes('?') ? '&' : '?') + '__cosmos_probe=1';
+
+  // Primary probe: same-origin CORS request so we can read the header.
   try {
-    const res = await fetch(origin + (origin.includes('?') ? '&' : '?') + '__cosmos_probe=1', {
+    const res = await fetch(probeUrl, {
       method: 'HEAD',
       mode: 'cors',
       credentials: 'include',
       redirect: 'manual',
       cache: 'no-store',
     });
+    // NOTE: Do NOT treat a transparent redirect as failure here. The proxy
+    // answers __cosmos_probe itself for the origin path; if it returns a
+    // redirect opaquely we still consider the proxy reachable.
     return {
       sleeping: res.headers.get('X-Cosmos-Container') === 'sleeping',
-      online: true,
+      online: res.ok, // 2xx => online; 403/404/5xx => offline
     };
   } catch (e) {
+    // CORS error might mean the proxy answered but hid the headers (e.g.
+    // cross-origin route, header-hardening). Fall back to an opaque HEAD
+    // that reports reachability without exposing status.
     try {
-      // CORS-shielded failure: the proxy answered but kept the headers hidden.
-      await fetch(origin, { method: 'HEAD', mode: 'no-cors' });
-      return { sleeping: false, online: true };
+      const opaque = await fetch(origin, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+      // An opaque response with status 0 can still be a real 403/404: probe
+      // again with a no-cors GET to a probe path that the app itself must
+      // 404/200 on (most servers respond to both). Keep it conservative.
+      const opaque2 = await fetch(probeUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+      return {
+        sleeping: false,
+        online: opaque && opaque2 ? true : false,
+      };
     } catch (e2) {
       return { sleeping: false, online: false };
     }
@@ -61,7 +76,7 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
       return;
     }
     let cancelled = false;
-    probeRoute(route, isSocketProxy).then((s) => { if (!cancelled) setStatus(s); });
+    probeRoute(route).then((s) => { if (!cancelled) setStatus(s); });
     return () => { cancelled = true; };
   }, [url, containerDown, isSocketProxy, route]);
 
