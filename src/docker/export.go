@@ -14,6 +14,7 @@ import (
 
 	"github.com/azukaar/cosmos-server/src/utils"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/mount"
 
 	conttype "github.com/docker/docker/api/types/container"
 )
@@ -135,18 +136,20 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			// Volumes
 			Volumes: func() []CosmosMount {
 					mounts := []CosmosMount{}
-					for _, m := range detailedInfo.Mounts {
-						cm := CosmosMount{
-							Type:   string(m.Type),
-							Source: m.Source,
-							Target: m.Destination,
-						}
-
-						if m.Type == "volume" {
-							nodata := strings.Split(strings.TrimSuffix(m.Source, "/_data"), "/")
-							cm.Source = nodata[len(nodata)-1]
-						}
-
+					// Read the mounts from HostConfig.Mounts rather than the
+					// top-level Mounts (MountPoint) array: the MountPoint struct
+					// has no SubPath field, so a volume subpath would be silently
+					// dropped from the compose/HJSON export. HostConfig.Mounts
+					// preserves VolumeOptions.Subpath.
+					hostMounts := []mount.Mount{}
+					if detailedInfo.HostConfig != nil {
+						hostMounts = detailedInfo.HostConfig.Mounts
+					}
+					for _, m := range hostMounts {
+						cm := FromDockerMount(m)
+						// For volume mounts the daemon reports Source as the
+						// durable volume name, so source is already the compose
+						// volume name (no /_data munging).
 						mounts = append(mounts, cm)
 					}
 					return mounts

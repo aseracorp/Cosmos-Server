@@ -2,6 +2,9 @@ package docker
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/docker/docker/api/types/mount"
@@ -138,4 +141,120 @@ func FromDockerMountSlice(mounts []mount.Mount) []CosmosMount {
 		c[i] = FromDockerMount(m)
 	}
 	return c
+}
+
+// EnsureSubpathExists creates the missing parent directories and, when the
+// final subpath component looks like a file (basename contains a dot), the
+// file itself, inside the given mount root (a named volume's _data dir).
+//
+// Docker's volume-subpath mount requires the subpath to already exist inside
+// the volume; this mirrors what Cosmos already does for bind mounts.
+//
+// Returns the paths that were created.
+func EnsureSubpathExists(mountRoot, subpath string) ([]string, error) {
+	created := []string{}
+	if subpath == "" {
+		return created, nil
+	}
+	clean := strings.TrimPrefix(filepath.Clean(subpath), string(filepath.Separator))
+	if clean == "." || clean == "" {
+		return created, nil
+	}
+
+	dirs := filepath.Dir(clean)
+	if dirs != "." && dirs != "" {
+		p := filepath.Join(mountRoot, dirs)
+		if err := os.MkdirAll(p, 0o750); err != nil {
+			return created, err
+		}
+		created = append(created, p)
+	}
+
+	full := filepath.Join(mountRoot, clean)
+	if _, err := os.Stat(full); err == nil {
+		return created, nil // already exists (dir or file)
+	} else if !os.IsNotExist(err) {
+		return created, err
+	}
+
+	if looksLikeFile(clean) {
+		dir := filepath.Dir(full)
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return created, err
+		}
+		f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY, 0o640)
+		if err != nil {
+			return created, err
+		}
+		f.Close()
+		created = append(created, full)
+	} else {
+		if err := os.MkdirAll(full, 0o750); err != nil {
+			return created, err
+		}
+		created = append(created, full)
+	}
+
+	return created, nil
+}
+
+// looksLikeFile reports whether a subpath's basename looks like a file
+// (contains a dot), matching how bind-mount auto-creation detects files.
+func looksLikeFile(subpath string) bool {
+	base := filepath.Base(subpath)
+	return strings.Contains(base, ".")
+}
+
+// ValidateMountConflicts checks a service's volume list for the ONE mount
+// combination Docker's volume-subpath cannot handle: a VOLUME mount whose
+// subpath resolves to a FILE, with its target nested inside another mount's
+// target directory.
+//
+// Everything else is intentionally allowed:
+//   - plain nested mounts (e.g. -v /a:/a -v /a/b:/a/b) work in Docker
+//   - volume + directory subpath works, even nested
+//   - volume + file subpath works when NOT nested
+//   - bind mounts are never affected (no subpath mechanism)
+//
+// The failing case is specific: runc's bind of the volume-subpath "safe-mount"
+// onto a target that sits inside a directory which is itself another mount's
+// target aborts with a cryptic ENOTDIR ("mount a directory onto a file (or
+// vice-versa)"). This helper rejects exactly that combination up front.
+func ValidateMountConflicts(mounts []CosmosMount) error {
+	for i := range mounts {
+		m := mounts[i]
+		if m.Type != "volume" || m.SubPath == "" || !looksLikeFile(m.SubPath) {
+			continue
+		}
+		targetI := filepath.Clean(m.Target)
+		if targetI == "" || targetI == "." || targetI == "/" {
+			continue
+		}
+		for j := range mounts {
+			if i == j {
+				continue
+			}
+			targetJ := filepath.Clean(mounts[j].Target)
+			if targetJ == "" || targetJ == "." || targetJ == "/" {
+				continue
+			}
+			if isStrictPathInside(targetI, targetJ) {
+				return fmt.Errorf(
+					"Invalid volume configuration: volume subpath mount target '%s' (source '%s', subpath '%s') is inside another mount's target '%s' (source '%s'). "+
+						"Docker cannot mount a VOLUME FILE subpath into a directory that is already another mount point; this fails at container start. "+
+						"Move it to a distinct, non-nested target (or mount the whole directory subpath instead of a single file).",
+					m.Target, m.Source, m.SubPath,
+					mounts[j].Target, mounts[j].Source)
+			}
+		}
+	}
+	return nil
+}
+
+func isStrictPathInside(child, parent string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

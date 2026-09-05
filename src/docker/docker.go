@@ -193,6 +193,59 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 			}
 		}
 
+		// Reject nested mount targets for volume FILE subpaths.
+		if err := ValidateMountConflicts(FromDockerMountSlice(newConfig.HostConfig.Mounts)); err != nil {
+			utils.Error("EditContainer: Invalid volume configuration", err)
+			return "", err
+		}
+
+		// Auto-create missing volume subpaths (mirrors CreateService).
+		for _, newmount := range newConfig.HostConfig.Mounts {
+			if newmount.Type != "volume" || newmount.VolumeOptions == nil || newmount.VolumeOptions.Subpath == "" {
+				continue
+			}
+			sub := newmount.VolumeOptions.Subpath
+			vol, err := DockerClient.VolumeInspect(DockerContext, newmount.Source)
+			if err != nil {
+				utils.Error("EditContainer: Unable to inspect volume for subpath creation", err)
+				continue
+			}
+			if vol.Mountpoint == "" {
+				utils.Warn("EditContainer: Volume " + newmount.Source + " has no mountpoint; cannot auto-create subpath")
+				continue
+			}
+			mountRoot := vol.Mountpoint
+			if utils.IsInsideContainer {
+				if _, err := os.Stat("/mnt/host"); os.IsNotExist(err) {
+					utils.Error("EditContainer: Unable to create volume subpath. Please mount the host / in Cosmos with  -v /:/mnt/host to enable folder creations, or create the subpath folder yourself", err)
+					continue
+				}
+				mountRoot = "/mnt/host" + mountRoot
+			}
+			utils.Log(fmt.Sprintf("Checking subpath %s for volume %s", sub, newmount.Source))
+			created, err := EnsureSubpathExists(mountRoot, sub)
+			if err != nil {
+				utils.Error("EditContainer: Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume", err)
+				return "", errors.New("Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume")
+			}
+			for _, cp := range created {
+				utils.Log(fmt.Sprintf("Created subpath entry %s for volume %s", cp, newmount.Source))
+				if newConfig.Config.User != "" {
+					userInfo, err := user.Lookup(newConfig.Config.User)
+					if err != nil {
+						utils.Error("EditContainer: Unable to lookup user", err)
+					} else {
+						uid, _ := strconv.Atoi(userInfo.Uid)
+						gid, _ := strconv.Atoi(userInfo.Gid)
+						err = os.Chown(cp, uid, gid)
+						if err != nil {
+							utils.Error("EditContainer: Unable to change ownership of subpath path", err)
+						}
+					}
+				}
+			}
+		}
+
 		utils.Log("EditContainer - Container updating. Retriveing currently running " + oldContainerID)
 
 		var err error
