@@ -297,58 +297,19 @@ func SupportsVolumeSubpath() bool {
 // mount of the volume's data directory + subpath (which the caller ensures
 // exists). The result is identical to what Docker 26 does internally.
 func ToDockerMountSliceConvertible(mounts []CosmosMount) []mount.Mount {
-	out := make([]mount.Mount, 0, len(mounts))
+	// Always use the native VolumeOptions.Subpath for subpath mounts. Emulating
+	// a file subpath as a raw bind of .../_data/<subpath> was tried and fails:
+	// runc resolves the raw host path inside the container's mount namespace
+	// and the kernel returns ENOTDIR ("mount a directory onto a file"). The
+	// native subpath path uses Docker's safe proc-fd mechanism and works.
+	//
+	// NoCopy is set (moby#52546) so Docker skips the seed-from-image copy step
+	// that breaks for file subpaths when the target exists in the image.
 	for _, m := range mounts {
-		// A volume mount with a subpath that resolves to a FILE is emulated as
-		// a bind mount of the volume's data-dir subpath on ALL engines.
-		//
-		// Docker's native volume-subpath has two failure modes for file
-		// subpaths: the seed step (moby#52546, fixed by NoCopy) and, at
-		// container start on Docker 29.x, runc's safe-mount bind onto a target
-		// that already exists as a file/dir in the image returns ENOTDIR
-		// ("mount a directory onto a file (or vice-versa)"). A plain bind of
-		// the host file path avoids the safe-mount path entirely and always
-		// works — moby's own integration test confirms file subpaths are the
-		// fiddly case.
-		//
-		// Directory subpaths keep the native VolumeOptions.Subpath (reliable).
-		if m.Type == string(mount.TypeVolume) && m.SubPath != "" && looksLikeFile(m.SubPath) {
-			// Resolve the volume's real mountpoint so we can bind-mount the
-			// subpath. If resolution fails, fall back to the plain volume
-			// mount (the daemon will mount the whole volume).
-			vol, err := DockerClient.VolumeInspect(DockerContext, m.Source)
-			if err == nil && vol.Mountpoint != "" {
-				utils.Debug(fmt.Sprintf("ToDockerMountSliceConvertible emulated-bind: source=%s subpath=%q -> bind %s",
-					m.Source, m.SubPath, filepath.Join(vol.Mountpoint, m.SubPath)))
-				out = append(out, mount.Mount{
-					Type:     mount.TypeBind,
-					Source:   filepath.Join(vol.Mountpoint, m.SubPath),
-					Target:   m.Target,
-					ReadOnly: m.ReadOnly,
-				})
-				continue
-			}
-		}
-
-		if m.Type == string(mount.TypeVolume) && m.SubPath != "" && !SupportsVolumeSubpath() {
-			// Old engine (no native subpath): emulate directory subpaths as
-			// binds too, so the subpath works instead of being silently
-			// ignored and mounting the whole volume.
-			vol, err := DockerClient.VolumeInspect(DockerContext, m.Source)
-			if err == nil && vol.Mountpoint != "" {
-				out = append(out, mount.Mount{
-					Type:     mount.TypeBind,
-					Source:   filepath.Join(vol.Mountpoint, m.SubPath),
-					Target:   m.Target,
-					ReadOnly: m.ReadOnly,
-				})
-				continue
-			}
-		}
-
-		out = append(out, m.ToDockerMount())
+		utils.Debug(fmt.Sprintf("ToDockerMountSliceConvertible native: type=%s source=%s target=%s subpath=%q readOnly=%v",
+			m.Type, m.Source, m.Target, m.SubPath, m.ReadOnly))
 	}
-	return out
+	return ToDockerMountSlice(mounts)
 }
 
 // volumeDataDirPattern matches a bind mount source that points inside a
