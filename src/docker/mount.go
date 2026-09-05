@@ -297,21 +297,43 @@ func SupportsVolumeSubpath() bool {
 // mount of the volume's data directory + subpath (which the caller ensures
 // exists). The result is identical to what Docker 26 does internally.
 func ToDockerMountSliceConvertible(mounts []CosmosMount) []mount.Mount {
-	if SupportsVolumeSubpath() {
-		for _, m := range mounts {
-			utils.Debug(fmt.Sprintf("ToDockerMountSliceConvertible native: type=%s source=%s target=%s subpath=%q readOnly=%v",
-				m.Type, m.Source, m.Target, m.SubPath, m.ReadOnly))
-		}
-		return ToDockerMountSlice(mounts)
-	}
-
 	out := make([]mount.Mount, 0, len(mounts))
 	for _, m := range mounts {
-		if m.Type == string(mount.TypeVolume) && m.SubPath != "" {
+		// A volume mount with a subpath that resolves to a FILE is emulated as
+		// a bind mount of the volume's data-dir subpath on ALL engines.
+		//
+		// Docker's native volume-subpath has two failure modes for file
+		// subpaths: the seed step (moby#52546, fixed by NoCopy) and, at
+		// container start on Docker 29.x, runc's safe-mount bind onto a target
+		// that already exists as a file/dir in the image returns ENOTDIR
+		// ("mount a directory onto a file (or vice-versa)"). A plain bind of
+		// the host file path avoids the safe-mount path entirely and always
+		// works — moby's own integration test confirms file subpaths are the
+		// fiddly case.
+		//
+		// Directory subpaths keep the native VolumeOptions.Subpath (reliable).
+		if m.Type == string(mount.TypeVolume) && m.SubPath != "" && looksLikeFile(m.SubPath) {
 			// Resolve the volume's real mountpoint so we can bind-mount the
-			// subpath. If resolution fails, fall back to the plain volume mount
-			// (the daemon will mount the whole volume, matching old-engine
-			// behavior — and FriendlySubpathError already warns the user).
+			// subpath. If resolution fails, fall back to the plain volume
+			// mount (the daemon will mount the whole volume).
+			vol, err := DockerClient.VolumeInspect(DockerContext, m.Source)
+			if err == nil && vol.Mountpoint != "" {
+				utils.Debug(fmt.Sprintf("ToDockerMountSliceConvertible emulated-bind: source=%s subpath=%q -> bind %s",
+					m.Source, m.SubPath, filepath.Join(vol.Mountpoint, m.SubPath)))
+				out = append(out, mount.Mount{
+					Type:     mount.TypeBind,
+					Source:   filepath.Join(vol.Mountpoint, m.SubPath),
+					Target:   m.Target,
+					ReadOnly: m.ReadOnly,
+				})
+				continue
+			}
+		}
+
+		if m.Type == string(mount.TypeVolume) && m.SubPath != "" && !SupportsVolumeSubpath() {
+			// Old engine (no native subpath): emulate directory subpaths as
+			// binds too, so the subpath works instead of being silently
+			// ignored and mounting the whole volume.
 			vol, err := DockerClient.VolumeInspect(DockerContext, m.Source)
 			if err == nil && vol.Mountpoint != "" {
 				out = append(out, mount.Mount{
@@ -323,6 +345,7 @@ func ToDockerMountSliceConvertible(mounts []CosmosMount) []mount.Mount {
 				continue
 			}
 		}
+
 		out = append(out, m.ToDockerMount())
 	}
 	return out

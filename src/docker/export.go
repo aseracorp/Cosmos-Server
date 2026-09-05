@@ -313,10 +313,15 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 					}
 
 					for _, m := range hostMounts {
-						cm := FromDockerMount(m)
-						// For volume mounts the daemon reports Source as the
-						// durable volume name in HostConfig.Mounts, so source
-						// is already the compose volume name (no /_data munging).
+						// FromDockerMountSmart reconstructs a volume+subpath
+						// from a bind mount into the volume's _data dir, so
+						// file-subpath mounts (which Cosmos emulates as binds)
+						// round-trip back into subpath in the compose/HJSON
+						// editor instead of showing a raw host path.
+						cm := FromDockerMountSmart(m)
+						// For native volume mounts the daemon reports Source as
+						// the durable volume name, so source is already the
+						// compose volume name (no /_data munging).
 						mounts = append(mounts, cm)
 						utils.Debug(fmt.Sprintf("ExportContainer mount: type=%s source=%s target=%s subpath=%q readOnly=%v (raw VolumeOptions=%+v)",
 							cm.Type, cm.Source, cm.Target, cm.SubPath, cm.ReadOnly, m.VolumeOptions))
