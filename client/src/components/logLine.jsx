@@ -65,7 +65,7 @@ const LogLine = ({ message, docker, isMobile }) => {
     // (e.g. "2026-09-07 10:07:45.720 CEST" or "... +02:00") so it does not appear twice.
     let restString = html.replace(parts[0], '')
       .replace(/^&nbsp;/, '')
-      .replace(/^\d{4}-\d{2}-\d{2}&nbsp;\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:&nbsp;(?:[A-Z]{2,6}|[+-]\d{2}:?\d{2}))?&nbsp;/, '');
+      .replace(/^\[?\d{4}-\d{2}-\d{2}(?:T|&nbsp;)\d{2}:\d{2}:\d{2}(?:[.,]\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?(?:&nbsp;(?:[A-Z]{2,6}|[+-]\d{2}:?\d{2}|Z))?\]?(?:&nbsp;|<br>|$)/, '');
 
     return (
       <Stack direction={isMobile ? 'column' : 'row'} spacing={1} alignItems="flex-start">
