@@ -179,18 +179,26 @@ func startHTTPSServer(router *mux.Router) error {
 
 	tlsConf.Certificates = []tls.Certificate{cert}
 
-	_primaryCert, errCert := tls.X509KeyPair(([]byte)(HTTPConfig.TLSCert), ([]byte)(HTTPConfig.TLSKey))
-	if errCert != nil {
-		config.HTTPConfig.ForceHTTPSCertificateRenewal = true
-		utils.SetBaseMainConfig(config)
-		utils.Fatal("Getting Certificate pair", errCert)
+	var primaryCertAvailable = HTTPConfig.TLSCert != "" && HTTPConfig.TLSKey != ""
+	var _primaryCert tls.Certificate
+	if primaryCertAvailable {
+		_primaryCert, errCert = tls.X509KeyPair(([]byte)(HTTPConfig.TLSCert), ([]byte)(HTTPConfig.TLSKey))
+		if errCert != nil {
+			config.HTTPConfig.ForceHTTPSCertificateRenewal = true
+			utils.SetBaseMainConfig(config)
+			utils.Fatal("Getting Certificate pair", errCert)
+		}
 	}
 
-	_secondaryCert, errCert := tls.X509KeyPair(([]byte)(HTTPConfig.SelfTLSCert), ([]byte)(HTTPConfig.SelfTLSKey))
-	if errCert != nil {
-		config.HTTPConfig.ForceHTTPSCertificateRenewal = true
-		utils.SetBaseMainConfig(config)
-		utils.Fatal("Getting Certificate pair", errCert)
+	var secondaryCertAvailable = HTTPConfig.SelfTLSCert != "" && HTTPConfig.SelfTLSKey != ""
+	var _secondaryCert tls.Certificate
+	if secondaryCertAvailable {
+		_secondaryCert, errCert = tls.X509KeyPair(([]byte)(HTTPConfig.SelfTLSCert), ([]byte)(HTTPConfig.SelfTLSKey))
+		if errCert != nil {
+			config.HTTPConfig.ForceHTTPSCertificateRenewal = true
+			utils.SetBaseMainConfig(config)
+			utils.Fatal("Getting Certificate pair", errCert)
+		}
 	}
 
 	primaryCert = &_primaryCert
