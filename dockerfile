@@ -23,6 +23,13 @@ RUN apt-get update \
        curl unzip wget avahi-daemon avahi-utils samba fuse3 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# NOTE: The optional multicast/broadcast relay (per-network toggle) captures
+# frames via AF_PACKET sockets. To use it, the Cosmos container must run with
+# the NET_RAW and NET_ADMIN capabilities added (e.g.
+# docker run --cap-add=NET_RAW --cap-add=NET_ADMIN ...). Without them the
+# relay is disabled automatically with a warning.
+
 
 WORKDIR /app
 

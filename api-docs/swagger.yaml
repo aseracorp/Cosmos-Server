@@ -725,6 +725,8 @@ definitions:
         type: string
       parentInterface:
         type: string
+      relayBroadcast:
+        type: boolean
       subnet:
         type: string
     required:
@@ -739,6 +741,13 @@ definitions:
     required:
     - http
     - https
+    type: object
+  docker.setRelayPayload:
+    properties:
+      enabled:
+        type: boolean
+    required:
+    - enabled
     type: object
   github_com_azukaar_cosmos-server_src_utils.Config:
     properties:
@@ -1789,6 +1798,16 @@ definitions:
     properties:
       defaultDataPath:
         type: string
+      relayNetworks:
+        description: |-
+          RelayNetworks lists Docker networks on which Cosmos relays IPv4
+          broadcast/multicast frames to other relay-enabled networks. Persisted in
+          the main config because Docker labels on existing networks cannot be
+          mutated in place; networks created via Cosmos also carry the
+          "cosmos.broadcastrelay" label as a machine-readable marker.
+        items:
+          type: string
+        type: array
       skipPruneImages:
         type: boolean
       skipPruneNetwork:
@@ -6954,6 +6973,46 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a Docker network by ID
+      tags:
+      - docker
+  /api/network/{networkID}/relay:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Network ID or name
+        in: path
+        name: networkID
+        required: true
+        type: string
+      - description: '{'
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/docker.setRelayPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResult'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResult'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/utils.HTTPErrorResult'
+      security:
+      - BearerAuth: []
+      summary: Enable or disable broadcast/multicast relaying on a Docker network
       tags:
       - docker
   /api/networks:
