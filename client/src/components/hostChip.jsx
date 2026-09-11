@@ -7,17 +7,19 @@ import { isContainerRunning } from "../utils/container-status";
 import StatusDot from "./statusDot";
 
 // Green (service is up): 2xx/3xx (incl. opaqueredirect for cross-origin login
-// redirects) and the 4xx codes that mean the reverse proxy answered while
-// refusing this caller/method (401, 403, 405, 407, 429, 511) - the app is
-// running and reachable, it just won't serve this HEAD/probe.
+// redirects) and the codes that mean the reverse proxy answered while refusing
+// this caller/method (401, 403, 405, 407, 429, 511) - the app is running and
+// reachable, it just won't serve this HEAD/probe.
+// 501 Not Implemented is also green: the app is up and answered, it simply
+// does not implement the HEAD/online-check request - a successful connection.
 // A 503 from the lazy probe means "container is dormant" -> still reachable
 // (sleeping), handled by the caller.
-// Red (service is down): 404, 408, genuine 5xx, and network errors.
+// Red (service is down): 404, 408, other genuine 5xx, and network errors.
 function classifyProbeStatus(res) {
   if (res.type === 'opaqueredirect') return true;
   const s = res.status;
   if (s >= 200 && s < 400) return true;
-  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511) return true;
+  if (s === 401 || s === 403 || s === 405 || s === 407 || s === 429 || s === 511 || s === 501) return true;
   return false;
 }
 
