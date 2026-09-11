@@ -42,9 +42,23 @@ func ListNetworksRoute(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		// Annotate each network with its broadcast/multicast relay state so the
+		// UI can render the toggle without an extra API call per network.
+		type annotatedNetwork struct {
+			types.NetworkResource
+			RelayEnabled bool `json:"relayEnabled"`
+		}
+		annotated := make([]annotatedNetwork, 0, len(networks))
+		for _, n := range networks {
+			annotated = append(annotated, annotatedNetwork{
+				NetworkResource: n,
+				RelayEnabled:    IsNetworkRelayEnabled(n.Name),
+			})
+		}
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "OK",
-			"data":   networks,
+			"data":   annotated,
 		})
 	} else {
 		utils.Error("ListNetworksRoute: Method not allowed " + req.Method, nil)
@@ -306,6 +320,7 @@ type createNetworkPayload struct {
 	AttachCosmos bool `json:"attachCosmos"`
 	ParentInterface string `json:"parentInterface"`
 	Subnet string `json:"subnet"`
+	RelayBroadcast bool `json:"relayBroadcast"`
 }
 
 // CreateNetworkRoute godoc
@@ -347,6 +362,11 @@ func CreateNetworkRoute(w http.ResponseWriter, req *http.Request) {
 			Options: map[string]string{
 				"parent": payload.ParentInterface,
 			},
+			Labels: map[string]string{},
+		}
+
+		if payload.RelayBroadcast {
+			networkCreate.Labels[RelayLabelKey] = "true"
 		}
 
 		if payload.Subnet != "" {
@@ -377,12 +397,76 @@ func CreateNetworkRoute(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
+		if payload.RelayBroadcast {
+			ReconcileBroadcastRelay()
+		}
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "OK",
 			"data":   resp,
 		})
 	} else {
 		utils.Error("CreateNetworkRoute: Method not allowed " + req.Method, nil)
+		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
+		return
+	}
+}
+type setRelayPayload struct {
+	Enabled bool `json:"enabled" validate:"required"`
+}
+
+// SetNetworkRelayRoute godoc
+// @Summary Enable or disable broadcast/multicast relaying on a Docker network
+// @Tags docker
+// @Accept json
+// @Produce json
+// @Param networkID path string true "Network ID or name"
+// @Param body body setRelayPayload true "{"enabled": true}"
+// @Security BearerAuth
+// @Success 200 {object} utils.APIResponse
+// @Failure 400 {object} utils.HTTPErrorResult
+// @Failure 403 {object} utils.HTTPErrorResult
+// @Failure 500 {object} utils.HTTPErrorResult
+// @Router /api/network/{networkID}/relay [post]
+func SetNetworkRelayRoute(w http.ResponseWriter, req *http.Request) {
+	if utils.CheckPermissions(w, req, utils.PERM_RESOURCES) != nil {
+		return
+	}
+
+	if req.Method == "POST" {
+		vars := mux.Vars(req)
+		networkID := vars["networkID"]
+
+		var payload setRelayPayload
+		err := json.NewDecoder(req.Body).Decode(&payload)
+		if err != nil {
+			utils.Error("SetNetworkRelayRoute: Error reading request body", err)
+			utils.HTTPError(w, "Error reading request body: "+err.Error(), http.StatusBadRequest, "SNR001")
+			return
+		}
+
+		errD := Connect()
+		if errD != nil {
+			utils.Error("SetNetworkRelayRoute", errD)
+			utils.HTTPError(w, "Internal server error: "+errD.Error(), http.StatusInternalServerError, "SNR002")
+			return
+		}
+
+		network, err := DockerClient.NetworkInspect(context.Background(), networkID, types.NetworkInspectOptions{})
+		if err != nil {
+			utils.Error("SetNetworkRelayRoute: Error while getting network", err)
+			utils.HTTPError(w, "Network Get Error: "+err.Error(), http.StatusInternalServerError, "SNR003")
+			return
+		}
+
+		utils.Log("SetNetworkRelayRoute: toggling relay on network " + network.Name)
+		ToggleNetworkRelay(network.Name, payload.Enabled)
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "OK",
+		})
+	} else {
+		utils.Error("SetNetworkRelayRoute: Method not allowed "+req.Method, nil)
 		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
 		return
 	}

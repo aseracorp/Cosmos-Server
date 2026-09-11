@@ -314,6 +314,8 @@ func cosmos() {
 
 	docker.RemoveSelfUpdater()
 
+	docker.InitBroadcastRelay()
+
 	go func() {
 		time.Sleep(180 * time.Second)
 		checkUpdatesAvailable()
