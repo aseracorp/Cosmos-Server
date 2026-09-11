@@ -13367,12 +13367,37 @@
           }
         }
       },
+      "docker.BlkioThrottleDevice": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "rate": {
+            "type": "string"
+          }
+        }
+      },
+      "docker.BlkioWeightDevice": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "integer"
+          }
+        }
+      },
       "docker.ContainerCreateRequestContainer": {
         "type": "object",
         "required": [
           "image"
         ],
         "properties": {
+          "blkio_config": {
+            "$ref": "#/components/schemas/docker.ContainerCreateRequestServiceBlkioConfig"
+          },
           "cap_add": {
             "type": "array",
             "items": {
@@ -13386,10 +13411,26 @@
             }
           },
           "command": {
-            "type": "string"
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "container_name": {
             "type": "string"
+          },
+          "cpu_period": {
+            "description": "Additional resource constraints (docker-compose parity)",
+            "type": "integer"
+          },
+          "cpu_quota": {
+            "type": "integer"
+          },
+          "cpu_rt_period": {
+            "type": "integer"
+          },
+          "cpu_rt_runtime": {
+            "type": "integer"
           },
           "cpu_shares": {
             "type": "integer"
@@ -13397,7 +13438,14 @@
           "cpus": {
             "type": "number"
           },
+          "cpuset": {
+            "type": "string"
+          },
           "cpuset_cpus": {
+            "description": "Legacy alias for cpuset (older Cosmos backups used cpuset_cpus). Kept for\nbackward compatibility; Cpuset takes precedence when both are present.",
+            "type": "string"
+          },
+          "cpuset_mems": {
             "type": "string"
           },
           "depends_on": {
@@ -13428,7 +13476,10 @@
             "type": "string"
           },
           "entrypoint": {
-            "type": "string"
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "environment": {
             "type": "array",
@@ -13450,6 +13501,12 @@
           },
           "gid": {
             "type": "integer"
+          },
+          "gpus": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/docker.ContainerCreateRequestGPURequest"
+            }
           },
           "healthcheck": {
             "$ref": "#/components/schemas/docker.ContainerCreateRequestContainerHealthcheck"
@@ -13485,6 +13542,12 @@
           "mem_reservation": {
             "type": "string"
           },
+          "mem_swappiness": {
+            "type": "integer"
+          },
+          "memswap_limit": {
+            "type": "string"
+          },
           "network_mode": {
             "type": "string"
           },
@@ -13493,6 +13556,12 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/docker.ContainerCreateRequestServiceNetwork"
             }
+          },
+          "oom_kill_disable": {
+            "type": "boolean"
+          },
+          "pids_limit": {
+            "type": "integer"
           },
           "ports": {
             "type": "array",
@@ -13527,6 +13596,9 @@
               "type": "string"
             }
           },
+          "shm_size": {
+            "type": "string"
+          },
           "stdin_open": {
             "type": "boolean"
           },
@@ -13554,13 +13626,20 @@
           "uid": {
             "type": "integer"
           },
+          "ulimits": {
+            "description": "ulimits as \"name=soft[:hard]\" strings (e.g. \"nofile=2048\" or\n\"nofile=1024:2048\"), matching docker-compose's ulimits object after\nnormalization. Parsed with go-units at create time.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "user": {
             "type": "string"
           },
           "volumes": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/mount.Mount"
+              "$ref": "#/components/schemas/docker.CosmosMount"
             }
           },
           "working_dir": {
@@ -13583,15 +13662,13 @@
         "type": "object",
         "properties": {
           "interval": {
-            "type": "string",
-            "description": "Duration string (e.g. \"15s\", \"1m30s\", \"2h\"). Accepts a bare number of seconds for backward compat."
+            "type": "string"
           },
           "retries": {
             "type": "integer"
           },
           "start_period": {
-            "type": "string",
-            "description": "Duration string (e.g. \"15s\", \"1m30s\", \"2h\"). Accepts a bare number of seconds for backward compat."
+            "type": "string"
           },
           "test": {
             "type": "array",
@@ -13600,8 +13677,18 @@
             }
           },
           "timeout": {
-            "type": "string",
-            "description": "Duration string (e.g. \"15s\", \"1m30s\", \"2h\"). Accepts a bare number of seconds for backward compat."
+            "type": "string"
+          }
+        }
+      },
+      "docker.ContainerCreateRequestGPURequest": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "driver": {
+            "type": "string"
           }
         }
       },
@@ -13657,6 +13744,44 @@
           }
         }
       },
+      "docker.ContainerCreateRequestServiceBlkioConfig": {
+        "type": "object",
+        "properties": {
+          "device_read_bps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
+            }
+          },
+          "device_read_iops": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
+            }
+          },
+          "device_write_bps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
+            }
+          },
+          "device_write_iops": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
+            }
+          },
+          "weight": {
+            "type": "integer"
+          },
+          "weight_device": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/docker.BlkioWeightDevice"
+            }
+          }
+        }
+      },
       "docker.ContainerCreateRequestServiceNetwork": {
         "type": "object",
         "properties": {
@@ -13701,12 +13826,6 @@
       "docker.ContainerForm": {
         "type": "object",
         "properties": {
-          "Volumes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/mount.Mount"
-            }
-          },
           "cpus": {
             "type": "number"
           },
@@ -13748,6 +13867,38 @@
             "type": "string"
           },
           "user": {
+            "type": "string"
+          },
+          "volumes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/docker.CosmosMount"
+            }
+          }
+        }
+      },
+      "docker.CosmosMount": {
+        "type": "object",
+        "properties": {
+          "noCopy": {
+            "description": "NoCopy is the volume-nocopy mount option (VolumeOptions.NoCopy). It is\nauto-enabled for subpath mounts on engines older than Docker 29.5.0 as a\nworkaround for moby#52546, but users can also set it explicitly; it is\npreserved through the export round-trip.",
+            "type": "boolean"
+          },
+          "readOnly": {
+            "description": "ReadOnly mounts the source read-only (compose short-syntax `:ro`).",
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subpath": {
+            "description": "SubPath mounts a subdirectory (or a single file) inside a named\nvolume instead of the whole volume, like docker-compose's `subpath`.\nIt is wired to mount.VolumeOptions.Subpath for volume mounts.",
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "type": {
             "type": "string"
           }
         }
@@ -14110,167 +14261,6 @@
           }
         }
       },
-      "mount.BindOptions": {
-        "type": "object",
-        "properties": {
-          "createMountpoint": {
-            "type": "boolean"
-          },
-          "nonRecursive": {
-            "type": "boolean"
-          },
-          "propagation": {
-            "$ref": "#/components/schemas/mount.Propagation"
-          },
-          "readOnlyForceRecursive": {
-            "description": "ReadOnlyForceRecursive raises an error if the mount cannot be made recursively read-only.",
-            "type": "boolean"
-          },
-          "readOnlyNonRecursive": {
-            "description": "ReadOnlyNonRecursive makes the mount non-recursively read-only, but still leaves the mount recursive\n(unless NonRecursive is set to true in conjunction).",
-            "type": "boolean"
-          }
-        }
-      },
-      "mount.ClusterOptions": {
-        "type": "object"
-      },
-      "mount.Consistency": {
-        "type": "string",
-        "enum": [
-          "consistent",
-          "cached",
-          "delegated",
-          "default"
-        ],
-        "x-enum-varnames": [
-          "ConsistencyFull",
-          "ConsistencyCached",
-          "ConsistencyDelegated",
-          "ConsistencyDefault"
-        ]
-      },
-      "mount.Driver": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "options": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "mount.Mount": {
-        "type": "object",
-        "properties": {
-          "bindOptions": {
-            "$ref": "#/components/schemas/mount.BindOptions"
-          },
-          "clusterOptions": {
-            "$ref": "#/components/schemas/mount.ClusterOptions"
-          },
-          "consistency": {
-            "$ref": "#/components/schemas/mount.Consistency"
-          },
-          "readOnly": {
-            "description": "attempts recursive read-only if possible",
-            "type": "boolean"
-          },
-          "source": {
-            "description": "Source specifies the name of the mount. Depending on mount type, this\nmay be a volume name or a host path, or even ignored.\nSource is not supported for tmpfs (must be an empty value)",
-            "type": "string"
-          },
-          "target": {
-            "type": "string"
-          },
-          "tmpfsOptions": {
-            "$ref": "#/components/schemas/mount.TmpfsOptions"
-          },
-          "type": {
-            "$ref": "#/components/schemas/mount.Type"
-          },
-          "volumeOptions": {
-            "$ref": "#/components/schemas/mount.VolumeOptions"
-          }
-        }
-      },
-      "mount.Propagation": {
-        "type": "string",
-        "enum": [
-          "rprivate",
-          "private",
-          "rshared",
-          "shared",
-          "rslave",
-          "slave"
-        ],
-        "x-enum-varnames": [
-          "PropagationRPrivate",
-          "PropagationPrivate",
-          "PropagationRShared",
-          "PropagationShared",
-          "PropagationRSlave",
-          "PropagationSlave"
-        ]
-      },
-      "mount.TmpfsOptions": {
-        "type": "object",
-        "properties": {
-          "mode": {
-            "description": "Mode of the tmpfs upon creation",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/os.FileMode"
-              }
-            ]
-          },
-          "sizeBytes": {
-            "description": "Size sets the size of the tmpfs, in bytes.\n\nThis will be converted to an operating system specific value\ndepending on the host. For example, on linux, it will be converted to\nuse a 'k', 'm' or 'g' syntax. BSD, though not widely supported with\ndocker, uses a straight byte value.\n\nPercentages are not supported.",
-            "type": "integer"
-          }
-        }
-      },
-      "mount.Type": {
-        "type": "string",
-        "enum": [
-          "bind",
-          "volume",
-          "tmpfs",
-          "npipe",
-          "cluster"
-        ],
-        "x-enum-varnames": [
-          "TypeBind",
-          "TypeVolume",
-          "TypeTmpfs",
-          "TypeNamedPipe",
-          "TypeCluster"
-        ]
-      },
-      "mount.VolumeOptions": {
-        "type": "object",
-        "properties": {
-          "driverConfig": {
-            "$ref": "#/components/schemas/mount.Driver"
-          },
-          "labels": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "noCopy": {
-            "type": "boolean"
-          },
-          "subpath": {
-            "type": "string"
-          }
-        }
-      },
       "nat.PortBinding": {
         "type": "object",
         "properties": {
@@ -14296,10 +14286,6 @@
       "nat.PortSet": {
         "type": "object",
         "additionalProperties": true
-      },
-      "os.FileMode": {
-        "type": "integer",
-        "format": "uint32"
       },
       "pro.CreateGroupRequest": {
         "type": "object",
@@ -15988,6 +15974,10 @@
             "type": "integer"
           }
         }
+      },
+      "os.FileMode": {
+        "type": "integer",
+        "format": "uint32"
       }
     }
   }
