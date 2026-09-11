@@ -42,6 +42,8 @@ export interface DockerNetwork {
   Internal: boolean;
   Attachable: boolean;
   Labels: Record<string, string>;
+  /** Whether Cosmos relays broadcast/multicast on this network (annotated by the server). */
+  relayEnabled?: boolean;
   [key: string]: any;
 }
 
@@ -131,6 +133,16 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
       headers: {
           'Content-Type': 'application/json'
       },
+    }))
+  }
+
+  function setNetworkRelay(name: string, enabled: boolean): Promise<ApiResponse> {
+    return wrap(apiFetch(`/cosmos/api/network/${name}/relay`, {
+      method: 'POST',
+      headers: {
+          'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ enabled }),
     }))
   }
 
@@ -393,6 +405,7 @@ export default function createDockerAPI(apiFetch: ApiFetch, createWs: (path: str
     volumeDelete,
     networkList,
     networkDelete,
+    setNetworkRelay,
     getContainerLogs,
     updateContainer,
     listContainerNetworks,

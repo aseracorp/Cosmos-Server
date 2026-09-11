@@ -143,6 +143,17 @@ function networkDelete(name) {
   });
 }
 
+function setNetworkRelay(name, enabled) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      resolve({
+        "status": "ok",
+      })},
+      500
+    );
+  });
+}
+
 function getContainerLogs(containerId, searchQuery, limit, lastReceivedLogs, errorOnly) {
   if(limit < 50) limit = 50;
 
@@ -212,6 +223,7 @@ export {
   volumeDelete,
   networkList,
   networkDelete,
+  setNetworkRelay,
   getContainerLogs,
   updateContainer,
   listContainerNetworks,

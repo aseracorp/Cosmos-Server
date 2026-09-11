@@ -314,6 +314,12 @@ type DockerConfig struct {
 	SkipPruneNetwork bool
 	SkipPruneImages bool
 	DefaultDataPath string
+	// RelayNetworks lists Docker networks on which Cosmos relays IPv4
+	// broadcast/multicast frames to other relay-enabled networks. Persisted in
+	// the main config because Docker labels on existing networks cannot be
+	// mutated in place; networks created via Cosmos also carry the
+	// "cosmos.broadcastrelay" label as a machine-readable marker.
+	RelayNetworks []string `yaml:"relay_networks"`
 }
 
 type ProxyConfig struct {

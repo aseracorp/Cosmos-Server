@@ -6313,6 +6313,83 @@
         }
       }
     },
+    "/api/network/{networkID}/relay": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "docker"
+        ],
+        "summary": "Enable or disable broadcast/multicast relaying on a Docker network",
+        "parameters": [
+          {
+            "description": "Network ID or name",
+            "name": "networkID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/docker.setRelayPayload"
+              }
+            }
+          },
+          "description": "{",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/networks": {
       "get": {
         "security": [
@@ -11190,6 +11267,9 @@
               "type": "string"
             }
           },
+          "shm_size": {
+            "type": "integer"
+          },
           "stdin_open": {
             "type": "boolean"
           },
@@ -11467,6 +11547,9 @@
           "parentInterface": {
             "type": "string"
           },
+          "relayBroadcast": {
+            "type": "boolean"
+          },
           "subnet": {
             "type": "string"
           }
@@ -11484,6 +11567,17 @@
           },
           "https": {
             "type": "string"
+          }
+        }
+      },
+      "docker.setRelayPayload": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
           }
         }
       },
@@ -12662,6 +12756,13 @@
         "properties": {
           "defaultDataPath": {
             "type": "string"
+          },
+          "relayNetworks": {
+            "description": "RelayNetworks lists Docker networks on which Cosmos relays IPv4\nbroadcast/multicast frames to other relay-enabled networks. Persisted in\nthe main config because Docker labels on existing networks cannot be\nmutated in place; networks created via Cosmos also carry the\n\"cosmos.broadcastrelay\" label as a machine-readable marker.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "skipPruneImages": {
             "type": "boolean"

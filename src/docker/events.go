@@ -41,6 +41,12 @@ func DockerListenEvents() error {
 						onDockerStarted(msg.Actor.ID)
 					}
 
+					// Keep the multicast/broadcast relay in sync with the
+					// actual set of Docker networks.
+					if msg.Type == "network" && (msg.Action == "create" || msg.Action == "destroy" || msg.Action == "connect" || msg.Action == "disconnect") {
+						ReconcileBroadcastRelay()
+					}
+
 					// on container destroy and network disconnect
 					if msg.Type == "container" && msg.Action == "destroy" {
 						onDockerDestroyed(msg.Actor.ID)
