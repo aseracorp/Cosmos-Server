@@ -688,6 +688,7 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/volumes", docker.VolumesRoute)
 
 	srapiAdmin.HandleFunc("/api/network/{networkID}", docker.DeleteNetworkRoute)
+	srapiAdmin.HandleFunc("/api/network/{networkID}/relay", docker.SetNetworkRelayRoute)
 	srapiAdmin.HandleFunc("/api/networks", docker.NetworkRoutes)
 
 	srapiAdmin.HandleFunc("/api/migrate-host", docker.MigrateToHostModeRoute)

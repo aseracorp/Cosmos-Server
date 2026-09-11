@@ -1,6 +1,6 @@
 // material-ui
 import { CloseSquareOutlined, DeleteOutlined, PlusCircleOutlined, SyncOutlined } from '@ant-design/icons';
-import { Button, Chip, CircularProgress, Stack, useTheme } from '@mui/material';
+import { Button, Chip, CircularProgress, Stack, Switch, Tooltip, useTheme } from '@mui/material';
 import { useEffect, useState } from 'react';
 
 import * as API from '../../api';
@@ -19,6 +19,20 @@ export const NetworksColumns = (theme, isDark, t) => [
       <div style={{display:'inline-block', textDecoration: 'inherit', fontSize: '90%', opacity: '90%'}}>{r.Driver} driver</div>
     </Stack>,
     search: (r) => r.Name,
+  },
+  {
+    title: t('mgmt.servapps.networks.relayBroadcast'),
+    screenMin: 'md',
+    field: (r) => (
+      <Tooltip title={t('mgmt.servapps.networks.relayBroadcastHint')}>
+        <Chip
+          size="small"
+          color={r.relayEnabled ? 'success' : 'default'}
+          label={r.relayEnabled ? t('global.enabled') : t('global.disabled')}
+          variant={r.relayEnabled ? 'filled' : 'outlined'}
+        />
+      </Tooltip>
+    ),
   },
   {
     title: t('mgmt.servapps.networks.list.networkproperties'),
@@ -89,6 +103,31 @@ const NetworkManagementList = () => {
           getKey={(r) => r.Id}
           columns={[
             ...NetworksColumns(theme, isDark, t),
+            {
+              title: t('mgmt.servapps.networks.relayBroadcast'),
+              clickable: true,
+              field: (r) => (
+                <PermissionGuard permission={PERM_RESOURCES}>
+                  <Tooltip title={t('mgmt.servapps.networks.relayBroadcastHint')}>
+                    <Switch
+                      checked={!!r.relayEnabled}
+                      onChange={() => {
+                        setIsLoading(true);
+                        API.docker.setNetworkRelay(r.Name, !r.relayEnabled)
+                          .then(() => {
+                            refresh();
+                            setIsLoading(false);
+                          }).catch(() => {
+                            setIsLoading(false);
+                            refresh();
+                          });
+                      }}
+                      color="success"
+                    />
+                  </Tooltip>
+                </PermissionGuard>
+              ),
+            },
             {
               title: '',
               clickable: true,

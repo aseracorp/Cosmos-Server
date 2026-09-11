@@ -28,6 +28,7 @@ const NewNetworkButton = ({ fullWidth, refresh }) => {
       name: '',
       driver: 'bridge',
       attachCosmos: false,
+      relayBroadcast: false,
       parentInterface: '',
       subnet: '',
     },
@@ -131,6 +132,17 @@ const NewNetworkButton = ({ fullWidth, refresh }) => {
                     label={t('mgmt.servapps.networks.attackNetwork')}
                     formik={formik}
                   />
+
+                  <CosmosCheckbox
+                    name="relayBroadcast"
+                    label={t('mgmt.servapps.networks.relayBroadcast')}
+                    formik={formik}
+                  />
+                  <Alert severity="info" style={{ marginBottom: '0px' }}>
+                    {t('mgmt.servapps.networks.relayBroadcastHint')}
+                    <br />
+                    <strong>{t('mgmt.servapps.networks.relayBroadcastRequiresCap')}</strong>
+                  </Alert>
                 </Stack>
               </form>
               {formik.errors.submit && (
