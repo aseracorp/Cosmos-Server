@@ -969,14 +969,24 @@ func TestLazyEventHookDowngradesDieOnlyWhenReaped(t *testing.T) {
 	if st.running {
 		t.Fatal("die must mark the container not running")
 	}
-	if st.stoppedByReaper {
-		t.Fatal("the flag must be cleared after one die")
+	if !st.dormant {
+		t.Fatal("reaper-initiated die must mark the container dormant")
+	}
+	// The reaper marker must survive `die`: the trailing `stop` event of the
+	// same `docker stop` sequence still needs it (see the real-sequence test).
+	if !st.stoppedByReaper {
+		t.Fatal("die must not consume the reaper flag; the trailing stop event needs it")
 	}
 
-	// A second die with no reaper stop in between is a crash.
+	// A second die with no reaper stop in between is a crash. The marker is
+	// still set (the stop event has not arrived), so this die is also
+	// attributed to the reaper; only the final stop event consumes it.
 	_, level = lazyOnContainerEvent("die", "id1", "reaped", lazyLabels(nil))
-	if level != "" {
-		t.Fatalf("crash die level override = %q, want none (warning)", level)
+	if level != "debug" {
+		t.Fatalf("second die while still in the reaper sequence level = %q, want debug", level)
+	}
+	if !getLazy("reaped").dormant {
+		t.Fatal("second reaper-attributed die must keep dormant")
 	}
 
 	_, level = lazyOnContainerEvent("die", "id2", "someone-else", map[string]string{})
@@ -985,7 +995,12 @@ func TestLazyEventHookDowngradesDieOnlyWhenReaped(t *testing.T) {
 	}
 }
 
-// one `docker stop` emits kill, die, stop in that order.
+// A single `docker stop` emits kill, die, stop in that order. The reaper
+// marker must survive the whole sequence so the trailing `stop` still knows
+// the stop was reaper-initiated; only the final `stop` event consumes it.
+// Regression: previously `die` consumed the flag, so the trailing `stop`
+// saw a manual stop and wiped the dormant flag - reaped containers showed
+// as "created"/"stopped" instead of "dormant" in the UI.
 func TestLazyEventHookDowngradesDieAcrossRealStopSequence(t *testing.T) {
 	newLazyHarness(t)
 
@@ -1000,14 +1015,27 @@ func TestLazyEventHookDowngradesDieAcrossRealStopSequence(t *testing.T) {
 	if !getLazy("reaped").stoppedByReaper {
 		t.Fatal("kill must not consume the reaper flag")
 	}
+
 	if _, level := lazyOnContainerEvent("die", "id1", "reaped", lazyLabels(nil)); level != "debug" {
 		t.Fatalf("die after reaper kill level = %q, want debug", level)
 	}
+	st := getLazy("reaped")
+	if !st.dormant {
+		t.Fatal("die during a reaper stop must keep the container dormant")
+	}
+	if !st.stoppedByReaper {
+		t.Fatal("die must NOT consume the reaper flag yet: the trailing stop event still needs it")
+	}
+
 	if _, level := lazyOnContainerEvent("stop", "id1", "reaped", lazyLabels(nil)); level != "" {
 		t.Fatalf("stop level override = %q, want none", level)
 	}
-	if getLazy("reaped").stoppedByReaper {
-		t.Fatal("flag must be consumed by die")
+	st = getLazy("reaped")
+	if !st.dormant {
+		t.Fatal("trailing stop must keep the container dormant (this is the regression)")
+	}
+	if st.stoppedByReaper {
+		t.Fatal("the final stop event must consume the reaper flag")
 	}
 }
 

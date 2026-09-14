@@ -112,6 +112,12 @@ type lazyEntry struct {
 	lastActivity    time.Time
 	openConns       int
 	failStreak      int
+	// stoppedByReaper marks an in-progress reaper stop. Docker emits
+	// kill, die, stop for a single `docker stop`; the flag is kept set across
+	// the WHOLE sequence and only consumed on the final `stop` event (or on
+	// start / wake / destroy / stop-error). Keeping it set through `die`
+	// matters: the trailing `stop` must still see it, or it would mistake the
+	// reaper stop for a manual one and wipe the dormant flag.
 	stoppedByReaper bool
 
 	wake *lazyWake
@@ -486,19 +492,35 @@ func lazyOnContainerEvent(action string, containerID string, containerName strin
 			return false, ""
 		}
 		st.running = false
-		// one `docker stop` emits kill, die, stop; only `die` consumes the reaper flag
+		// A single `docker stop` emits kill, die, then stop. The reaper's
+		// stoppedByReaper flag is deliberately kept set across the WHOLE
+		// sequence (it is consumed on start / wake / destroy / stop-error),
+		// so the trailing `stop` event, which arrives after `die`, still knows
+		// the stop was reaper-initiated. If `die` cleared it, the trailing
+		// `stop` would see a manual stop and wipe the dormant flag we were
+		// about to set - the exact bug where reaped containers showed as
+		// "created"/"stopped" instead of "dormant".
 		wasReaped := st.stoppedByReaper
-		if action == "die" {
-			st.stoppedByReaper = false
-		}
-		// A stop that Cosmos did not initiate (manual stop, kill, crash) is
-		// "stopped", never "dormant". Only the idle reaper sets dormant.
-		if !wasReaped {
+		if wasReaped {
+			// Reaper initiated the stop: the container is dormant. Both `die`
+			// and the trailing `stop` land here and keep dormant set.
+			st.dormant = true
+			// `stop` is the FINAL event of a `docker stop` (kill, die, stop).
+			// Consume the reaper marker here so a later manual stop of the
+			// same container is not mistaken for a reaper stop.
+			if action == "stop" {
+				st.stoppedByReaper = false
+			}
+		} else {
+			// A stop that Cosmos did not initiate (manual stop, kill, crash)
+			// is "stopped", never "dormant". Only the idle reaper sets dormant.
 			st.dormant = false
 		}
 		lazyMu.Unlock()
 
 		if action == "die" && wasReaped {
+			// `die` is the meaningful "container exited" event; downgrade it.
+			// The trailing `stop` is bookkeeping and stays at the default level.
 			return false, "debug"
 		}
 		return false, ""
