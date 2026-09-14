@@ -84,9 +84,8 @@ const ContainerOverview = ({ containerInfo, config, refresh, updatesAvailable, s
             ) : null}
           </div>
             <div>
-              {(State.Status !== 'running' && Config.Labels['cosmos-lazy'] === 'true') ? (
-                <Chip label={t('mgmt.servApps.dormantChip.dormantLabel')} color="info" />
-              ) : ({
+              {({
+               "dormant": <Chip label={t('mgmt.servApps.dormantChip.dormantLabel')} color="info" />,
                "created": <Chip label={t('mgmt.servApps.createdChip.createdLabel')} color="warning" />,
                "restarting": <Chip label={t('mgmt.servApps.restartingChip.restartingLabel')} color="warning" />,
                "running": <Chip label={t('mgmt.servApps.runningChip.runningLabel')} color="success" />,
@@ -96,7 +95,7 @@ const ContainerOverview = ({ containerInfo, config, refresh, updatesAvailable, s
                "removing": <Chip label={t('mgmt.servApps.removingChip.removingLabel')} color="warning" />,
                "paused": <Chip label={t('mgmt.servApps.pausedChip.pausedLabel')} color="info" />,
                "exited": <Chip label={t('mgmt.servApps.exitedChip.exitedLabel')} color="error" />,
-               "completed": <Chip label={t('mgmt.servApps.completedChip.completedLabel')} color="default" />,
+               "stopped": <Chip label={t('mgmt.servApps.stoppedChip.stoppedLabel')} color="default" />,
                "dead": <Chip label={t('mgmt.servApps.deadChip.deadLabel')} color="error" />,
              })[displayStatus]}
             </div>

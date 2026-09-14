@@ -312,6 +312,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "비정상",
 	"mgmt.servApps.startingChip.startingLabel": "시작 중",
 	"mgmt.servApps.completedChip.completedLabel": "완료",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "중지됨",
   "mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "Docker 백업 내보내기",
   "mgmt.servApps.networks.containerPortInput.containerPortLabel": "컨테이너 포트",
   "mgmt.servApps.networks.exposePortsTitle": "포트 노출",

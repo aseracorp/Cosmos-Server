@@ -676,15 +676,27 @@ func TestLazyConnCountNeverGoesNegative(t *testing.T) {
 func TestLazyIsDormant(t *testing.T) {
 	newLazyHarness(t)
 
-	seedLazy("asleep", nil)
+	// asleep: Cosmos' idle reaper stopped it -> dormant
+	seedLazy("asleep", func(st *lazyEntry) { st.dormant = true })
+	// up: running lazy container -> not dormant
 	seedLazy("up", func(st *lazyEntry) { st.running = true })
+	// stopped: lazy container stopped manually (not by the reaper) -> NOT dormant
+	seedLazy("stopped", nil)
+	// reaped-then-started: dormant flag must be cleared on a wake
+	seedLazy("woken", func(st *lazyEntry) { st.dormant = true; st.running = true })
 	seedLazy("notlazy", func(st *lazyEntry) { st.lazy = false })
 
 	if !LazyIsDormant("asleep") {
-		t.Fatal("stopped lazy container must be dormant")
+		t.Fatal("lazy container put to sleep by the reaper must be dormant")
 	}
 	if LazyIsDormant("up") {
 		t.Fatal("running lazy container must not be dormant")
+	}
+	if LazyIsDormant("stopped") {
+		t.Fatal("lazy container stopped manually must NOT be dormant")
+	}
+	if LazyIsDormant("woken") {
+		t.Fatal("a woken (running) container must not be dormant")
 	}
 	if LazyIsDormant("notlazy") {
 		t.Fatal("non-lazy container must never be dormant")
@@ -753,6 +765,9 @@ func TestReaperStopsOnlyIdleUnusedContainers(t *testing.T) {
 	}
 	if !st.stoppedByReaper {
 		t.Fatal("reaped container must carry stoppedByReaper")
+	}
+	if !st.dormant {
+		t.Fatal("reaped container must be marked dormant (Cosmos stopped it)")
 	}
 
 	ev := h.eventsOf("cosmos.container.lazy.stopped")

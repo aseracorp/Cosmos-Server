@@ -339,6 +339,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "異常",
 	"mgmt.servApps.startingChip.startingLabel": "起動中",
 	"mgmt.servApps.completedChip.completedLabel": "完了",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "停止",
   "mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "Dockerバックアップのエクスポート",
   "mgmt.servApps.networks.containerPortInput.containerPortLabel": "コンテナポート",
   "mgmt.servApps.networks.exposePortsTitle": "ポートの公開",

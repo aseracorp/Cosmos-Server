@@ -99,9 +99,14 @@ type lazyWake struct {
 }
 
 type lazyEntry struct {
-	name            string
-	lazy            bool
-	running         bool
+	name    string
+	lazy    bool
+	running bool
+	// dormant is set when Cosmos itself stopped the container for inactivity
+	// (see lazyReaperTick) and cleared when it starts again. It is what makes
+	// a lazy container "dormant" rather than merely "stopped": a manual stop
+	// (or crash) must never be reported as dormant.
+	dormant         bool
 	idle            time.Duration
 	startTimeout    time.Duration
 	lastActivity    time.Time
@@ -339,6 +344,7 @@ func lazyWakeSucceeded(containerName string, startedAt string) {
 		return
 	}
 	st.running = true
+	st.dormant = false
 	st.failStreak = 0
 	st.stoppedByReaper = false
 	// a wake we performed is fresh activity; an already-running container keeps docker's StartedAt
@@ -422,12 +428,14 @@ func LazyConnClose(containerName string) {
 	}
 }
 
-// LazyIsDormant reports whether the container is lazy and currently stopped.
+// LazyIsDormant reports whether Cosmos itself put the lazy container to sleep
+// (idle reaper). A container stopped by the user, stopped manually, or crashed
+// is NOT dormant even though it is a lazy container and not running.
 func LazyIsDormant(containerName string) bool {
 	lazyMu.Lock()
 	defer lazyMu.Unlock()
 	st := lazyStates[containerName]
-	return st != nil && st.lazy && !st.running
+	return st != nil && st.lazy && st.dormant && !st.running
 }
 
 // LazyIsLazy reports whether the container is tracked as a lazy container,
@@ -458,6 +466,7 @@ func lazyOnContainerEvent(action string, containerID string, containerName strin
 		if action == "start" {
 			lazyMu.Lock()
 			st.running = true
+			st.dormant = false
 			st.stoppedByReaper = false
 			st.failStreak = 0
 			// Seed activity so a freshly started container survives the next tick.
@@ -481,6 +490,11 @@ func lazyOnContainerEvent(action string, containerID string, containerName strin
 		wasReaped := st.stoppedByReaper
 		if action == "die" {
 			st.stoppedByReaper = false
+		}
+		// A stop that Cosmos did not initiate (manual stop, kill, crash) is
+		// "stopped", never "dormant". Only the idle reaper sets dormant.
+		if !wasReaped {
+			st.dormant = false
 		}
 		lazyMu.Unlock()
 
@@ -593,6 +607,9 @@ func lazyRescan() {
 
 		lazyMu.Lock()
 		st.running = running
+		// after a restart we cannot know if an exited lazy container was put to
+		// sleep by the reaper or stopped manually, so it is never dormant
+		st.dormant = false
 		// seed from StartedAt so long-idle containers are reaped on the first tick
 		if running {
 			st.lastActivity = lazyParseStartedAt(startedAt)
@@ -649,6 +666,8 @@ func lazyReaperTick() {
 		lazyMu.Lock()
 		if st := lazyStates[name]; st != nil {
 			st.running = false
+			// Cosmos itself put this container to sleep: mark it dormant.
+			st.dormant = true
 		}
 		lazyMu.Unlock()
 

@@ -21,7 +21,12 @@ type DashboardRoute struct {
 	Icon              string `json:"Icon,omitempty"`
 	HideFromDashboard bool   `json:"HideFromDashboard"`
 	// Container info (for SERVAPP routes)
-	ContainerRunning bool   `json:"ContainerRunning"`
+	ContainerRunning bool `json:"ContainerRunning"`
+	// ContainerDormant is true when Cosmos itself put the lazy container to
+	// sleep (idle reaper). Such a route stays on the home page: the container
+	// is reachable and will be woken on demand. A manually stopped container
+	// is neither running nor dormant and is hidden.
+	ContainerDormant bool   `json:"ContainerDormant,omitempty"`
 	ContainerIcon    string `json:"ContainerIcon,omitempty"`
 }
 
@@ -105,6 +110,7 @@ func DashboardApiGet(w http.ResponseWriter, req *http.Request) {
 					for _, name := range c.Names {
 						if name == "/"+containerName || name == containerName {
 							dashRoute.ContainerRunning = c.State == "running"
+							dashRoute.ContainerDormant = docker.LazyIsDormant(containerName)
 							if icon, ok := c.Labels["cosmos-icon"]; ok {
 								dashRoute.ContainerIcon = icon
 							}

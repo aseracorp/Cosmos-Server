@@ -312,6 +312,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "Niezdrowy",
 	"mgmt.servApps.startingChip.startingLabel": "Uruchamianie",
 	"mgmt.servApps.completedChip.completedLabel": "Ukończony",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "Zatrzymany",
   "mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "Eksportuj kopię zapasową Dockera",
   "mgmt.servApps.networks.containerPortInput.containerPortLabel": "Port kontenera",
   "mgmt.servApps.networks.exposePortsTitle": "Odsłoń porty",

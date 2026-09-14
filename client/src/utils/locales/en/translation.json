@@ -1930,6 +1930,7 @@
 	"mgmt.cron.descriptor.weekly": "Once a week",
 	"mgmt.cron.descriptor.yearly": "Once a year",
 	"mgmt.servApps.completedChip.completedLabel": "Completed",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "Stopped",
 	"mgmt.servApps.healthyChip.healthyLabel": "Healthy",
 	"mgmt.servApps.startingChip.startingLabel": "Starting",
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "Unhealthy",
