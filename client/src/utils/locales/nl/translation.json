@@ -312,6 +312,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "Ong gezond",
 	"mgmt.servApps.startingChip.startingLabel": "Opstarten",
 	"mgmt.servApps.completedChip.completedLabel": "Voltooid",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "Gestopt",
   "mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "Docker Back-up Exporteren",
   "mgmt.servApps.networks.containerPortInput.containerPortLabel": "Containerpoort",
   "mgmt.servApps.networks.exposePortsTitle": "Poorten Blootstellen",

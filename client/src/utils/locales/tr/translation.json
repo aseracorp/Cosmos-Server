@@ -312,6 +312,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "Sağlıksız",
 	"mgmt.servApps.startingChip.startingLabel": "Başlıyor",
 	"mgmt.servApps.completedChip.completedLabel": "Tamamlandı",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "Durduruldu",
   "mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "Docker Yedeğini Dışa Aktar",
   "mgmt.servApps.networks.containerPortInput.containerPortLabel": "Konteyner Portu",
   "mgmt.servApps.networks.exposePortsTitle": "Portları Aç",

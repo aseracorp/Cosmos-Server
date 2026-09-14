@@ -312,6 +312,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "不健康",
 	"mgmt.servApps.startingChip.startingLabel": "启动中",
 	"mgmt.servApps.completedChip.completedLabel": "已完成",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "已停止",
   "mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "导出 Docker 备份",
   "mgmt.servApps.networks.containerPortInput.containerPortLabel": "容器端口",
   "mgmt.servApps.networks.exposePortsTitle": "暴露端口",

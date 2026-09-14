@@ -1013,6 +1013,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "Unhealthy",
 	"mgmt.servApps.startingChip.startingLabel": "Starting",
 	"mgmt.servApps.completedChip.completedLabel": "Completed",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "Stopped",
 	"mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "Export Docker Backup",
 	"mgmt.servApps.networks.containerPortInput.containerPortLabel": "Container Port",
 	"mgmt.servApps.networks.exposePortsTitle": "Expose Ports",

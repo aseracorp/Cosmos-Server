@@ -454,7 +454,12 @@ const HomePage = () => {
                 let skip = false;
                 const isSocketProxy = IsRouteSocketProxy(route);
 
-                if (route.HideFromDashboard || (route.Mode == "SERVAPP" && !route.ContainerRunning) || isSocketProxy)
+                // A manually stopped SERVAPP container is hidden from the home
+                // page. A dormant lazy container (sleeping, put to sleep by
+                // Cosmos) stays visible: it is reachable and will be woken on
+                // demand. Only Cosmos' idle reaper can make a container
+                // dormant, so ContainerDormant reliably separates the two.
+                if (route.HideFromDashboard || (route.Mode == "SERVAPP" && !route.ContainerRunning && !route.ContainerDormant) || isSocketProxy)
                     skip = true;
 
                 return !skip && coStatus && (coStatus.homepage.Expanded ?

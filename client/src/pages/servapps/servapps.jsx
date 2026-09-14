@@ -307,9 +307,8 @@ const ServApps = ({stack}) => {
                 <Stack style={{position: 'relative', overflowX: 'hidden', width: '100%'}} direction="row" spacing={2} alignItems="center">
                   <Typography variant="body2" color="text.secondary">
                     {
-                      (!isContainerRunning(app.app) && app.labels && app.labels['cosmos-lazy'] === 'true') ? (
-                        <Chip label={t('mgmt.servApps.dormantChip.dormantLabel')} color="info" />
-                      ) : ({
+                      ({
+                        "dormant": <Chip label={t('mgmt.servApps.dormantChip.dormantLabel')} color="info" />,
                         "created": <Chip label={t('mgmt.servApps.createdChip.createdLabel')} color="warning" />,
                         "restarting": <Chip label={t('mgmt.servApps.restartingChip.restartingLabel')} color="warning" />,
                         "running": <Chip label={t('mgmt.servApps.runningChip.runningLabel')} color="success" />,
@@ -319,7 +318,7 @@ const ServApps = ({stack}) => {
                         "removing": <Chip label={t('mgmt.servApps.removingChip.removingLabel')} color="warning" />,
                         "paused": <Chip label={t('mgmt.servApps.pausedChip.pausedLabel')} color="info" />,
                         "exited": <Chip label={t('mgmt.servApps.exitedChip.exitedLabel')} color="error" />,
-                        "completed": <Chip label={t('mgmt.servApps.completedChip.completedLabel')} color="default" />,
+                        "stopped": <Chip label={t('mgmt.servApps.stoppedChip.stoppedLabel')} color="default" />,
                         "dead": <Chip label={t('mgmt.servApps.deadChip.deadLabel')} color="error" />,
                       })[app.state]
                     }

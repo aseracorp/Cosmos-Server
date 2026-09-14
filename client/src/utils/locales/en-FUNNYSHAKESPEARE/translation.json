@@ -312,6 +312,7 @@
 	"mgmt.servApps.unhealthyChip.unhealthyLabel": "Ailing",
 	"mgmt.servApps.startingChip.startingLabel": "A-rising",
 	"mgmt.servApps.completedChip.completedLabel": "Fulfilled",
+	"mgmt.servApps.stoppedChip.stoppedLabel": "Ceased",
   "mgmt.servApps.exportDockerBackupButton.exportDockerBackupLabel": "Render Docker's Secrets",
   "mgmt.servApps.networks.containerPortInput.containerPortLabel": "Ship's Portal",
   "mgmt.servApps.networks.exposePortsTitle": "Reveal the Portals",
