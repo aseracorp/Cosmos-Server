@@ -330,12 +330,6 @@ type ContainerCreateRequestContainer struct {
 	Gpus GPURequests `json:"gpus,omitempty"`
 
 	PostInstall []string `json:"post_install,omitempty"`
-
-	// wasRunning records whether the container was running BEFORE this
-	// create/update. json:"-" keeps it out of the API schema; it is only set
-	// server-side so a stopped (or dormant) container stays stopped after an
-	// update instead of being recreated and force-started into "created" state.
-	wasRunning bool `json:"-"`
 }
 
 type ContainerCreateRequestVolume struct {
@@ -1506,10 +1500,6 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 		}
 
 		// check if container exist
-		// Default: a brand-new container starts. When the container already
-		// exists we override wasRunning below with its real run state so a
-		// stopped / dormant container stays stopped after the recreate.
-		container.wasRunning = true
 		existingContainer, err := DockerClient.ContainerInspect(DockerContext, container.Name)
 		if err == nil {		
 			
@@ -1524,11 +1514,6 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 			utils.Warn("CreateService: Container " + container.Name + " already exist, overwriting.")
 			OnLog(utils.DoWarn("%s", "Container " + container.Name + " already exist, overwriting.\n"))
 	
-			// remember whether it was running so we can keep a stopped /
-			// dormant container stopped after the recreate instead of
-			// force-starting it (which would leave it in "created" state).
-			container.wasRunning = existingContainer.State != nil && existingContainer.State.Running
-
 			// stop the container 
 			utils.Log("CreateService: Stopping container: " + container.Name)
 			OnLog("Stopping container: " + container.Name + "\n")
@@ -1694,7 +1679,6 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 			DependsOn:   container.DependsOn,
 			NetworkMode: string(hostConfig.NetworkMode),
 			PostInstall: container.PostInstall,
-			wasRunning:  container.wasRunning,
 		}
 	}
 
@@ -1713,17 +1697,6 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 	// service keys to container_name before sending (docker-compose.jsx), so
 	// WaitForDepCondition can inspect them directly.
 	for _, container := range startOrder {
-		// A container that was stopped (or dormant) before this update stays
-		// stopped: the recreate must not force-start it, otherwise it would
-		// flip the UI state to "created" (or wake a sleeping lazy container).
-		// Exception: when another service depends on this one with a start /
-		// health condition (mustStart), it has to come up regardless.
-		if !container.wasRunning && !mustStart {
-			utils.Log("CreateService: Previous container " + container.Name + " was stopped, leaving the new container stopped")
-			OnLog("Previous container " + container.Name + " was stopped, leaving the new container stopped\n")
-			continue
-		}
-
 		if len(container.DependsOn) > 0 {
 			for depName, depCfg := range container.DependsOn {
 				cond := depCfg.Condition
