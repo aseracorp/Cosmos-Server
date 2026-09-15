@@ -706,6 +706,63 @@ func TestLazyIsDormant(t *testing.T) {
 	}
 }
 
+// The dormant status must survive a recreate (auto update). RecreateContainer
+// stamps the persisted dormant label onto the recreate config, and the `create`
+// event restores the in-memory dormant flag from it.
+func TestLazyDormantSurvivesRecreateViaLabel(t *testing.T) {
+	h := newLazyHarness(t)
+
+	// 1. reaper sleeps an idle lazy container -> dormant
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	lazyNow = func() time.Time { return now }
+
+	h.onStop(func(name string) error { return nil })
+
+	seedLazy("app", func(st *lazyEntry) {
+		st.running = true
+		st.idle = time.Minute
+		st.lastActivity = now.Add(-time.Hour)
+	})
+
+	lazyReaperTick()
+
+	st := getLazy("app")
+	if !st.dormant {
+		t.Fatal("reaper must mark the container dormant")
+	}
+	if !LazyIsDormant("app") {
+		t.Fatal("dormant container must report dormant while the entry is alive")
+	}
+
+	// 2. Simulate the auto-update recreate: the old (dormant) container is
+	// destroyed (entry dropped) and a fresh container is created carrying the
+	// persisted dormant label (stamped by RecreateContainer). The `create`
+	// event must restore dormant from the label.
+	lazyMu.Lock()
+	delete(lazyStates, "app")
+	lazyMu.Unlock()
+
+	labeled := lazyLabels(map[string]string{LazyDormantLabel: "true"})
+	// lazyLabelsForEvent inspects the container to get its labels.
+	h.onInspect(func(name string, n int) (types.ContainerJSON, error) {
+		return inspectJSON(false, labeled, nil, ""), nil
+	})
+	lazyOnContainerEvent("create", "newid", "app", labeled)
+
+	if !LazyIsDormant("app") {
+		t.Fatal("after recreate, a dormant container with the persisted label must stay dormant")
+	}
+	if getLazy("app").running {
+		t.Fatal("a recreated dormant container must not be running")
+	}
+
+	// 3. A manual `start` of that container wakes it: dormant is cleared.
+	lazyOnContainerEvent("start", "newid", "app", labeled)
+	if LazyIsDormant("app") {
+		t.Fatal("starting a dormant container must clear dormant")
+	}
+}
+
 // reaper
 
 func TestReaperStopsOnlyIdleUnusedContainers(t *testing.T) {

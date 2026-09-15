@@ -20,6 +20,11 @@ const (
 	LazyLabel             = "cosmos-lazy"
 	LazyIdleLabel         = "cosmos-lazy-idle"
 	LazyStartTimeoutLabel = "cosmos-lazy-start-timeout"
+	// LazyDormantLabel is persisted on the container when the idle reaper puts
+	// it to sleep, so the dormant status survives a recreate (e.g. auto
+	// update) even though the in-memory lazy table does not carry over.
+	// It is cleared when the container starts / wakes again.
+	LazyDormantLabel = "cosmos-lazy-dormant"
 
 	LazyDefaultIdle         = time.Hour
 	LazyDefaultStartTimeout = 60 * time.Second
@@ -482,6 +487,15 @@ func lazyOnContainerEvent(action string, containerID string, containerName strin
 			// a wake must not drag bootstrap / compose export along every time
 			return true, ""
 		}
+
+		// `create` of a container bearing the persisted dormant label: this is
+		// a recreate (auto update) of a container the idle reaper had put to
+		// sleep. Restore its dormant status so the UI keeps showing Dormant.
+		lazyMu.Lock()
+		if labels[LazyDormantLabel] == "true" {
+			st.dormant = true
+		}
+		lazyMu.Unlock()
 		return false, ""
 
 	case "die", "stop", "kill":
@@ -629,9 +643,11 @@ func lazyRescan() {
 
 		lazyMu.Lock()
 		st.running = running
-		// after a restart we cannot know if an exited lazy container was put to
-		// sleep by the reaper or stopped manually, so it is never dormant
-		st.dormant = false
+		// A non-running lazy container that carries the persisted dormant label
+		// was put to sleep by the idle reaper before the restart, so restore
+		// its dormant status. Without the label we cannot tell a reaper sleep
+		// from a manual stop, so it stays un-dormant.
+		st.dormant = !running && c.Labels != nil && c.Labels[LazyDormantLabel] == "true"
 		// seed from StartedAt so long-idle containers are reaped on the first tick
 		if running {
 			st.lastActivity = lazyParseStartedAt(startedAt)
