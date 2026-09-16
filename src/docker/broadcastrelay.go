@@ -58,6 +58,11 @@ func StopBroadcastRelay() {
 // ToggleNetworkRelay enables or disables broadcast/multicast relaying on a
 // network, persisting the choice in the main config and re-reconciling.
 func ToggleNetworkRelay(networkName string, enabled bool) {
+	// GetMainConfig returns a COPY of the in-memory config, so mutating it here
+	// must be paired with both SaveConfigTofile (persist to disk) and
+	// PublishConfig (update the in-memory store). Without PublishConfig, readers
+	// such as IsNetworkRelayEnabled/ListNetworksRoute keep seeing the old list
+	// and the toggle appears to fall back off until the next restart.
 	config := utils.GetMainConfig()
 
 	if enabled {
@@ -65,6 +70,7 @@ func ToggleNetworkRelay(networkName string, enabled bool) {
 			if n == networkName {
 				// already present
 				utils.SaveConfigTofile(config)
+				utils.PublishConfig(config)
 				ReconcileBroadcastRelay()
 				return
 			}
@@ -81,6 +87,7 @@ func ToggleNetworkRelay(networkName string, enabled bool) {
 	}
 
 	utils.SaveConfigTofile(config)
+	utils.PublishConfig(config)
 	utils.Log("[BroadcastRelay] Toggled relay on network " + networkName + " -> " + strings.ToUpper(boolStr(enabled)))
 	ReconcileBroadcastRelay()
 }
