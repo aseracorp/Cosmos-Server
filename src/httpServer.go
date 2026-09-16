@@ -654,6 +654,8 @@ func InitServer() *mux.Router {
 	srapiStrict.HandleFunc("/api/register", user.UserRegister)
 	srapiStrict.HandleFunc("/api/newInstall", NewInstallRoute)
 	srapiStrict.HandleFunc("/api/setup", SetupRoute)
+	srapiStrict.HandleFunc("/api/setup/desec", DesecSetupRoute)
+	srapiStrict.HandleFunc("/api/setup/desec/status", DesecSetupStatusRoute)
 	srapi.HandleFunc("/api/status", StatusRoute)
 	srapi.HandleFunc("/api/can-send-email", CanSendEmail)
 	srapi.HandleFunc("/api/logout", user.UserLogout)
@@ -673,6 +675,9 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/force-server-update", ForceUpdateRoute)
 	srapiAdmin.HandleFunc("/api/config", configapi.ConfigRoute)
 	srapiAdmin.HandleFunc("/api/config/dns", configapi.ConfigApiDNS)
+	srapiAdmin.HandleFunc("/api/ddns", configapi.DDNSRoute)
+	srapiAdmin.HandleFunc("/api/network/detect", configapi.NetworkDetectRoute)
+	srapiAdmin.HandleFunc("/api/network/upnp", configapi.UPnPRoute)
 	srapiAdmin.HandleFunc("/api/_memory", MemStatusRoute)
 	srapiAdmin.HandleFunc("/api/restart", configapi.ConfigApiRestart)
 	

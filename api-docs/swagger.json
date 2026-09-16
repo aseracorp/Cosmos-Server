@@ -9260,6 +9260,34 @@
                 }
             }
         },
+        "/api/setup/desec": {
+            "post": {
+                "description": "Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Auto-provision a deSEC domain + token + records for Cosmos",
+                "responses": {}
+            }
+        },
+        "/api/setup/desec/status": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Poll deSEC account activation and finish setup",
+                "responses": {}
+            }
+        },
         "/api/smart-def": {
             "get": {
                 "security": [
@@ -10780,6 +10808,10 @@
         "configapi.DashboardRoute": {
             "type": "object",
             "properties": {
+                "ContainerDormant": {
+                    "description": "ContainerDormant is true when Cosmos itself put the lazy container to\nsleep (idle reaper). Such a route stays on the home page: the container\nis reachable and will be woken on demand. A manually stopped container\nis neither running nor dormant and is hidden.",
+                    "type": "boolean"
+                },
                 "ContainerIcon": {
                     "type": "string"
                 },
@@ -11856,6 +11888,9 @@
                 },
                 "database": {
                     "$ref": "#/definitions/utils.DatabaseConfig"
+                },
+                "ddns": {
+                    "$ref": "#/definitions/utils.DDNSConfig"
                 },
                 "disableHostModeWarning": {
                     "type": "boolean"
@@ -13135,6 +13170,27 @@
                     "type": "string"
                 },
                 "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "utils.DDNSConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fqdn": {
+                    "type": "string"
+                },
+                "lastKnownIp": {
+                    "description": "LastKnownIP and LastUpdate are bookkeeping for the periodic worker.",
+                    "type": "string"
+                },
+                "lastUpdate": {
+                    "type": "string"
+                },
+                "token": {
                     "type": "string"
                 }
             }

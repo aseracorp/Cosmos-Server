@@ -42,6 +42,13 @@ definitions:
     type: object
   configapi.DashboardRoute:
     properties:
+      ContainerDormant:
+        description: |-
+          ContainerDormant is true when Cosmos itself put the lazy container to
+          sleep (idle reaper). Such a route stays on the home page: the container
+          is reachable and will be woken on demand. A manually stopped container
+          is neither running nor dormant and is hidden.
+        type: boolean
       ContainerIcon:
         type: string
       ContainerRunning:
@@ -789,6 +796,8 @@ definitions:
         type: object
       database:
         $ref: '#/definitions/utils.DatabaseConfig'
+      ddns:
+        $ref: '#/definitions/utils.DDNSConfig'
       disableHostModeWarning:
         type: boolean
       disableOpenIDDirect:
@@ -1778,6 +1787,20 @@ definitions:
         type: string
     required:
     - key
+    type: object
+  utils.DDNSConfig:
+    properties:
+      enabled:
+        type: boolean
+      fqdn:
+        type: string
+      lastKnownIp:
+        description: LastKnownIP and LastUpdate are bookkeeping for the periodic worker.
+        type: string
+      lastUpdate:
+        type: string
+      token:
+        type: string
     type: object
   utils.DatabaseConfig:
     properties:
@@ -8254,6 +8277,27 @@ paths:
           schema:
             $ref: '#/definitions/utils.HTTPErrorResult'
       summary: One-shot server provisioning
+      tags:
+      - system
+  /api/setup/desec:
+    post:
+      consumes:
+      - application/json
+      description: Registers/uses a deSEC account, creates a domain and zone records,
+        and returns the token to use for LE DNS-01 + DDNS. Email activation is required
+        for new accounts.
+      produces:
+      - application/json
+      responses: {}
+      summary: Auto-provision a deSEC domain + token + records for Cosmos
+      tags:
+      - system
+  /api/setup/desec/status:
+    get:
+      produces:
+      - application/json
+      responses: {}
+      summary: Poll deSEC account activation and finish setup
       tags:
       - system
   /api/smart-def:

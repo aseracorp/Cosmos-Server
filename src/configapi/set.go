@@ -207,6 +207,11 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 		if request.ServerToken == "***" {
 			request.ServerToken = config.ServerToken
 		}
+		// DDNS token is sensitive; restore it when masked or empty and the
+		// existing config had one.
+		if request.DDNS.Token == "" || request.DDNS.Token == "***" {
+			request.DDNS.Token = config.DDNS.Token
+		}
 
 		// restore backup passwords. Users without PERM_CREDENTIALS_READ can never
 		// set a password — always restore from existing config. Otherwise only

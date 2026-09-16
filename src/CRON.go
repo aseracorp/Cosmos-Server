@@ -239,7 +239,7 @@ func runSnapRAIDScrub(snap utils.SnapRAIDConfig) {
 func CRON() {
 	go func() {
 		// TODO: change to new CRON executor, wth customizable maintenance schedules
-		
+
 		s := gocron.NewScheduler()
 		s.Every(2).Hours().Do(func() {
 			go RunBackup()
@@ -248,13 +248,14 @@ func CRON() {
 		s.Every(1).Hours().Do(proxy.CleanUp)
 		s.Every(1).Hours().Do(proxy.CleanUpSocket)
 		s.Every(1).Hours().Do(docker.CleanupExitedDeploymentContainers)
+		s.Every(10).Minutes().Do(DDNSWorker)
 		s.Every(1).Day().At("2:00").Do(func() {
 			utils.RunDatabaseRetention()
 			imageCleanUp()
 			checkCerts()
 			checkUpdatesAvailable()
 		})
-		
+
 		hostname, _ := os.Hostname()
 		h := fnv.New32a()
 		h.Write([]byte(hostname))

@@ -99,3 +99,34 @@ export const terminal = () => ({
   },
   close: ()=>{}
 });
+export const desecSetup = (req) => {
+  return new Promise((resolve) => setTimeout(() => resolve({
+    "status": "ok",
+    "data": { "activationState": "active" }
+  }), 1000));
+}
+
+export const desecSetupStatus = () => {
+  return new Promise((resolve) => setTimeout(() => resolve({
+    "status": "ok",
+    "data": { "activationState": "active" }
+  }), 1000));
+}
+
+export const ddns = (req) => {
+  return new Promise((resolve) => setTimeout(() => resolve({
+    "status": "ok",
+    "data": { "enabled": false }
+  }), 500));
+}
+
+export const networkDetect = () => {
+  return new Promise((resolve) => setTimeout(() => resolve({
+    "status": "ok",
+    "data": { "publicIp": "199.199.199.199", "isCGNAT": false, "upnpAvailable": true, "routerVendor": "AVM", "lanIp": "192.168.1.100" }
+  }), 1000));
+}
+
+export const upnp = (action) => {
+  return new Promise((resolve) => setTimeout(() => resolve({ "status": "ok" }), 500));
+}

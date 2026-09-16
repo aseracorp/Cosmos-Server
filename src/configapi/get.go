@@ -41,6 +41,7 @@ func ConfigApiGet(w http.ResponseWriter, req *http.Request) {
 			config.EmailConfig.Host = "***"
 			config.Database.PostgresPassword = "***"
 			config.HTTPConfig.DNSChallengeConfig = map[string]string{}
+			config.DDNS.Token = "***"
 			config.Licence = "***"
 			config.ServerToken = "***"
 

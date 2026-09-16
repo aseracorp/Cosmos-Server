@@ -207,12 +207,25 @@ type Config struct {
 	RemoteStorage RemoteStorageConfig
 	DisableOpenIDDirect bool
 	Backup BackupConfig
+	DDNS DDNSConfig
 	Mpdu_ string
 	Mpdn_ string
 	APITokens map[string]APITokenConfig `json:"APITokens,omitempty"`
 	Roles     map[Role]RoleConfig     `json:"Roles,omitempty"`
 }
 
+
+// DDNSConfig configures the built-in dynamic-DNS updater (currently deSEC /
+// update.dedyn.io). FQDN is the fully-qualified name to keep pointing at this
+// host's public IP, Token is a deSEC API token with record-write access.
+type DDNSConfig struct {
+	Enabled bool   `json:"enabled"`
+	FQDN    string `json:"fqdn"`
+	Token   string `json:"token"`
+	// LastKnownIP and LastUpdate are bookkeeping for the periodic worker.
+	LastKnownIP string    `json:"lastKnownIp,omitempty"`
+	LastUpdate  time.Time `json:"lastUpdate,omitempty"`
+}
 
 type CRONConfig struct {
 	Enabled bool
