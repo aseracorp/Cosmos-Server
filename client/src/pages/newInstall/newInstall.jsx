@@ -3,7 +3,7 @@ import * as Yup from 'yup';
 import { Trans, useTranslation } from 'react-i18next';
 
 // material-ui
-import { Alert, Button, Checkbox, CircularProgress, FormControl, FormHelperText, Grid, Stack, Tooltip, Typography } from '@mui/material';
+import { Alert, Button, Checkbox, CircularProgress, FormControl, FormControlLabel, FormHelperText, Grid, Stack, Switch, Tooltip, Typography } from '@mui/material';
 
 // ant-ui icons
 import { CheckCircleOutlined, LeftOutlined, QuestionCircleFilled, QuestionCircleOutlined, RightOutlined } from '@ant-design/icons';
@@ -13,7 +13,7 @@ import AuthWrapper from '../authentication/AuthWrapper';
 import { useEffect, useState } from 'react';
 
 import * as API from '../../api';
-import { Formik } from 'formik';
+import { Field, Formik } from 'formik';
 import { CosmosCheckbox, CosmosInputPassword, CosmosInputText, CosmosSelect } from '../config/users/formShortcuts';
 import AnimateButton from '../../components/@extended/AnimateButton';
 import { Box } from '@mui/system';
@@ -171,7 +171,7 @@ const NewInstall = () => {
                     DNSChallengeProvider: '',
                     DNSChallengeConfig: {},
                     allowHTTPLocalIPAccess: false,
-                    DesecAuto: false,
+                    DesecAuto: true,
                     DesecEmail: "",
                     DesecPassword: "",
                     DesecDesiredDomain: "",
@@ -227,54 +227,31 @@ const NewInstall = () => {
                 {(formik) => (
                     <form noValidate onSubmit={formik.handleSubmit}>
                         <Stack item xs={12} spacing={2}>
-                        <CosmosInputText
-                            name="Hostname"
-                            label={t('newInstall.hostnameInput.hostnameLabel')}
-                            placeholder={t('newInstall.hostnameInput.hostnamePlaceholder')}
-                            formik={formik}
-                            onChange={(e) => {
-                              checkHost(e.target.value, setHostError, setHostIp);
-                            }}
-                        />
-                        
-                        {formik.values.Hostname && formik.values.Hostname == "localhost" && (
-                            <Alert severity="warning">
-                            <Trans i18nKey="newInstall.warnLocalhost" />
-                        </Alert>)}
-
-                        {formik.values.Hostname && ((formik.values.Hostname.match(hostnameIsDomainReg) && !formik.values.Hostname.endsWith('.local')) ? 
-                            <Alert severity="info">
-                                <Trans i18nKey="newInstall.fqdnAutoLetsEncryptInfo" />
-                            </Alert>
-                            :
-                            <Alert severity="info">
-                                <Trans i18nKey="newInstall.localAutoSelfSignedInfo" />
-                            </Alert>)
-                        }
-                        <CosmosSelect
-                            name="HTTPSCertificateMode"
-                            label={t('auth.selectHTTPSMode')}
-                            formik={formik}
-                            options={getHTTPSOptions(formik.values.Hostname && formik.values.Hostname)}
-                        />
-                        <CosmosCheckbox
-                            label={t('newInstall.desecAutoLabel')}
+                        <Field
+                            type="checkbox"
                             name="DesecAuto"
-                            formik={formik}
+                            as={FormControlLabel}
+                            control={<Switch size="medium" color="primary" />}
+                            label={
+                                <Typography sx={{ fontWeight: 700 }}>
+                                    <Trans i18nKey="newInstall.desecAutoLabel" />
+                                </Typography>
+                            }
+                            sx={{ '& .MuiFormControlLabel-label': { fontWeight: 700 } }}
                         />
                         {formik.values.DesecAuto && (
                             <Stack spacing={2} sx={{ p: 2, border: '1px dashed grey', borderRadius: 2 }}>
                                 <Alert severity="info"><Trans i18nKey="newInstall.desecAutoInfo" /></Alert>
                                 <CosmosInputText
-                                    name="DesecEmail"
-                                    label={t('newInstall.desecEmailLabel')}
-                                    placeholder={"email@domain.com"}
-                                    formik={formik}
-                                />
-                                <CosmosInputText
                                     name="DesecDesiredDomain"
                                     label={t('newInstall.desecDomainLabel')}
                                     placeholder={"mybox.dedyn.io"}
+                                    formik={formik}
+                                />
+                                <CosmosInputText
+                                    name="DesecEmail"
+                                    label={t('newInstall.desecEmailLabel')}
+                                    placeholder={"email@domain.com"}
                                     formik={formik}
                                 />
                                 <CosmosInputPassword
@@ -350,7 +327,38 @@ const NewInstall = () => {
                                 )}
                             </Stack>
                         )}
+                        {!formik.values.DesecAuto && (
+                        <>
+                        <CosmosInputText
+                            name="Hostname"
+                            label={t('newInstall.hostnameInput.hostnameLabel')}
+                            placeholder={t('newInstall.hostnameInput.hostnamePlaceholder')}
+                            formik={formik}
+                            onChange={(e) => {
+                              checkHost(e.target.value, setHostError, setHostIp);
+                            }}
+                        />
+                        
+                        {formik.values.Hostname && formik.values.Hostname == "localhost" && (
+                            <Alert severity="warning">
+                            <Trans i18nKey="newInstall.warnLocalhost" />
+                        </Alert>)}
 
+                        {formik.values.Hostname && ((formik.values.Hostname.match(hostnameIsDomainReg) && !formik.values.Hostname.endsWith('.local')) ? 
+                            <Alert severity="info">
+                                <Trans i18nKey="newInstall.fqdnAutoLetsEncryptInfo" />
+                            </Alert>
+                            :
+                            <Alert severity="info">
+                                <Trans i18nKey="newInstall.localAutoSelfSignedInfo" />
+                            </Alert>)
+                        }
+                        <CosmosSelect
+                            name="HTTPSCertificateMode"
+                            label={t('auth.selectHTTPSMode')}
+                            formik={formik}
+                            options={getHTTPSOptions(formik.values.Hostname && formik.values.Hostname)}
+                        />
                         {formik.values.HTTPSCertificateMode === "LETSENCRYPT" && (
                             <>
                             <Alert severity="warning"><Trans i18nKey="newInstall.LetsEncrypt.cloudflareWarning" /> </Alert>
@@ -408,9 +416,10 @@ const NewInstall = () => {
                             label={t('newInstall.wildcardLetsEncryptCheckbox.wildcardLetsEncryptLabel') + (formik.values.Hostname ||  "")}
                             name="UseWildcardCertificate"
                             formik={formik}
-                        />)}
-                        
-                        
+                            />
+                        )}
+                        </>
+                        )}
                         {formik.values.HTTPSCertificateMode != "" && (formik.values.HTTPSCertificateMode != "DISABLED" || isDomain(formik.values.Hostname)) ? (
                         <Grid item xs={12}>
                         <CosmosCheckbox 
