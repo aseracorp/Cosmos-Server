@@ -478,6 +478,15 @@ func SaveConfigTofile(config Config) {
 	Log("Config file saved.")
 }
 
+// PublishConfig atomically stores config into the in-memory mainConfig store
+// WITHOUT re-applying env-based overrides (unlike LoadBaseMainConfig). Call it
+// right after SaveConfigTofile when a runtime code path mutates a copy of the
+// config and needs readers (GetMainConfig, GetBaseMainConfig) to observe the
+// change immediately, before the next server restart.
+func PublishConfig(config Config) {
+	mainConfig.Store(&config)
+}
+
 func RestartServer(code int) {
 	Log("Restarting server...")
 	WaitForAllJobs()
