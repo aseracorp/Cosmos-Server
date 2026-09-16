@@ -226,7 +226,6 @@ func Init() {
 
 		go InitDNS()
 		go StartNATS()
-		go RunLighthouseIPWatchdog()
 		
 		go InitPingLighthouses()
 
