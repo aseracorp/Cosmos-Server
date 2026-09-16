@@ -81,9 +81,12 @@ func startNebula() error {
 		utils.Error("Failed to update firewall blocked clients", eFw)
 	}
 	e := ExportLighthouseFromDB()
-	AdjustDNS(logBuffer)
+	_, errAdjust := AdjustDNS(logBuffer)
 	if e != nil {
 		utils.Error("Failed to export lighthouse config from DB", e)	
+	}
+	if errAdjust != nil {
+		utils.Error("Failed to adjust DNS entries in nebula config", errAdjust)
 	}
 
 	// Handle existing PID file
@@ -1125,7 +1128,28 @@ func InitPingLighthouses() {
 	}
 }
 
+// WatchdogIPChangeRestartDelay is how long we wait after detecting a
+// lighthouse/relay DNS IP change before restarting nebula, so a flapping
+// WAN IP can't stall the mesh (the A record gets a minute to settle).
+// Previously the dedicated watchdog slept this long before restarting.
+const WatchdogIPChangeRestartDelay = 1 * time.Minute
+
 func PingLighthouses() {
+	// Re-resolve lighthouse/relay DNS names (e.g. vpn.<domain>) and, if a
+	// name now points to a different IP, rewrite nebula-temp.yml and restart
+	// nebula so it reconnects to the new endpoint. This piggybacks on the
+	// existing per-minute recovery loop — no extra watchdog needed. Nebula
+	// handles transient drops itself; the only thing it can't do is notice
+	// that the DNS name it was given now resolves somewhere else.
+	if changed, err := AdjustDNS(logBuffer); err == nil && changed {
+		utils.Log("Constellation: lighthouse DNS record changed, restarting nebula to reconnect")
+		// Delay the restart so the new A record settles before nebula tries
+		// to dial it; requestRestartNebulaAfter is coalescing and non-blocking.
+		requestRestartNebulaAfter(WatchdogIPChangeRestartDelay)
+	} else if err != nil {
+		utils.Warn("Constellation: AdjustDNS failed: " + err.Error())
+	}
+
 	lighthouses, err := GetAllLightHouses()
 	if err != nil {
 		utils.Error("Constellation: Failed to get lighthouses for pinging", err)

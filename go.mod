@@ -24,6 +24,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/holoplot/go-avahi v1.0.1
+	github.com/huin/goupnp v1.3.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jasonlvhit/gocron v0.0.1
 	github.com/kardianos/service v1.2.4
@@ -33,6 +34,7 @@ require (
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/nats-io/nats-server/v2 v2.14.6
 	github.com/nats-io/nats.go v1.53.1
+	github.com/nrdcg/desec v0.11.1
 	github.com/ory/fosite v0.44.0
 	github.com/oschwald/geoip2-golang v1.8.0
 	github.com/pquerna/otp v1.5.0
@@ -295,7 +297,6 @@ require (
 	github.com/ncw/swift/v2 v2.0.5 // indirect
 	github.com/nrdcg/auroradns v1.2.0 // indirect
 	github.com/nrdcg/bunny-go v0.1.0 // indirect
-	github.com/nrdcg/desec v0.11.1 // indirect
 	github.com/nrdcg/freemyip v0.3.0 // indirect
 	github.com/nrdcg/goacmedns v0.2.0 // indirect
 	github.com/nrdcg/goinwx v0.12.0 // indirect

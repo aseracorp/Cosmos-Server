@@ -57,6 +57,9 @@ const NewInstall = () => {
     const [hostError, setHostError] = useState(null);
     const [hostIp, setHostIp] = useState(null);
     const [cleanInstall, setCleanInstall] = useState(true);
+    const [desecStatus, setDesecStatus] = useState(null);
+    const [desecError, setDesecError] = useState(null);
+    const [desecBusy, setDesecBusy] = useState(false);
 
     const refreshStatus = async () => {
         try {
@@ -168,6 +171,10 @@ const NewInstall = () => {
                     DNSChallengeProvider: '',
                     DNSChallengeConfig: {},
                     allowHTTPLocalIPAccess: false,
+                    DesecAuto: false,
+                    DesecEmail: "",
+                    DesecPassword: "",
+                    DesecDesiredDomain: "",
                     __success: false,
                 }}
                 validationSchema={Yup.object().shape({
@@ -250,6 +257,100 @@ const NewInstall = () => {
                             formik={formik}
                             options={getHTTPSOptions(formik.values.Hostname && formik.values.Hostname)}
                         />
+                        <CosmosCheckbox
+                            label={t('newInstall.desecAutoLabel')}
+                            name="DesecAuto"
+                            formik={formik}
+                        />
+                        {formik.values.DesecAuto && (
+                            <Stack spacing={2} sx={{ p: 2, border: '1px dashed grey', borderRadius: 2 }}>
+                                <Alert severity="info"><Trans i18nKey="newInstall.desecAutoInfo" /></Alert>
+                                <CosmosInputText
+                                    name="DesecEmail"
+                                    label={t('newInstall.desecEmailLabel')}
+                                    placeholder={"email@domain.com"}
+                                    formik={formik}
+                                />
+                                <CosmosInputText
+                                    name="DesecDesiredDomain"
+                                    label={t('newInstall.desecDomainLabel')}
+                                    placeholder={"mybox.dedyn.io"}
+                                    formik={formik}
+                                />
+                                <CosmosInputPassword
+                                    name="DesecPassword"
+                                    label={t('newInstall.desecPasswordLabel')}
+                                    placeholder={"••••••••••••"}
+                                    formik={formik}
+                                />
+                                {desecStatus && desecStatus.status === 'pending-activation' && (
+                                    <Alert severity="warning">
+                                        <Trans i18nKey="newInstall.desecPendingActivation" values={{email: desecStatus.pendingEmail}} />
+                                    </Alert>
+                                )}
+                                {desecError && <Alert severity="error">{desecError}</Alert>}
+                                <AnimateButton>
+                                    <Button
+                                        variant="contained"
+                                        color="primary"
+                                        disabled={desecBusy || !formik.values.DesecEmail || !formik.values.DesecDesiredDomain || !formik.values.DesecPassword}
+                                        onClick={async () => {
+                                            setDesecBusy(true);
+                                            setDesecError(null);
+                                            try {
+                                                const res = await API.desecSetup({
+                                                    email: formik.values.DesecEmail,
+                                                    password: formik.values.DesecPassword,
+                                                    desiredDomain: formik.values.DesecDesiredDomain,
+                                                    hostname: formik.values.DesecDesiredDomain,
+                                                    createRecords: true,
+                                                });
+                                                if (res.status === 'ok' || res.status === 'OK') {
+                                                    setDesecStatus({ status: 'ok', ...res });
+                                                    formik.setFieldValue('Hostname', res.hostname || formik.values.DesecDesiredDomain);
+                                                    formik.setFieldValue('HTTPSCertificateMode', 'LETSENCRYPT');
+                                                    formik.setFieldValue('UseWildcardCertificate', true);
+                                                    formik.setFieldValue('DNSChallengeProvider', 'desec');
+                                                    if (res.token) {
+                                                        formik.setFieldValue('DNSChallengeConfig', { DESEC_TOKEN: res.token });
+                                                    }
+                                                } else {
+                                                    setDesecStatus(res);
+                                                }
+                                            } catch (e) {
+                                                setDesecError(e.message || 'desec setup failed');
+                                            }
+                                            setDesecBusy(false);
+                                        }}>
+                                        {desecBusy ? t('newInstall.loading') : t('newInstall.desecSetupButton')}
+                                    </Button>
+                                </AnimateButton>
+                                {desecStatus && desecStatus.status === 'pending-activation' && (
+                                    <Button variant="outlined" onClick={async () => {
+                                        setDesecBusy(true);
+                                        try {
+                                            const res = await API.desecSetupStatus();
+                                            if (res.status === 'ok' || res.status === 'OK') {
+                                                setDesecStatus({ status: 'ok', ...res });
+                                                formik.setFieldValue('Hostname', res.hostname || formik.values.DesecDesiredDomain);
+                                                formik.setFieldValue('HTTPSCertificateMode', 'LETSENCRYPT');
+                                                formik.setFieldValue('UseWildcardCertificate', true);
+                                                formik.setFieldValue('DNSChallengeProvider', 'desec');
+                                                if (res.token) formik.setFieldValue('DNSChallengeConfig', { DESEC_TOKEN: res.token });
+                                            } else {
+                                                setDesecStatus(res);
+                                            }
+                                        } catch (e) {
+                                            setDesecError(e.message || 'desec setup failed');
+                                        }
+                                        setDesecBusy(false);
+                                    }}>
+                                        {t('newInstall.desecCheckActivation')}
+                                    </Button>
+                                )}
+                            </Stack>
+                        )}
+
                         {formik.values.HTTPSCertificateMode === "LETSENCRYPT" && (
                             <>
                             <Alert severity="warning"><Trans i18nKey="newInstall.LetsEncrypt.cloudflareWarning" /> </Alert>

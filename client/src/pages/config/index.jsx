@@ -25,6 +25,7 @@ import ConfigGeneral from './configGeneral';
 import ConfigHTTP from './configHTTP';
 import ConfigHTTPS from './configHTTPS';
 import ConfigExternal from './configExternal';
+import ConfigDDNS from './configDDNS';
 import ConfigAppearance from './configAppearance';
 import ConfigAPITokens from './configAPITokens';
 
@@ -186,6 +187,10 @@ const ConfigManagement = () => {
           PostgresUsername: config.Database.PostgresUsername,
           PostgresPassword: config.Database.PostgresPassword,
           MetricsNodeName: config.Database.NodeName,
+
+          DDNS_Enabled: config.DDNS && config.DDNS.enabled,
+          DDNS_FQDN: config.DDNS && config.DDNS.fqdn || "",
+          DDNS_Token: config.DDNS && config.DDNS.token || "",
         }}
 
         validationSchema={Yup.object().shape({
@@ -245,6 +250,14 @@ const ConfigManagement = () => {
               AllowSearchEngine: values.AllowSearchEngine,
               AllowHTTPLocalIPAccess: values.AllowHTTPLocalIPAccess,
               PublishMDNS: values.PublishMDNS,
+            },
+            DDNS: {
+              ...(config.DDNS || {}),
+              enabled: values.DDNS_Enabled,
+              fqdn: values.DDNS_FQDN,
+              token: values.DDNS_Token === '***' ? undefined : values.DDNS_Token,
+              lastKnownIp: config.DDNS ? config.DDNS.lastKnownIp : "",
+              lastUpdate: config.DDNS ? config.DDNS.lastUpdate : "",
             },
             EmailConfig: {
               ...config.EmailConfig,
@@ -343,6 +356,11 @@ const ConfigManagement = () => {
                     <ConfigAPITokens />
                   </div>,
                   url: "/api",
+                },
+                {
+                  title: "DDNS",
+                  children: wrapTab(formik, <ConfigDDNS formik={formik} />),
+                  url: "/ddns",
                 },
               ]}
             />
