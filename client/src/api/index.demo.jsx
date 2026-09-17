@@ -113,6 +113,13 @@ export const desecSetupStatus = () => {
   }), 1000));
 }
 
+export const desecSetupCaptcha = () => {
+  return new Promise((resolve) => setTimeout(() => resolve({
+    "status": "ok",
+    "data": { "id": "demo-captcha-id", "challenge": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAFZ4J8w==" }
+  }), 1000));
+}
+
 export const ddns = (req) => {
   return new Promise((resolve) => setTimeout(() => resolve({
     "status": "ok",

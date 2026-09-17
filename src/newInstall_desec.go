@@ -20,6 +20,11 @@ type DesecSetupRequest struct {
 	Email         string `json:"email,omitempty"`
 	Password      string `json:"password,omitempty"`
 
+	// Captcha: required for new registrations (id+challenge from
+	// GET /api/setup/desec/captcha, solution typed by the user).
+	CaptchaID       string `json:"captchaId,omitempty"`
+	CaptchaSolution string `json:"captchaSolution,omitempty"`
+
 	// DesiredDomain is the domain to create/use, e.g. "mybox.dedyn.io".
 	DesiredDomain string `json:"desiredDomain"`
 	// Hostname is what Cosmos will serve on (defaults to DesiredDomain).
@@ -31,14 +36,25 @@ type DesecSetupRequest struct {
 
 // DesecSetupResponse is returned by POST /api/setup/desec.
 type DesecSetupResponse struct {
-	Status          string `json:"status"` // "pending-activation" | "ok" | "error"
-	PendingEmail    string `json:"pendingEmail,omitempty"`
-	Domain          string `json:"domain,omitempty"`
-	Hostname        string `json:"hostname,omitempty"`
-	TokenID         string `json:"tokenId,omitempty"`
-	Token           string `json:"token,omitempty"`
-	ActivationState string `json:"activationState,omitempty"`
-	Message         string `json:"message,omitempty"`
+	Status          string   `json:"status"` // "pending-activation" | "ok" | "error"
+	PendingEmail    string   `json:"pendingEmail,omitempty"`
+	Domain          string   `json:"domain,omitempty"`
+	Hostname        string   `json:"hostname,omitempty"`
+	TokenID         string   `json:"tokenId,omitempty"`
+	Token           string   `json:"token,omitempty"`
+	ActivationState string   `json:"activationState,omitempty"`
+	Message         string   `json:"message,omitempty"`
+	// For custom (non-dedyn.io) domains: NS records the user must set at the
+	// registrar, plus a DNSSEC warning.
+	RequiresDelegation bool     `json:"requiresDelegation,omitempty"`
+	Nameservers        []string `json:"nameservers,omitempty"`
+	DNSSECNote         string   `json:"dnssecNote,omitempty"`
+}
+
+// DesecCaptchaResponse is returned by GET /api/setup/desec/captcha.
+type DesecCaptchaResponse struct {
+	ID        string `json:"id"`
+	Challenge string `json:"challenge"` // base64 PNG for <img src="data:image/png;base64,...">
 }
 
 // desecSetupState is persisted (in memory) so the wizard can poll activation
@@ -48,12 +64,33 @@ var desecSetupState = struct {
 	pendingEmail    string
 	pendingDomain   string
 	pendingPassword string
+	pendingCaptcha  string
 }{}
+
+// DesecSetupCaptchaRoute handles GET /api/setup/desec/captcha — fetches a
+// fresh captcha from deSEC and returns it to the client for display.
+// @Summary Get a deSEC registration captcha
+// @Description Fetches a fresh captcha from deSEC (id + base64 PNG challenge). The client renders the image and collects the solution, which is sent back with POST /api/setup/desec.
+// @Tags system
+// @Produce json
+// @Router /api/setup/desec/captcha [get]
+func DesecSetupCaptchaRoute(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "GET" {
+		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
+		return
+	}
+	id, challenge, err := utils.DesecGetCaptcha()
+	if err != nil {
+		utils.HTTPError(w, "desec captcha fetch failed: "+err.Error(), http.StatusBadGateway, "DSEC010")
+		return
+	}
+	json.NewEncoder(w).Encode(DesecCaptchaResponse{ID: id, Challenge: challenge})
+}
 
 // DesecSetupRoute handles POST /api/setup/desec — the fully-automatic deSEC
 // bootstrap used by the new-install wizard.
 // @Summary Auto-provision a deSEC domain + token + records for Cosmos
-// @Description Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.
+// @Description Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts; a captcha is required to register.
 // @Tags system
 // @Accept json
 // @Produce json
@@ -96,27 +133,79 @@ func DesecSetupRoute(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := utils.DesecRegisterAccount(request.Email, request.Password, request.DesiredDomain); err != nil {
-		// If the account already exists, this returns 400/403 — treat as
-		// activation-pending rather than fatal only if the email matches.
-		utils.Warn("DesecSetupRoute: register attempt: " + err.Error())
+	// 1) Attempt to log in FIRST: if the account already exists AND is
+	//    activated, login succeeds and we can skip registration + activation
+	//    entirely (this also covers the "email already in use" case).
+	loginToken, loginErr := utils.DesecLoginToken(request.Email, request.Password)
+	if loginErr == nil {
+		// Account exists + activated. Finish setup with a fresh scoped token.
+		result, err := desecFinishAfterLogin(loginToken, request)
+		if err != nil {
+			utils.HTTPError(w, "desec setup failed: "+err.Error(), http.StatusInternalServerError, "DSEC009")
+			return
+		}
+		json.NewEncoder(w).Encode(result)
+		return
 	}
 
-	// Account requires email activation. Persist state for the poll endpoint.
+	// 2) No working login yet — attempt registration (may fail if email in
+	//    use but pending activation, or if the email is invalid, or the
+	//    captcha is wrong — surface the exact deSEC message).
+	//    For dedyn.io domains we ask deSEC to create the zone on activation.
+	//    For custom domains we skip the domain field here: they are created
+	//    later (once the account is active + delegated), because deSEC deletes
+	//    the account if a domain in the registration payload cannot be created.
+	regDomain := request.DesiredDomain
+	if !utils.IsDedynDomain(request.DesiredDomain) {
+		regDomain = ""
+	}
+	registerCode, regErr := utils.DesecRegisterAccount(request.Email, request.Password, regDomain, request.CaptchaID, request.CaptchaSolution)
+
+	// If registration is rejected because the account already exists but is
+	// still pending activation (not yet verified), treat as pending-activation.
+	if regErr != nil {
+		msg := regErr.Error()
+		utils.Warn("DesecSetupRoute: register attempt: " + msg)
+		if registerCode == http.StatusAccepted || registerCode == http.StatusOK {
+			// Registration accepted (202) — email sent.
+		} else if registerCode == http.StatusConflict ||
+			(strings.Contains(strings.ToLower(msg), "exist") && registerCode >= 400 && registerCode < 500) {
+			// Email already registered but not activated, or just registered.
+		} else if registerCode >= 400 && registerCode < 500 {
+			// Real 4xx: captcha wrong, invalid email/password, etc.
+			utils.HTTPError(w, "deSEC registration failed: "+msg, http.StatusBadRequest, "DSEC011")
+			return
+		} else {
+			// 5xx or network error.
+			utils.HTTPError(w, "deSEC registration failed: "+msg, http.StatusBadGateway, "DSEC012")
+			return
+		}
+	}
+
+	// Registration accepted or already exists → account requires email
+	// activation. Persist state for the poll endpoint.
 	desecSetupState.mu.Lock()
 	desecSetupState.pendingEmail = request.Email
 	desecSetupState.pendingDomain = request.DesiredDomain
 	desecSetupState.pendingPassword = request.Password
+	desecSetupState.pendingCaptcha = request.CaptchaSolution
 	desecSetupState.mu.Unlock()
 
-	json.NewEncoder(w).Encode(DesecSetupResponse{
+	// For custom domains, tell the user about delegation requirements up-front.
+	resp := DesecSetupResponse{
 		Status:          "pending-activation",
 		PendingEmail:    request.Email,
 		Domain:          request.DesiredDomain,
 		Hostname:        request.Hostname,
 		ActivationState: "pending",
 		Message:         "check your email and click the activation link, then press continue",
-	})
+	}
+	if !utils.IsDedynDomain(request.DesiredDomain) {
+		resp.RequiresDelegation = true
+		resp.Nameservers = utils.DesecNameservers
+		resp.DNSSECNote = "If DNSSEC is enabled on this domain, disable it at the registrar and wait up to 24h for the old DS records to expire before deSEC can serve the zone."
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
 // DesecSetupStatusRoute handles GET /api/setup/desec/status — polls whether the
@@ -155,16 +244,8 @@ func DesecSetupStatusRoute(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Activated: create scoped token, domain, records, config.
-	tokenID, tokenSecret, err := utils.DesecCreateToken(loginToken, "cosmos-"+sanitizeDomain(domain), true)
-	if err != nil {
-		utils.HTTPError(w, "desec create token failed: "+err.Error(), http.StatusInternalServerError, "DSEC005")
-		return
-	}
-	_ = tokenID
-
-	// Complete the same path as an existing-token setup, using the new token.
-	result, err := desecFinishWithToken(tokenSecret, DesecSetupRequest{
+	// Activated: finish the setup.
+	result, err := desecFinishAfterLogin(loginToken, DesecSetupRequest{
 		DesiredDomain: domain,
 		Hostname:      domain,
 		CreateRecords: true,
@@ -179,14 +260,27 @@ func DesecSetupStatusRoute(w http.ResponseWriter, req *http.Request) {
 	desecSetupState.pendingEmail = ""
 	desecSetupState.pendingPassword = ""
 	desecSetupState.pendingDomain = ""
+	desecSetupState.pendingCaptcha = ""
 	desecSetupState.mu.Unlock()
 
 	result.Status = "ok"
 	json.NewEncoder(w).Encode(result)
 }
 
+// desecFinishAfterLogin completes setup after a successful login: mints a
+// scoped token, creates the domain + records, wires the config.
+func desecFinishAfterLogin(loginToken string, request DesecSetupRequest) (*DesecSetupResponse, error) {
+	tokenID, tokenSecret, err := utils.DesecCreateToken(loginToken, "cosmos-"+sanitizeDomain(request.DesiredDomain), true)
+	if err != nil {
+		return nil, err
+	}
+	_ = tokenID
+	return desecFinishWithToken(tokenSecret, request)
+}
+
 // desecFinishWithToken creates the domain + records (if requested), wires the
 // token into the Cosmos HTTP config for LE DNS-01, and returns the result.
+// For custom domains it also returns the delegation (NS) + DNSSEC guidance.
 func desecFinishWithToken(token string, request DesecSetupRequest) (*DesecSetupResponse, error) {
 	ctx := context.Background()
 
@@ -242,6 +336,13 @@ func desecFinishWithToken(token string, request DesecSetupRequest) (*DesecSetupR
 
 	result.Token = token
 	result.ActivationState = "active"
+
+	// Custom domain guidance.
+	if !utils.IsDedynDomain(request.DesiredDomain) {
+		result.RequiresDelegation = true
+		result.Nameservers = utils.DesecNameservers
+		result.DNSSECNote = "If DNSSEC is enabled on this domain, disable it at the registrar and wait up to 24h for the old DS records to expire before deSEC can serve the zone."
+	}
 	return result, nil
 }
 
