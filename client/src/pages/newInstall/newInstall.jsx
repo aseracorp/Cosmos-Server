@@ -138,22 +138,18 @@ const NewInstall = () => {
             return [["", t('auth.hostnameInput')]];
         }
 
-        if(hostname.match(hostnameIsDomainReg) && !hostname.endsWith('.local')) {
-            return [
-                ["", t('mgmt.config.security.encryption.httpsCertSelection.httpsCertSelection')],
-                ["SELFSIGNED", t('mgmt.config.security.encryption.httpsCertSelection.sslSelfSignedChoice')],
-                ["PROVIDED", t('mgmt.config.security.encryption.httpsCertSelection.sslProvidedChoice')],
-                ["LETSENCRYPT", t('mgmt.config.security.encryption.httpsCertSelection.sslLetsEncryptChoice')],
-                ["DISABLED", t('mgmt.config.security.encryption.httpsCertSelection.sslDisabledChoice')],
-            ]
-        } else {
-            return [
-                ["", t('mgmt.config.security.encryption.httpsCertSelection.httpsCertSelection')],
-                ["SELFSIGNED", t('mgmt.config.security.encryption.httpsCertSelection.sslSelfSignedChoice')],
-                ["PROVIDED", t('mgmt.config.security.encryption.httpsCertSelection.sslProvidedChoice')],
-                ["DISABLED", t('mgmt.config.security.encryption.httpsCertSelection.sslDisabledChoice')],
-            ]
-        }
+        // Let's Encrypt is always available: Cosmos auto-issues a cert via
+        // DNS-01/HTTP-01 once the hostname is a reachable public FQDN, or via
+        // the selected DNS challenge provider (incl. the automatic deSEC).
+        // The wizard already surfaces a friendly warning when the hostname is
+        // a .local / localhost / IP, so we no longer hide the option.
+        return [
+            ["", t('mgmt.config.security.encryption.httpsCertSelection.httpsCertSelection')],
+            ["SELFSIGNED", t('mgmt.config.security.encryption.httpsCertSelection.sslSelfSignedChoice')],
+            ["PROVIDED", t('mgmt.config.security.encryption.httpsCertSelection.sslProvidedChoice')],
+            ["LETSENCRYPT", t('mgmt.config.security.encryption.httpsCertSelection.sslLetsEncryptChoice')],
+            ["DISABLED", t('mgmt.config.security.encryption.httpsCertSelection.sslDisabledChoice')],
+        ]
     }
 
     const steps = [
@@ -322,7 +318,7 @@ const NewInstall = () => {
                                             placeholder={"12H45"}
                                             formik={formik}
                                         />
-                                        <Button size="small" variant="text" onClick={() => loadDesecCaptcha(false)}>
+                                        <Button type="button" size="small" variant="text" onClick={() => loadDesecCaptcha(false)}>
                                             {t('newInstall.desecCaptchaRefresh')}
                                         </Button>
                                     </Stack>
@@ -349,6 +345,7 @@ const NewInstall = () => {
                                 )}
                                 <AnimateButton>
                                     <Button
+                                        type="button"
                                         variant="contained"
                                         color="primary"
                                         disabled={desecBusy}
@@ -408,7 +405,7 @@ const NewInstall = () => {
                                     </Button>
                                 </AnimateButton>
                                 {desecStatus && desecStatus.status === 'pending-activation' && (
-                                    <Button variant="outlined" onClick={async () => {
+                                    <Button type="button" variant="outlined" onClick={async () => {
                                         setDesecBusy(true);
                                         try {
                                             const res = await API.desecSetupStatus();
