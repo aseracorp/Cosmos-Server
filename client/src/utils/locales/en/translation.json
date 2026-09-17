@@ -1981,5 +1981,12 @@
 	"newInstall.desecNSLabel": "NS records to set at your registrar",
 	"newInstall.desecAlreadyRegisteredHint": "If you already have a deSEC account, enter its password — the setup will log in instead of registering a new one.",
 	"newInstall.desecFillAll": "Please fill in domain, email and password before setting up.",
-	"newInstall.desecCaptchaRequired2": "Please type the captcha characters shown above."
+	"newInstall.desecCaptchaRequired2": "Please type the captcha characters shown above.",
+	"newInstall.desecDomainRequired": "A domain is required (e.g. mybox.dedyn.io).",
+	"newInstall.desecDomainInvalid": "Please enter a valid domain name (e.g. mybox.dedyn.io).",
+	"newInstall.desecEmailRequired": "An e-mail address is required.",
+	"newInstall.desecEmailInvalid": "Please enter a valid e-mail address.",
+	"newInstall.desecPasswordRequired": "A password is required.",
+	"newInstall.desecPasswordTooShort": "Password must be at least 8 characters.",
+	"newInstall.desecCaptchaRequired3": "Please type the characters from the captcha image."
 }
