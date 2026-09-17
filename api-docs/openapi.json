@@ -11154,11 +11154,21 @@
     },
     "/api/setup/desec": {
       "post": {
-        "description": "Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.",
+        "description": "Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts; a captcha is required to register.",
         "tags": [
           "system"
         ],
         "summary": "Auto-provision a deSEC domain + token + records for Cosmos",
+        "responses": {}
+      }
+    },
+    "/api/setup/desec/captcha": {
+      "get": {
+        "description": "Fetches a fresh captcha from deSEC (id + base64 PNG challenge). The client renders the image and collects the solution, which is sent back with POST /api/setup/desec.",
+        "tags": [
+          "system"
+        ],
+        "summary": "Get a deSEC registration captcha",
         "responses": {}
       }
     },

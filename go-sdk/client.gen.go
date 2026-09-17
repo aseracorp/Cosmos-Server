@@ -4029,10 +4029,17 @@ type ClientInterface interface {
 
 	// PostApiSetupDesec Auto-provision a deSEC domain + token + records for Cosmos
 	//
-	// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.
+	// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts; a captcha is required to register.
 	//
 	// Corresponds with POST /api/setup/desec (the `PostApiSetupDesec` operationId).
 	PostApiSetupDesec(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiSetupDesecCaptcha Get a deSEC registration captcha
+	//
+	// Fetches a fresh captcha from deSEC (id + base64 PNG challenge). The client renders the image and collects the solution, which is sent back with POST /api/setup/desec.
+	//
+	// Corresponds with GET /api/setup/desec/captcha (the `GetApiSetupDesecCaptcha` operationId).
+	GetApiSetupDesecCaptcha(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiSetupDesecStatus Poll deSEC account activation and finish setup
 	//
@@ -8854,11 +8861,28 @@ func (c *Client) PostApiSetup(ctx context.Context, body PostApiSetupJSONRequestB
 
 // PostApiSetupDesec Auto-provision a deSEC domain + token + records for Cosmos
 //
-// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.
+// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts; a captcha is required to register.
 //
 // Corresponds with POST /api/setup/desec (the `PostApiSetupDesec` operationId).
 func (c *Client) PostApiSetupDesec(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostApiSetupDesecRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetApiSetupDesecCaptcha Get a deSEC registration captcha
+//
+// Fetches a fresh captcha from deSEC (id + base64 PNG challenge). The client renders the image and collects the solution, which is sent back with POST /api/setup/desec.
+//
+// Corresponds with GET /api/setup/desec/captcha (the `GetApiSetupDesecCaptcha` operationId).
+func (c *Client) GetApiSetupDesecCaptcha(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiSetupDesecCaptchaRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -17218,6 +17242,33 @@ func NewPostApiSetupDesecRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetApiSetupDesecCaptchaRequest constructs an http.Request for the GetApiSetupDesecCaptcha method
+func NewGetApiSetupDesecCaptchaRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/setup/desec/captcha")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetApiSetupDesecStatusRequest constructs an http.Request for the GetApiSetupDesecStatus method
 func NewGetApiSetupDesecStatusRequest(server string) (*http.Request, error) {
 	var err error
@@ -20515,12 +20566,21 @@ type ClientWithResponsesInterface interface {
 
 	// PostApiSetupDesecWithResponse Auto-provision a deSEC domain + token + records for Cosmos
 	//
-	// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.
+	// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts; a captcha is required to register.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /api/setup/desec (the `PostApiSetupDesec` operationId).
 	PostApiSetupDesecWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*PostApiSetupDesecResponse, error)
+
+	// GetApiSetupDesecCaptchaWithResponse Get a deSEC registration captcha
+	//
+	// Fetches a fresh captcha from deSEC (id + base64 PNG challenge). The client renders the image and collects the solution, which is sent back with POST /api/setup/desec.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/setup/desec/captcha (the `GetApiSetupDesecCaptcha` operationId).
+	GetApiSetupDesecCaptchaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiSetupDesecCaptchaResponse, error)
 
 	// GetApiSetupDesecStatusWithResponse Poll deSEC account activation and finish setup
 	//
@@ -31568,6 +31628,40 @@ func (r PostApiSetupDesecResponse) ContentType() string {
 	return ""
 }
 
+type GetApiSetupDesecCaptchaResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// GetBody returns the raw response body bytes
+func (r GetApiSetupDesecCaptchaResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiSetupDesecCaptchaResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiSetupDesecCaptchaResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetApiSetupDesecCaptchaResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetApiSetupDesecStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -37039,7 +37133,7 @@ func (c *ClientWithResponses) PostApiSetupWithResponse(ctx context.Context, body
 
 // PostApiSetupDesecWithResponse Auto-provision a deSEC domain + token + records for Cosmos
 //
-// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.
+// Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts; a captcha is required to register.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -37050,6 +37144,21 @@ func (c *ClientWithResponses) PostApiSetupDesecWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParsePostApiSetupDesecResponse(rsp)
+}
+
+// GetApiSetupDesecCaptchaWithResponse Get a deSEC registration captcha
+//
+// Fetches a fresh captcha from deSEC (id + base64 PNG challenge). The client renders the image and collects the solution, which is sent back with POST /api/setup/desec.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/setup/desec/captcha (the `GetApiSetupDesecCaptcha` operationId).
+func (c *ClientWithResponses) GetApiSetupDesecCaptchaWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiSetupDesecCaptchaResponse, error) {
+	rsp, err := c.GetApiSetupDesecCaptcha(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiSetupDesecCaptchaResponse(rsp)
 }
 
 // GetApiSetupDesecStatusWithResponse Poll deSEC account activation and finish setup
@@ -45328,6 +45437,22 @@ func ParsePostApiSetupDesecResponse(rsp *http.Response) (*PostApiSetupDesecRespo
 	return response, nil
 }
 
+// ParseGetApiSetupDesecCaptchaResponse parses an HTTP response from a GetApiSetupDesecCaptchaWithResponse call
+func ParseGetApiSetupDesecCaptchaResponse(rsp *http.Response) (*GetApiSetupDesecCaptchaResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiSetupDesecCaptchaResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
 // ParseGetApiSetupDesecStatusResponse parses an HTTP response from a GetApiSetupDesecStatusWithResponse call
 func ParseGetApiSetupDesecStatusResponse(rsp *http.Response) (*GetApiSetupDesecStatusResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -47005,44 +47130,47 @@ var swaggerSpec = []string{
 	"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",
-	"djTN0iBtaJLaTUzBRHM3ZSYM403bodpcQQTsFsJttaKi9qSIFNxCYAzKbbJhLrDQ/k7w5f/P3tX0ts0j",
-	"4b9C+LIpqsTbBfaSmzdJFwGaD8RNLi96oCXKYSuRAj/c5i3y319wSH3ZkiW7VmInvLRJJIoUNTOcGQ6f",
-	"p6mTGecJwcy7aG+hwNbSrVvp25kJSjHDczL+jUMz1OfWYtwJXJen4EgE1jIGeal6gH7QJAngBN+CBCjD",
-	"WpIAaeZ+EMSCqwdI50F6T1t3BcOzne+lzTPDSwlTCOdjbOivuNbeFWE6hSJpxTOjyeVZFfeTmWH4g5li",
-	"mAotzf9ukuFSAWHvpvlb4N0l7y7t3hbdEhFzkSKM0mUFqNH+/IlhWqEEi/pR2TUYkSWOsGgPDUlfQr0D",
-	"zct4ZT9kUj+Fw8dVUr9Y8LSaMdqCuMnrqs+hvhk9mahmPVG8S0v6rYRbZAoqxGh+h8BL904Kh3JphFP9",
-	"6pFU/lDPOIcWr49ESPEtpB5G9ieFGFN4wN7uFeSriH3P6N0UYnhX8HCNwJQoI5qaSaKK9Y1K7kiOdhX6",
-	"lWUgm3qPe1UDMhgTaTH+z1ykLQcU3Qu6Oh1PQeqtwmBWoah5X1b9f0kkiVKUzTuqi5XO2iHcXLJJgrNB",
-	"mKKCICg/wImlJUSUldWgIU6S04K30DEWBhV+wgDxzGJDoTPOpCI5RZvzVyyfYXGPbTi5vUSK/yCsYDc8",
-	"QTcseVqGYikhYYwHRBkqaQhRyiNy0nbefwpzMCAfInTQBiAHFwc+AuRNxRs2FYUtuGHkWD5ylWtBJviC",
-	"SsqZ3ZRthYIBRR5HRJKw3RLk2HOAjmjijYhML84QDkOumQocgy9c4EboQZP/ttCSIReRtLot3JFfo6xW",
-	"qRU3pgE21b5coPPr6fG/P6GP6Pz8enqCLgCdFoeKLhyXnES5akATRn7mY5DrFfwc3q+uSLXpg8rsYs6K",
-	"N3Sv89EN92P+PtD9GZcplz0nd+xCh65oKh/stIw0WoZ8y5Ok/iGqc2XmO6aMykdrq9cOM8VCHUdGUteP",
-	"ztx3TmKPErjx4dvp1eTuK8JKCTrTqlrJZ2Vp8nUCn+z64YqgSNAFWQ/AKhnOBKZdnI7T/LaVBa5pQspb",
-	"KMmnxTzhbnJ5bo9y/mf07FkY/Ur0x/ks7tiqCcrla5WScFX4uzY1vLB7YX8zwr5s6RuxiNq24l2bPvgK",
-	"S2MaFmlhO0X0euj1cCeZEi5QlKMWNetiAy7KxuuP1zqvdV7rdqZ1LQthU+XsuhDIaGW/ctYBdTNoru6F",
-	"Mn29gxrWJxZCNbrQs1EwiumvUTAizB2OdCcshihO9ar+DiF37jSrarQrQz0yQhggkMEAxfRXgKwEBvkR",
-	"nw/r1Xw5T9YMGwjn7LQQhBUpT7eRX/Kv1GwM1MxzLUKCKIu5zUjaVBi0bK2Nb0rEebaWfeEOqGXZaoKw",
-	"NuOpI74u3X1s3pgwZV6KyJIA7idVj+Y3WmFMUxzNBWYKkYQsANjtyDz+A8qISKmULsJrdhnNOAbkMTLP",
-	"7+AwysnjIA1pBu7eY6+3orwW7DNnUe/Dn1ZhjAaB4KU8Iu2cRpoBMVlndcq9u28YtXIkaSdXpo/CdWgS",
-	"FxgFcmPYPbCj97jeeXDlBAyjmCbErXDrHCudJRxX04jNi9893AYorxZzxTw+Z0F1C+yR1FnGhZLoezYP",
-	"0PeMzAOUsXmA5jQO0CzNAiQX8wD9JLMsQIrGcYDwgsatpH621z6Zk/9haeFgYcGClRnakghG+hIgsalO",
-	"FM2wUOOYi/Q4R0Ytn1ZHToVpXJ3oy9rs2pcwQRsXKVaj09GMMgznjVeCyMp7/OWe/q1R630hiQd4PQgW",
-	"sEPOcRm9LazluqDDeOQ9SJdQAptGMRT9QxsbdhSVcTlmQ1O0ei8touiGYLW2mz3AqX1V6iczeZ7uyduV",
-	"vTr2o2UdI9j+3pf/CrIWeXkYmJEG2mXjSFnm5eMZliRCnM04FpEtHWz219yoBstc2NfoyF2YURSFwTkB",
-	"s89aeNvQzza8MofVAQN1Vhm1lpioc/tU83rGvxkNf3SSadkCFmO7anZr9oTy5u0cWmCRrsvb1npAYDgq",
-	"z2wKGcurnk3Lm5p36oYUJF8tWt5B7gVq7NblIl8jMxLSmJKoXasrwcyhq/RrMPDYQMYHLt5ivLzFsFRj",
-	"oPj1dbshgMEqfGzKQEcQwdSMh9ThI8ISEXsoiEVI8KSBXcw8cq9Mx0Dx0UVEVUd09JmSJJI2uexOZ/vA",
-	"yNuet7yhHFHV7qvkEcmCJzol49/2/+veVfUPcP9D0arLrJh7EI/B57F9GV103TRamUX12R7j5x0hvTkv",
-	"2x3kd9KyWhW7coTf3tl1rPTB3eXl5G2RyC2K77opAGBVIgaDS7Gd1DK5TRNjbyvzuB4zxZfNvEzqsqZG",
-	"bWY24XPeqxzZ4gHkNTKmmWVvub3+f7E5vGKdv5indwo2NB9nbF6f1O5akRYZ/m/fHl4Mv8KEjW4CEzsl",
-	"jfvoIkw4I2Nb2T12sNtrKwLvoIU90nSWw3Rva/Q6K+vuSMoLUme74WaW8ACZlrbmvOIz+qJAb92Gs253",
-	"Z4mFYDEiWVEo+/dGhapuzKyLhqpKdZ4HNIMp1Q1cKbXJBFX2rWoBldelPdSlbcIgtpXo6jRbFwbVRNbc",
-	"60FsNvo2Os3Ay4l1kuTfZxm4rMdnSqhU9rPKvl/rS6WJ/2gbx4s1XZLoCCwoYAg/ZQTIjgLEuAm/IsIU",
-	"xYn80O9TSrzYwPea4gXxn28z1Fe8sISC26tbBdFVN30kXftG99V9giH9Y4eOWq7o3jH2jvFLQKUyRH5R",
-	"qSibb+hjCAInk3stWhb83C9Wh76NPU/4DBfOjhKYydgdL5YdAlPIhhzjGdeqzzp5U7SZzCz56sY4LnCn",
-	"N5beWK7IvhnNp9eBlrhMswSYyki0uQ6687ZIS/MvZTF3FIwuAXCkuMJJgLQkUYBiQUiX97qIZWnKu3Ty",
-	"IZalLffK+C7SEEbsHj5PrZ130gZnbUm0zluALozK2VoALZLR6WgcWpDg52/P/wQAAP//",
+	"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",
+	"f376+VcAAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

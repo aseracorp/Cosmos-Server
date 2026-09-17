@@ -60,6 +60,19 @@ const NewInstall = () => {
     const [desecStatus, setDesecStatus] = useState(null);
     const [desecError, setDesecError] = useState(null);
     const [desecBusy, setDesecBusy] = useState(false);
+    const [desecCaptcha, setDesecCaptcha] = useState(null);
+    const [desecSuccess, setDesecSuccess] = useState(false);
+
+    const loadDesecCaptcha = async () => {
+        try {
+            const res = await API.desecSetupCaptcha();
+            if (res && (res.status === 'ok' || res.status === 'OK') && res.data) {
+                setDesecCaptcha({ id: res.data.id, challenge: res.data.challenge });
+            }
+        } catch (e) {
+            setDesecError((e && e.message) || 'failed to load captcha');
+        }
+    };
 
     const refreshStatus = async () => {
         try {
@@ -79,6 +92,15 @@ const NewInstall = () => {
     useEffect(() => {
         refreshStatus();
     }, [counter]);
+
+    // Prefetch a deSEC captcha once on mount (the automatic setup panel is
+    // shown by default). The user can refresh it at any time via the button.
+    useEffect(() => {
+        if (desecCaptcha === null) {
+            loadDesecCaptcha();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const getHTTPSOptions = (hostname) => {
         if(!hostname) {
@@ -156,9 +178,6 @@ const NewInstall = () => {
             label: t('newInstall.httpsTitle'),
             component: (<Stack item xs={12} spacing={2}>
             <QuestionCircleOutlined /> <Trans i18nKey="newInstall.httpsText" />
-            <Alert severity="info">
-                <Trans i18nKey="newInstall.localDomains" />
-            </Alert>
             <div>
             <Formik
                 initialValues={{
@@ -175,6 +194,7 @@ const NewInstall = () => {
                     DesecEmail: "",
                     DesecPassword: "",
                     DesecDesiredDomain: "",
+                    DesecCaptchaSolution: "",
                     __success: false,
                 }}
                 validationSchema={Yup.object().shape({
@@ -260,12 +280,42 @@ const NewInstall = () => {
                                     placeholder={"••••••••••••"}
                                     formik={formik}
                                 />
+                                <Typography variant="body2" color="textSecondary"><Trans i18nKey="newInstall.desecAlreadyRegisteredHint" /></Typography>
+                                {desecCaptcha && (
+                                    <Stack spacing={1}>
+                                        <Typography variant="body2"><Trans i18nKey="newInstall.desecCaptchaLabel" /></Typography>
+                                        <img src={`data:image/png;base64,${desecCaptcha.challenge}`} alt="captcha" style={{ maxWidth: 260, border: '1px solid #ccc', borderRadius: 4 }} />
+                                        <CosmosInputText
+                                            name="DesecCaptchaSolution"
+                                            label={t('newInstall.desecCaptchaLabel')}
+                                            placeholder={"12H45"}
+                                            formik={formik}
+                                        />
+                                        <Button size="small" variant="text" onClick={loadDesecCaptcha}>
+                                            {t('newInstall.desecCaptchaRefresh')}
+                                        </Button>
+                                    </Stack>
+                                )}
                                 {desecStatus && desecStatus.status === 'pending-activation' && (
                                     <Alert severity="warning">
                                         <Trans i18nKey="newInstall.desecPendingActivation" values={{email: desecStatus.pendingEmail}} />
                                     </Alert>
                                 )}
+                                {desecSuccess && (
+                                    <Alert severity="success"><Trans i18nKey="newInstall.desecSetupSuccess" /></Alert>
+                                )}
                                 {desecError && <Alert severity="error">{desecError}</Alert>}
+                                {desecStatus && desecStatus.requiresDelegation && (
+                                    <Alert severity="info">
+                                        <Typography variant="body1"><strong><Trans i18nKey="newInstall.desecCustomDomainTitle" /></strong></Typography>
+                                        <Typography variant="body2"><Trans i18nKey="newInstall.desecCustomDomainInfo" /></Typography>
+                                        <Typography variant="body2" sx={{ mt: 1 }}><Trans i18nKey="newInstall.desecNSLabel" />:</Typography>
+                                        <ul style={{ margin: 0, paddingLeft: 20 }}>
+                                            {desecStatus.nameservers && desecStatus.nameservers.map(ns => <li key={ns}><code>{ns}</code></li>)}
+                                        </ul>
+                                        <Typography variant="body2" sx={{ mt: 1 }}><Trans i18nKey="newInstall.desecDNSSECWarning" /></Typography>
+                                    </Alert>
+                                )}
                                 <AnimateButton>
                                     <Button
                                         variant="contained"
@@ -274,6 +324,7 @@ const NewInstall = () => {
                                         onClick={async () => {
                                             setDesecBusy(true);
                                             setDesecError(null);
+                                            setDesecSuccess(false);
                                             try {
                                                 const res = await API.desecSetup({
                                                     email: formik.values.DesecEmail,
@@ -281,9 +332,12 @@ const NewInstall = () => {
                                                     desiredDomain: formik.values.DesecDesiredDomain,
                                                     hostname: formik.values.DesecDesiredDomain,
                                                     createRecords: true,
+                                                    captchaId: desecCaptcha ? desecCaptcha.id : undefined,
+                                                    captchaSolution: formik.values.DesecCaptchaSolution,
                                                 });
                                                 if (res.status === 'ok' || res.status === 'OK') {
-                                                    setDesecStatus({ status: 'ok', ...res });
+                                                    setDesecStatus(res);
+                                                    setDesecSuccess(true);
                                                     formik.setFieldValue('Hostname', res.hostname || formik.values.DesecDesiredDomain);
                                                     formik.setFieldValue('HTTPSCertificateMode', 'LETSENCRYPT');
                                                     formik.setFieldValue('UseWildcardCertificate', true);
@@ -293,9 +347,13 @@ const NewInstall = () => {
                                                     }
                                                 } else {
                                                     setDesecStatus(res);
+                                                    if (res.requiresDelegation) {
+                                                        // Still show NS/DNSSEC guidance even before activation.
+                                                        setDesecError(null);
+                                                    }
                                                 }
                                             } catch (e) {
-                                                setDesecError(e.message || 'desec setup failed');
+                                                setDesecError((e && e.message) || 'desec setup failed');
                                             }
                                             setDesecBusy(false);
                                         }}>
@@ -308,7 +366,8 @@ const NewInstall = () => {
                                         try {
                                             const res = await API.desecSetupStatus();
                                             if (res.status === 'ok' || res.status === 'OK') {
-                                                setDesecStatus({ status: 'ok', ...res });
+                                                setDesecStatus(res);
+                                                setDesecSuccess(true);
                                                 formik.setFieldValue('Hostname', res.hostname || formik.values.DesecDesiredDomain);
                                                 formik.setFieldValue('HTTPSCertificateMode', 'LETSENCRYPT');
                                                 formik.setFieldValue('UseWildcardCertificate', true);
@@ -318,7 +377,7 @@ const NewInstall = () => {
                                                 setDesecStatus(res);
                                             }
                                         } catch (e) {
-                                            setDesecError(e.message || 'desec setup failed');
+                                            setDesecError((e && e.message) || 'desec setup failed');
                                         }
                                         setDesecBusy(false);
                                     }}>
@@ -329,6 +388,9 @@ const NewInstall = () => {
                         )}
                         {!formik.values.DesecAuto && (
                         <>
+                        <Alert severity="info">
+                            <Trans i18nKey="newInstall.localDomains" />
+                        </Alert>
                         <CosmosInputText
                             name="Hostname"
                             label={t('newInstall.hostnameInput.hostnameLabel')}

@@ -72,10 +72,38 @@ func desecRequest(method, path string, token string, payload interface{}, out in
 	return resp.StatusCode, nil
 }
 
+// DesecCaptcha is the {id, challenge} pair returned by POST /captcha/.
+type DesecCaptcha struct {
+	ID        string `json:"id"`
+	Challenge string `json:"challenge"` // base64-encoded PNG
+}
+
+// DesecGetCaptcha fetches a fresh captcha from deSEC. The challenge is a
+// base64-encoded PNG that the client renders as data:image/png;base64,<ch>.
+// The user must type the visible characters; the solution + id are then sent
+// with the registration request (or, if omitted at registration, they are
+// required later when completing email activation).
+func DesecGetCaptcha() (string, string, error) {
+	var out DesecCaptcha
+	code, err := desecRequest("POST", "captcha/", "", nil, &out)
+	if err != nil {
+		return "", "", err
+	}
+	if code != http.StatusCreated && code != http.StatusOK {
+		return "", "", fmt.Errorf("desec captcha: status %d", code)
+	}
+	if out.ID == "" || out.Challenge == "" {
+		return "", "", fmt.Errorf("desec captcha: empty response")
+	}
+	return out.ID, out.Challenge, nil
+}
+
 // DesecRegisterAccount creates a deSEC account. If a domain name is given it
 // is created upon activation. Registration returns immediately (202) and the
 // account must be activated via the emailed link before it can be used.
-func DesecRegisterAccount(email, password, desiredDomain string) error {
+// Optional captchaID/solution can be provided; when omitted deSEC requires
+// them later at email-activation time. Returns the HTTP status code.
+func DesecRegisterAccount(email, password, desiredDomain, captchaID, captchaSolution string) (int, error) {
 	payload := map[string]interface{}{
 		"email":    email,
 		"password": password,
@@ -83,14 +111,17 @@ func DesecRegisterAccount(email, password, desiredDomain string) error {
 	if desiredDomain != "" {
 		payload["domain"] = desiredDomain
 	}
+	if captchaID != "" && captchaSolution != "" {
+		payload["captcha"] = map[string]string{
+			"id":       captchaID,
+			"solution": captchaSolution,
+		}
+	}
 	code, err := desecRequest("POST", "auth/", "", payload, nil)
 	if err != nil {
-		return fmt.Errorf("desec register: %w", err)
+		return 0, fmt.Errorf("desec register: %w", err)
 	}
-	if code != http.StatusAccepted && code != http.StatusOK {
-		return fmt.Errorf("desec register: unexpected status %d", code)
-	}
-	return nil
+	return code, nil
 }
 
 
@@ -224,4 +255,22 @@ func DesecDynDNSUpdate(fqdn, token, ipv4, ipv6 string) error {
 		return fmt.Errorf("desec dyndns: status %d body %q", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+// DesecNameservers lists deSEC's name servers that a custom (non-dedyn.io)
+// domain must be delegated to at the registrar. Most registrars accept the
+// hostnames directly as NS records.
+var DesecNameservers = []string{"ns1.desec.io", "ns2.desec.io", "ns3.desec.io", "ns4.desec.io"}
+
+// IsDedynDomain returns true if the domain is one deSEC offers for direct
+// registration (a single label under dedyn.io), which requires no external
+// delegation. Custom domains (e.g. example.com) must be delegated to
+// DesecNameservers at the registrar before deSEC can serve them.
+func IsDedynDomain(domain string) bool {
+	domain = strings.ToLower(strings.TrimSpace(strings.TrimSuffix(domain, ".")))
+	if !strings.HasSuffix(domain, ".dedyn.io") {
+		return false
+	}
+	label := strings.TrimSuffix(domain, ".dedyn.io")
+	return label != "" && !strings.Contains(label, ".")
 }

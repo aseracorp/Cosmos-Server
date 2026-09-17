@@ -325,6 +325,13 @@ let desecSetupStatus = () => {
   }))
 }
 
+let desecSetupCaptcha = () => {
+  return wrap(defaultFetch('/cosmos/api/setup/desec/captcha', {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' }
+  }))
+}
+
 let ddns = (req) => {
   return wrap(defaultFetch('/cosmos/api/ddns', {
     method: req ? 'POST' : 'GET',
@@ -484,6 +491,7 @@ export {
   newInstall,
   desecSetup,
   desecSetupStatus,
+  desecSetupCaptcha,
   ddns,
   networkDetect,
   upnp,

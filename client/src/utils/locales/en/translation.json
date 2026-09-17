@@ -1971,5 +1971,13 @@
 	"newInstall.desecDomainLabel": "Desired domain (e.g. mybox.dedyn.io)",
 	"newInstall.desecSetupButton": "Set up automatically",
 	"newInstall.desecCheckActivation": "I've clicked the email link — continue",
-	"newInstall.desecPendingActivation": "Please click the activation link sent to {email}, then press continue. (The link expires after 12 hours.)"
+	"newInstall.desecPendingActivation": "Please click the activation link sent to {email}, then press continue. (The link expires after 12 hours.)",
+	"newInstall.desecCaptchaLabel": "Captcha (type the characters from the image)",
+	"newInstall.desecCaptchaRefresh": "New captcha",
+	"newInstall.desecSetupSuccess": "Automatic setup completed. HTTPS, wildcard certificate and dynamic DNS are configured.",
+	"newInstall.desecCustomDomainTitle": "Custom domain — delegation required",
+	"newInstall.desecCustomDomainInfo": "Because you chose a domain outside dedyn.io, point its NS records at your registrar to the deSEC name servers below. Cosmos will finish once the domain resolves.",
+	"newInstall.desecDNSSECWarning": "Important: if DNSSEC is enabled on this domain, disable it at the registrar and wait up to 24h for the old DS records to expire before deSEC can serve the zone.",
+	"newInstall.desecNSLabel": "NS records to set at your registrar",
+	"newInstall.desecAlreadyRegisteredHint": "If you already have a deSEC account, enter its password — the setup will log in instead of registering a new one."
 }
