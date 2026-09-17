@@ -243,6 +243,30 @@ const NewInstall = () => {
                             then: Yup.string().required().matches(hostnameIsDomainReg, t('newInstall.letsEncryptChoiceOnlyfqdnValidation')),
                             otherwise: Yup.string().required()
                         }),
+                        // Real-time validation for the automatic deSEC fields:
+                        // errors show directly under each field (like Hostname)
+                        // and the "Set up automatically" button is greyed out
+                        // until every field is valid.
+                        DesecDesiredDomain: Yup.string().when('DesecAuto', {
+                            is: true,
+                            then: Yup.string().required(t('newInstall.desecDomainRequired')).matches(hostnameIsDomainReg, t('newInstall.desecDomainInvalid')),
+                            otherwise: Yup.string(),
+                        }),
+                        DesecEmail: Yup.string().when('DesecAuto', {
+                            is: true,
+                            then: Yup.string().required(t('newInstall.desecEmailRequired')).email(t('newInstall.desecEmailInvalid')),
+                            otherwise: Yup.string(),
+                        }),
+                        DesecPassword: Yup.string().when('DesecAuto', {
+                            is: true,
+                            then: Yup.string().required(t('newInstall.desecPasswordRequired')).min(8, t('newInstall.desecPasswordTooShort')),
+                            otherwise: Yup.string(),
+                        }),
+                        DesecCaptchaSolution: Yup.string().when('DesecAuto', {
+                            is: true,
+                            then: Yup.string().required(t('newInstall.desecCaptchaRequired3')),
+                            otherwise: Yup.string(),
+                        }),
                 })}
                 onSubmit={async (values, { setErrors, setStatus, setSubmitting }) => {
                     try {
@@ -271,7 +295,19 @@ const NewInstall = () => {
                         setSubmitting(false);
                     }
                 }}>
-                {(formik) => (
+                {(formik) => {
+                    // Live validity of the automatic-deSEC fields. The button
+                    // is greyed out until every field passes AND a captcha is loaded.
+                    const desecFieldsValid =
+                        !!(formik.values.DesecDesiredDomain &&
+                           formik.values.DesecEmail &&
+                           formik.values.DesecPassword &&
+                           formik.values.DesecCaptchaSolution &&
+                           desecCaptcha &&
+                           formik.values.DesecDesiredDomain.match(hostnameIsDomainReg) &&
+                           String(formik.values.DesecEmail).includes('@') &&
+                           formik.values.DesecPassword.length >= 8);
+                    return (
                     <form noValidate onSubmit={formik.handleSubmit}>
                         <Stack item xs={12} spacing={2}>
                         <Field
@@ -348,7 +384,7 @@ const NewInstall = () => {
                                         type="button"
                                         variant="contained"
                                         color="primary"
-                                        disabled={desecBusy}
+                                        disabled={desecBusy || !desecFieldsValid}
                                         onClick={async () => {
                                             if (!formik.values.DesecDesiredDomain || !formik.values.DesecEmail || !formik.values.DesecPassword) {
                                                 setDesecError(t('newInstall.desecFillAll'));
@@ -464,6 +500,14 @@ const NewInstall = () => {
                             label={t('auth.selectHTTPSMode')}
                             formik={formik}
                             options={getHTTPSOptions(formik.values.Hostname && formik.values.Hostname)}
+                            onChange={(e) => {
+                                // Show the LE hostname validation error the
+                                // moment the user switches to Let's Encrypt,
+                                // without waiting for a blur on the Hostname.
+                                if (e.target.value === "LETSENCRYPT") {
+                                    formik.setFieldTouched('Hostname', true, true);
+                                }
+                            }}
                         />
                         {formik.values.HTTPSCertificateMode === "LETSENCRYPT" && (
                             <>
@@ -559,7 +603,8 @@ const NewInstall = () => {
                         </AnimateButton>
                         </Stack>
                     </form>
-                )}
+                    );
+                }}
             </Formik>
             </div>
             </Stack>),
