@@ -64,6 +64,33 @@ const NewInstall = () => {
     const [desecSuccess, setDesecSuccess] = useState(false);
 
     const loadDesecCaptcha = async (silent) => {
+        const applyCaptcha = (captcha) => {
+            if (captcha && captcha.id && captcha.challenge) {
+                setDesecCaptcha({ id: captcha.id, challenge: captcha.challenge });
+                setDesecError(null);
+                return true;
+            }
+            return false;
+        };
+
+        // 1) Try fetching the captcha DIRECTLY from deSEC in the browser.
+        //    deSEC serves CORS allow-origin:* and the captcha endpoint is
+        //    public, so this works even if the Cosmos backend route is
+        //    missing or the user is on an older build.
+        try {
+            const resp = await fetch('https://desec.io/api/v1/captcha/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (applyCaptcha(data)) return;
+            }
+        } catch (e) {
+            // fall through to the Cosmos proxy route
+        }
+
+        // 2) Fallback: Cosmos backend proxy route.
         try {
             const res = await API.desecSetupCaptcha();
             // Accept both the bare {id, challenge} (real backend) and a
@@ -71,12 +98,8 @@ const NewInstall = () => {
             const captcha = (res && (res.status === 'ok' || res.status === 'OK') && res.data)
                 ? res.data
                 : res;
-            if (captcha && captcha.id && captcha.challenge) {
-                setDesecCaptcha({ id: captcha.id, challenge: captcha.challenge });
-                setDesecError(null);
-            } else if (res && res.message && !silent) {
-                setDesecError(res.message);
-            }
+            if (applyCaptcha(captcha)) return;
+            if (res && res.message && !silent) setDesecError(res.message);
         } catch (e) {
             if (!silent) setDesecError((e && e.message) || 'failed to load captcha');
         }
@@ -108,7 +131,7 @@ const NewInstall = () => {
             loadDesecCaptcha(true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [desecCaptcha]);
 
     const getHTTPSOptions = (hostname) => {
         if(!hostname) {
@@ -328,8 +351,16 @@ const NewInstall = () => {
                                     <Button
                                         variant="contained"
                                         color="primary"
-                                        disabled={desecBusy || !formik.values.DesecEmail || !formik.values.DesecDesiredDomain || !formik.values.DesecPassword}
+                                        disabled={desecBusy}
                                         onClick={async () => {
+                                            if (!formik.values.DesecDesiredDomain || !formik.values.DesecEmail || !formik.values.DesecPassword) {
+                                                setDesecError(t('newInstall.desecFillAll'));
+                                                return;
+                                            }
+                                            if (!formik.values.DesecCaptchaSolution) {
+                                                setDesecError(t('newInstall.desecCaptchaRequired2'));
+                                                return;
+                                            }
                                             setDesecBusy(true);
                                             setDesecError(null);
                                             setDesecSuccess(false);

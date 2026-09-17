@@ -1979,5 +1979,7 @@
 	"newInstall.desecCustomDomainInfo": "Because you chose a domain outside dedyn.io, point its NS records at your registrar to the deSEC name servers below. Cosmos will finish once the domain resolves.",
 	"newInstall.desecDNSSECWarning": "Important: if DNSSEC is enabled on this domain, disable it at the registrar and wait up to 24h for the old DS records to expire before deSEC can serve the zone.",
 	"newInstall.desecNSLabel": "NS records to set at your registrar",
-	"newInstall.desecAlreadyRegisteredHint": "If you already have a deSEC account, enter its password — the setup will log in instead of registering a new one."
+	"newInstall.desecAlreadyRegisteredHint": "If you already have a deSEC account, enter its password — the setup will log in instead of registering a new one.",
+	"newInstall.desecFillAll": "Please fill in domain, email and password before setting up.",
+	"newInstall.desecCaptchaRequired2": "Please type the captcha characters shown above."
 }

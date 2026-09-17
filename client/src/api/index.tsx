@@ -464,6 +464,7 @@ if(isDemo) {
   newInstall = indexDemo.newInstall;
   desecSetup = indexDemo.desecSetup;
   desecSetupStatus = indexDemo.desecSetupStatus;
+  desecSetupCaptcha = indexDemo.desecSetupCaptcha;
   ddns = indexDemo.ddns;
   networkDetect = indexDemo.networkDetect;
   upnp = indexDemo.upnp;
