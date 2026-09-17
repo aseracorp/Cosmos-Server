@@ -84,7 +84,11 @@ func DesecSetupCaptchaRoute(w http.ResponseWriter, req *http.Request) {
 		utils.HTTPError(w, "desec captcha fetch failed: "+err.Error(), http.StatusBadGateway, "DSEC010")
 		return
 	}
-	json.NewEncoder(w).Encode(DesecCaptchaResponse{ID: id, Challenge: challenge})
+	// Wrap in the standard {status, data} envelope used by the rest of the API.
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"data":   DesecCaptchaResponse{ID: id, Challenge: challenge},
+	})
 }
 
 // DesecSetupRoute handles POST /api/setup/desec — the fully-automatic deSEC

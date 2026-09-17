@@ -63,14 +63,22 @@ const NewInstall = () => {
     const [desecCaptcha, setDesecCaptcha] = useState(null);
     const [desecSuccess, setDesecSuccess] = useState(false);
 
-    const loadDesecCaptcha = async () => {
+    const loadDesecCaptcha = async (silent) => {
         try {
             const res = await API.desecSetupCaptcha();
-            if (res && (res.status === 'ok' || res.status === 'OK') && res.data) {
-                setDesecCaptcha({ id: res.data.id, challenge: res.data.challenge });
+            // Accept both the bare {id, challenge} (real backend) and a
+            // wrapped {status, data:{id, challenge}} (demo/other clients).
+            const captcha = (res && (res.status === 'ok' || res.status === 'OK') && res.data)
+                ? res.data
+                : res;
+            if (captcha && captcha.id && captcha.challenge) {
+                setDesecCaptcha({ id: captcha.id, challenge: captcha.challenge });
+                setDesecError(null);
+            } else if (res && res.message && !silent) {
+                setDesecError(res.message);
             }
         } catch (e) {
-            setDesecError((e && e.message) || 'failed to load captcha');
+            if (!silent) setDesecError((e && e.message) || 'failed to load captcha');
         }
     };
 
@@ -97,7 +105,7 @@ const NewInstall = () => {
     // shown by default). The user can refresh it at any time via the button.
     useEffect(() => {
         if (desecCaptcha === null) {
-            loadDesecCaptcha();
+            loadDesecCaptcha(true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -291,7 +299,7 @@ const NewInstall = () => {
                                             placeholder={"12H45"}
                                             formik={formik}
                                         />
-                                        <Button size="small" variant="text" onClick={loadDesecCaptcha}>
+                                        <Button size="small" variant="text" onClick={() => loadDesecCaptcha(false)}>
                                             {t('newInstall.desecCaptchaRefresh')}
                                         </Button>
                                     </Stack>
@@ -325,6 +333,7 @@ const NewInstall = () => {
                                             setDesecBusy(true);
                                             setDesecError(null);
                                             setDesecSuccess(false);
+                                            setDesecStatus(null);
                                             try {
                                                 const res = await API.desecSetup({
                                                     email: formik.values.DesecEmail,
@@ -335,7 +344,7 @@ const NewInstall = () => {
                                                     captchaId: desecCaptcha ? desecCaptcha.id : undefined,
                                                     captchaSolution: formik.values.DesecCaptchaSolution,
                                                 });
-                                                if (res.status === 'ok' || res.status === 'OK') {
+                                                if (res && (res.status === 'ok' || res.status === 'OK')) {
                                                     setDesecStatus(res);
                                                     setDesecSuccess(true);
                                                     formik.setFieldValue('Hostname', res.hostname || formik.values.DesecDesiredDomain);
@@ -346,16 +355,23 @@ const NewInstall = () => {
                                                         formik.setFieldValue('DNSChallengeConfig', { DESEC_TOKEN: res.token });
                                                     }
                                                 } else {
-                                                    setDesecStatus(res);
-                                                    if (res.requiresDelegation) {
-                                                        // Still show NS/DNSSEC guidance even before activation.
+                                                    // Wrapped {status, data} response? Unwrap it.
+                                                    const body = (res && res.data) ? res.data : res;
+                                                    setDesecStatus(body);
+                                                    if (body && (body.status === 'error')) {
+                                                        setDesecError((body.message) || 'deSEC setup failed');
+                                                    } else if (body && body.requiresDelegation) {
+                                                        // Custom domain: show NS/DNSSEC guidance.
                                                         setDesecError(null);
+                                                    } else if (!body || body.status === 'idle') {
+                                                        setDesecError('No response from server — please try again.');
                                                     }
                                                 }
                                             } catch (e) {
-                                                setDesecError((e && e.message) || 'desec setup failed');
+                                                setDesecError((e && (e.message || 'deSEC setup failed')) || 'deSEC setup failed');
+                                            } finally {
+                                                setDesecBusy(false);
                                             }
-                                            setDesecBusy(false);
                                         }}>
                                         {desecBusy ? t('newInstall.loading') : t('newInstall.desecSetupButton')}
                                     </Button>
