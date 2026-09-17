@@ -56,7 +56,7 @@ func RefreshUserToken(w http.ResponseWriter, req *http.Request) ([]utils.Permiss
 	// if new install
 	if config.NewInstall {
 		// check route
-		if req.URL.Path != "/cosmos/api/status" && req.URL.Path != "/cosmos/api/newInstall" && req.URL.Path != "/cosmos/api/dns" && req.URL.Path != "/cosmos/api/setup" {
+		if req.URL.Path != "/cosmos/api/status" && req.URL.Path != "/cosmos/api/newInstall" && req.URL.Path != "/cosmos/api/dns" && req.URL.Path != "/cosmos/api/setup" && req.URL.Path != "/cosmos/api/setup/desec" && req.URL.Path != "/cosmos/api/setup/desec/captcha" && req.URL.Path != "/cosmos/api/setup/desec/status" {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"status": "NEW_INSTALL",
 			})
