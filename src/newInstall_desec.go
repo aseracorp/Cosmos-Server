@@ -248,10 +248,13 @@ func DesecSetupStatusRoute(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Activated: finish the setup.
+	// Activated: finish the setup. Pass the account email so the
+	// Let's Encrypt SSLEmail is a valid address (the previous fallback
+	// produced e.g. admin@mybox-dedyn-io which fails the email validator).
 	result, err := desecFinishAfterLogin(loginToken, DesecSetupRequest{
 		DesiredDomain: domain,
 		Hostname:      domain,
+		Email:         email,
 		CreateRecords: true,
 	})
 	if err != nil {
@@ -301,10 +304,15 @@ func desecFinishWithToken(token string, request DesecSetupRequest) (*DesecSetupR
 	}
 
 	if request.CreateRecords {
-		// Grab public IP for the apex A record.
-		pubIP, _ := utils.GetPublicIPv4()
-		if pubIP != "" {
-			_ = utils.DesecReplaceRRset(ctx, token, request.DesiredDomain, "", "A", []string{pubIP}, 3600)
+		// Grab the server's local (private) IP for the apex A record so the
+		// domain resolves to this host on the LAN. DDNS (vpn.<domain> + the
+		// public IP) keeps remote access working through Constellation.
+		localIP := utils.GetLocalIP()
+		if localIP == "" {
+			localIP, _ = utils.GetPublicIPv4()
+		}
+		if localIP != "" {
+			_ = utils.DesecReplaceRRset(ctx, token, request.DesiredDomain, "", "A", []string{localIP}, 3600)
 		}
 		// Wildcard CNAME * -> @.
 		_ = utils.DesecReplaceRRset(ctx, token, request.DesiredDomain, "*", "CNAME", []string{request.DesiredDomain + "."}, 3600)
@@ -338,6 +346,14 @@ func desecFinishWithToken(token string, request DesecSetupRequest) (*DesecSetupR
 		utils.DDNSUpdateNow()
 	}()
 
+	// Restart the HTTPS server so it picks up the new LE mode + DESEC DNS-01
+	// token and requests the Let's Encrypt wildcard certificate now (instead
+	// of only on the next manual reboot).
+	go func() {
+		time.Sleep(3 * time.Second)
+		utils.RestartHTTPServer()
+	}()
+
 	result.Token = token
 	result.ActivationState = "active"
 
@@ -363,5 +379,8 @@ func resultHostEmail(request DesecSetupRequest) string {
 	if request.Email != "" {
 		return request.Email
 	}
-	return "admin@" + strings.TrimPrefix(sanitizeDomain(request.Hostname), "-")
+	// Must be a syntactically valid e-mail (the config validator enforces the
+	// 'email' tag). Hostname-derived addresses like admin@mybox-dedyn-io are
+	// not valid, so use a safe placeholder domain.
+	return "admin@cosmos.local"
 }
