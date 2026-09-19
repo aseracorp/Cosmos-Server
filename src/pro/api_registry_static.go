@@ -55,8 +55,8 @@ func RegistryStaticSiteIdRoute(w http.ResponseWriter, req *http.Request, lock *s
 // @Description version (default: a UTC timestamp), activate (default true for the
 // @Description site's first deployment), host/internal/spa/tags to configure the
 // @Description site's route on first upload. Accepts a Cosmos token with the
-// @Description Resources permission OR a registry deploy token with push scope on an
-// @Description access that exposes this registry (Pro feature).
+// @Description Resources permission OR a deploy token of this registry with push scope
+// @Description (Pro feature).
 // @Tags registry
 // @Accept octet-stream
 // @Produce json

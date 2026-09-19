@@ -739,17 +739,22 @@ func resolveRegistry(image string) string {
 	return "https://index.docker.io/v1/"
 }
 
+// ImagePullAuthProvider, when set, supplies credentials for a registry host
+// the node has no docker login for — the cluster's own registries, whose
+// deploy tokens live in the constellation KV rather than in ~/.docker.
+// Returns empty strings when it has none for the host.
+var ImagePullAuthProvider func(registryHost string) (username, password string)
+
 func DockerPullImage(image string) (io.ReadCloser, error) {
 	utils.Debug("DockerPull - Preparing Pulling image " + image)
 
 	options := types.ImagePullOptions{}
+	registry := resolveRegistry(image)
 
 	configfile, err := dockerConfig.Load(dockerConfig.Dir())
 	if err != nil {
 		utils.Error("DockerPull - Read config file error -", err)
 	} else {
-		registry := resolveRegistry(image)
-
 		utils.Debug("DockerPull - resolved registry: " + registry)
 
 		creds, err := configfile.GetAuthConfig(registry)
@@ -757,6 +762,12 @@ func DockerPullImage(image string) (io.ReadCloser, error) {
 			utils.Error("DockerPull - GetAuthConfig error -", err)
 		} else if creds.Username != "" {
 			encodedJSON, _ := json.Marshal(creds)
+			options.RegistryAuth = base64.URLEncoding.EncodeToString(encodedJSON)
+		}
+	}
+	if options.RegistryAuth == "" && ImagePullAuthProvider != nil && !strings.HasPrefix(registry, "https://") {
+		if user, pass := ImagePullAuthProvider(registry); user != "" {
+			encodedJSON, _ := json.Marshal(map[string]string{"username": user, "password": pass, "serveraddress": registry})
 			options.RegistryAuth = base64.URLEncoding.EncodeToString(encodedJSON)
 		}
 	}

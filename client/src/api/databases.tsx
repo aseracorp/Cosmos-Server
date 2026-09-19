@@ -104,7 +104,8 @@ export default function createDatabasesAPI(apiFetch: ApiFetch) {
     }));
   }
 
-  function update(name: string, values: { restrictToConstellation?: boolean }): Promise<ApiResponse<ManagedDatabase>> {
+  // `route` replaces the URL-tab half of the proxy route; its RestrictToConstellation wins over the flag.
+  function update(name: string, values: { restrictToConstellation?: boolean; route?: any }): Promise<ApiResponse<ManagedDatabase>> {
     return wrap(apiFetch(base + '/' + name, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

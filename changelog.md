@@ -6,6 +6,8 @@
  - Fix issue with regex in event tab of monitoring
  - Fix PingURL / Favicon fetcher exposing some scanning surface
  - Can edit stopped containers
+ - Smartshield dashboard to edit bans
+ - Smartshield whitelisting
 
 ## Version 0.23.04
  - Allow terraform to remove Constellation managers

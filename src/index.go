@@ -206,7 +206,7 @@ func main() {
 }
 
 // @title Cosmos Server API
-// @version 0.24.0-unstable007
+// @version 0.24.0-unstable011
 // @description REST API for Cosmos Cloud server management
 // @BasePath /cosmos
 // @securityDefinitions.apikey BearerAuth
@@ -251,6 +251,17 @@ func cosmos() {
 	})
 	pro.SetManagedDatabaseProvider(constellation.ManagedDatabaseList)
 	pro.SetSeaweedFSProvider(constellation.SeaweedFSList)
+	pro.SetCIMetricPusher(func(key string, value int, label, unit, object, setOperation, agglo string) {
+		metrics.PushSetMetric(key, value, metrics.DataDef{
+			Period:       time.Minute * 5,
+			Label:        label,
+			AggloType:    agglo,
+			SetOperation: setOperation,
+			Unit:         unit,
+			Object:       object,
+		})
+	})
+	docker.ImagePullAuthProvider = pro.CIImagePullAuth
 	pro.SetSeaweedFSMetricPusher(func(key string, value int, max uint64, label, unit, object string) {
 		metrics.PushSetMetric(key, value, metrics.DataDef{
 			Max:       max,
@@ -328,6 +339,7 @@ func cosmos() {
 
 	proxy.InitSocketShield()
 	proxy.InitUDPShield()
+	proxy.InitShieldSync()
 
 	if err := utils.InitStore(); err != nil {
 		utils.Fatal("Cannot open auth.db", err)

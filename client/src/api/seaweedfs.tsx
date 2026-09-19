@@ -193,6 +193,15 @@ export default function createSeaweedFSAPI(apiFetch: ApiFetch) {
     }));
   }
 
+  // Replaces the URL-tab half of the S3 route; nodes apply it without recreating the filers.
+  function setS3Route(name: string, route: any): Promise<ApiResponse<SeaweedFSStatus>> {
+    return wrap(apiFetch(base + '/' + name + '/route', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ route }),
+    }));
+  }
+
   // Full replace of the jobs block, so every field has to be sent.
   function setJobs(name: string, jobs: SwfsJobsConfig): Promise<ApiResponse<SeaweedFSStatus>> {
     return wrap(apiFetch(base + '/' + name + '/jobs', {
@@ -288,7 +297,7 @@ export default function createSeaweedFSAPI(apiFetch: ApiFetch) {
   }
 
   return {
-    list, create, get, remove, status, setRestrict, setJobs, setStorageCap,
+    list, create, get, remove, status, setRestrict, setS3Route, setJobs, setStorageCap,
     configureBackup, removeBackup, runBackup, backupSnapshots,
     repair, drain, upgrade, replaceMaster,
   };

@@ -137,3 +137,24 @@ func SeaweedFSReplaceMasterRoute(w http.ResponseWriter, req *http.Request, lock 
 	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
 	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
 }
+
+// SeaweedFSS3RouteRoute godoc
+// @Summary Update the S3 endpoint's proxy route
+// @Description Replaces the user-facing settings of the instance's S3 route (auth,
+// @Description shield, whitelist...). Name, mode, target, tunnel and owner are
+// @Description forced server-side; the restriction flag is mirrored onto the record.
+// @Description The route lives in the filer deployment's compose, so this is a compose
+// @Description rewrite + version bump; nodes apply it without recreating the filers
+// @Description (Pro feature).
+// @Tags seaweedfs
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Instance name"
+// @Param body body object true "{\"route\": ProxyRouteConfig}"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/seaweedfs/{name}/route [put]
+func SeaweedFSS3RouteRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}

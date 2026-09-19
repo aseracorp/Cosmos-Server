@@ -10,8 +10,11 @@ import (
 )
 
 // RegistryGenericPackagesRoute godoc
-// @Summary List the packages of a generic or pypi registry
-// @Description Returns every package with its versions and their files (Pro feature)
+// @Summary List the packages of a registry
+// @Description Returns every package with its versions and their files. Works for every
+// @Description registry type but static: a docker image's versions are its manifests
+// @Description (named by digest, with the tags resolving to each), an npm package's are
+// @Description its published versions with their dist-tags (Pro feature)
 // @Tags registry
 // @Produce json
 // @Security BearerAuth
@@ -24,7 +27,7 @@ func RegistryGenericPackagesRoute(w http.ResponseWriter, req *http.Request, lock
 }
 
 // RegistryGenericPackageIdRoute godoc
-// @Summary Get or delete one generic or pypi package
+// @Summary Get or delete one package
 // @Description GET returns the package with its versions and files; DELETE removes the
 // @Description package and every version (the stored files are reclaimed by the next
 // @Description GC pass) (Pro feature)
@@ -66,10 +69,11 @@ func RegistryGenericVersionsRoute(w http.ResponseWriter, req *http.Request, lock
 }
 
 // RegistryGenericVersionIdRoute godoc
-// @Summary Delete one generic or pypi package version
+// @Summary Delete one package version
 // @Description Removes the version and its file entries; the stored files are reclaimed
-// @Description by the next GC pass. "latest" is re-pointed at the newest remaining
-// @Description version (Pro feature).
+// @Description by the next GC pass. For generic and pypi, "latest" is re-pointed at the
+// @Description newest remaining version; for docker (a manifest, by digest) and npm every
+// @Description tag resolving to the deleted version is dropped instead (Pro feature).
 // @Tags registry
 // @Produce json
 // @Security BearerAuth
@@ -84,11 +88,12 @@ func RegistryGenericVersionIdRoute(w http.ResponseWriter, req *http.Request, loc
 }
 
 // RegistryGenericFileRoute godoc
-// @Summary Download or delete one file of a generic or pypi package version
+// @Summary Download or delete one file of a package version
 // @Description GET streams the file (the version may be "latest"); accepts a Cosmos token
 // @Description with the Resources read permission OR a registry deploy token with pull
 // @Description scope. DELETE removes the file entry — and the version, when it was its
-// @Description last file; the stored bytes are reclaimed by the next GC pass (Pro feature).
+// @Description last file; the stored bytes are reclaimed by the next GC pass. Refused for
+// @Description docker and npm, whose versions are deleted whole (Pro feature).
 // @Tags registry
 // @Produce octet-stream
 // @Security BearerAuth

@@ -711,6 +711,10 @@ definitions:
         type: string
       serverToken:
         type: string
+      shieldWhitelist:
+        items:
+          $ref: '#/definitions/utils.ShieldWhitelistEntry'
+        type: array
       storage:
         $ref: '#/definitions/utils.StorageConfig'
       themeConfig:
@@ -1063,13 +1067,33 @@ definitions:
   pro.Deployment:
     properties:
       compose:
-        $ref: '#/definitions/docker.DockerServiceCreateRequest'
+        allOf:
+        - $ref: '#/definitions/docker.DockerServiceCreateRequest'
+        description: |-
+          Compose is the service spec the nodes apply. Exclusive with Function:
+          a deployment declares one or the other (ValidateDeploymentSpec).
+      function:
+        allOf:
+        - $ref: '#/definitions/pro.DeploymentFunction'
+        description: |-
+          Function makes this a function deployment: the compose is DERIVED from
+          it (one service per handler, see functions.go) when the scheduler
+          dispatches. Its Source.Token is redacted by the API and preserved across
+          user updates.
       maxReplicas:
         minimum: 1
         type: integer
       minReplicas:
-        description: MinReplicas/MaxReplicas select load-based autoscaling clamped
-          to [min,max], one step per cooldown.
+        description: |-
+          MinReplicas/MaxReplicas switch the deployment to load-based autoscaling:
+          each reconcile cycle the leader targets the current replica count clamped
+          to [min,max], stepping up by one when the nodes running the deployment
+          average above DeployScaleUpThreshold busyness (max of CPU%/RAM% from
+          heartbeats) and down by one below DeployScaleDownThreshold, at most one
+          step per DeployScaleCooldown. Nodes without trusted metrics
+          (MonitoringOn=false) hold the count steady.
+          Use Tags to restrict which nodes autoscaled replicas may land on — the
+          same affinity filter as the other modes.
         minimum: 1
         type: integer
       name:
@@ -1077,21 +1101,42 @@ definitions:
         minLength: 3
         type: string
       owner:
-        description: Owner marks a system-owned deployment (e.g. "seaweedfs:<instance>");
-          the HTTP API refuses user create/update/delete on it.
+        description: |-
+          Owner marks a deployment as system-owned (e.g. "seaweedfs:<instance>").
+          Owned deployments are created and mutated exclusively by the owning Go
+          feature: the HTTP API refuses user create/update/delete on them so a UI
+          action can't desync the owner's record from the deployed spec. Empty for
+          every user-created deployment.
         type: string
       preserveVolumesOnRemove:
         description: |-
-          PreserveVolumesOnRemove keeps the deployment's named volumes on disk on replica removal or
-          full delete; stamped as the cosmos-deployment-keep-volumes label on containers and volumes.
+          PreserveVolumesOnRemove keeps the deployment's named volumes on disk when a
+          replica is removed — a fill-mode scale-down (node untagged) or a full delete.
+          Stamped as the cosmos-deployment-keep-volumes label on the containers so the
+          node-side teardown honors it even for orphan removal, which runs after the
+          KV record is already gone. Used by system-owned data deployments (managed
+          SeaweedFS volume servers) where a stray untag must never destroy data.
         type: boolean
       replicaFill:
-        description: 'ReplicaFill: one replica on every alive node matching Tags (DaemonSet-style).'
+        description: |-
+          ReplicaFill switches the deployment to fill mode: exactly one replica on
+          EVERY alive, non-broken node matching Tags (every node when Tags is
+          empty — DaemonSet-style). The replica count follows the eligible node
+          set as nodes join/leave. Exclusive with the other two modes.
         type: boolean
       replicaFillMode:
         description: |-
-          fill sub-mode: "full" (default) = every eligible node; "bare" = autoscale between 1 and the
-          eligible set; "empty" = bare with lazy scale-to-zero.
+          ReplicaFillMode refines fill mode (only valid with ReplicaFill). The tag
+          set still defines the placement universe; the sub-mode sets how much of
+          it is occupied:
+            - "full" (default, empty string): one replica on every eligible node,
+              always.
+            - "bare": load-based between 1 and the whole eligible set — the
+              autoscale stepper (busyness thresholds + cooldown) with min=1 and
+              max=eligible node count. Idle collapses to one replica.
+            - "empty": bare, plus every container carries the cosmos-lazy label so
+              the idle floor replica is stopped by the lazy layer and woken by the
+              proxy on the next request — the tag scales from zero.
         enum:
         - full
         - bare
@@ -1099,8 +1144,11 @@ definitions:
         type: string
       replicas:
         description: |-
-          Exactly one of the three replica modes (fixed Replicas, autoscale Min/MaxReplicas, fill ReplicaFill)
-          must be set; ValidateReplicaConfig enforces the exclusivity.
+          Replicas is the fixed replica count (the original mode). Exactly one of
+          the three replica modes must be configured — fixed (Replicas), autoscale
+          (MinReplicas/MaxReplicas) or fill (ReplicaFill); ValidateReplicaConfig
+          enforces the exclusivity since struct tags can't express it. In every
+          mode, Tags restricts which nodes are eligible.
         minimum: 1
         type: integer
       storage:
@@ -1134,12 +1182,171 @@ definitions:
         type: array
       version:
         description: |-
-          Version is a server-assigned monotonic integer bumped on every create/update, stamped on containers
-          as cosmos-deployment-version so the scheduler can detect stale specs.
+          Version is a monotonic integer bumped on every create/update. It is
+          server-assigned (the client never sets it) and is stamped onto every
+          container as the cosmos-deployment-version label so the scheduler can tell
+          a node running a stale spec from one running the current spec. A bump
+          triggers a rolling re-apply across the nodes already running the deployment;
+          see runReconcileCycle. Pre-version KV records and pre-version containers both
+          read as 0, so upgrading an existing install causes no spurious re-apply.
         type: integer
     required:
-    - compose
     - name
+    type: object
+  pro.DeploymentFunction:
+    properties:
+      env:
+        additionalProperties:
+          type: string
+        type: object
+      handlers:
+        items:
+          $ref: '#/definitions/pro.FunctionHandler'
+        minItems: 1
+        type: array
+      image:
+        description: |-
+          Image overrides the runtime's default image (private mirror, patched
+          runtime); it must honour the same contract.
+        type: string
+      limits:
+        $ref: '#/definitions/pro.FunctionLimits'
+      releases:
+        items:
+          $ref: '#/definitions/pro.FunctionRelease'
+        type: array
+      rev:
+        type: integer
+      runtime:
+        type: string
+      source:
+        $ref: '#/definitions/pro.FunctionSource'
+    required:
+    - handlers
+    - runtime
+    type: object
+  pro.FunctionCronTrigger:
+    properties:
+      body:
+        type: string
+      crontab:
+        description: Crontab is the 6-field form used everywhere in Cosmos (seconds
+          first).
+        type: string
+      enabled:
+        type: boolean
+      method:
+        type: string
+      name:
+        maxLength: 64
+        minLength: 1
+        type: string
+      path:
+        type: string
+    required:
+    - crontab
+    - name
+    type: object
+  pro.FunctionHandler:
+    properties:
+      entry:
+        description: |-
+          Entry is FUNCTION_SOURCE: node = file inside the package, python =
+          module path. Empty = the package's main / import name.
+        type: string
+      env:
+        additionalProperties:
+          type: string
+        description: Env is merged over the deployment-level env for this handler
+          only.
+        type: object
+      handler:
+        maxLength: 128
+        minLength: 1
+        type: string
+      name:
+        maxLength: 40
+        minLength: 3
+        type: string
+      route:
+        allOf:
+        - $ref: '#/definitions/utils.ProxyRouteConfig'
+        description: |-
+          Route is the user-facing part of the function's URL (host, path, auth,
+          shield, restrictions...). Name, mode, target, tunnel and visibility are
+          forced when the compose is derived.
+      triggers:
+        $ref: '#/definitions/pro.FunctionTriggers'
+    required:
+    - handler
+    - name
+    type: object
+  pro.FunctionLimits:
+    properties:
+      cpu:
+        minimum: 0
+        type: number
+      idleTTL:
+        description: |-
+          IdleTTL is how long a replica stays awake without connections before the
+          lazy layer stops it (Go duration string).
+        type: string
+      memoryMB:
+        maximum: 1048576
+        minimum: 32
+        type: integer
+      timeoutSec:
+        maximum: 86400
+        minimum: 1
+        type: integer
+    type: object
+  pro.FunctionRelease:
+    properties:
+      deployedAt:
+        type: string
+      deployedBy:
+        type: string
+      rev:
+        type: integer
+      version:
+        type: string
+    type: object
+  pro.FunctionSource:
+    properties:
+      package:
+        description: |-
+          Package is the package name in that registry (npm name, possibly scoped;
+          PyPI project name, normalized on save).
+        maxLength: 214
+        minLength: 1
+        type: string
+      registry:
+        description: |-
+          Registry is the registry instance name; its type must match the runtime
+          (npm for node*, pypi for python*).
+        maxLength: 27
+        minLength: 3
+        type: string
+      token:
+        description: |-
+          Token is the read-only registry token minted for this function on the
+          registry (named "function-<name>"). Persisted, redacted in API output.
+        type: string
+      version:
+        description: |-
+          Version is the PINNED version the deployment runs; set by deploy, never
+          a tag. Empty until the first deploy.
+        type: string
+    required:
+    - package
+    - registry
+    type: object
+  pro.FunctionTriggers:
+    properties:
+      cron:
+        items:
+          $ref: '#/definitions/pro.FunctionCronTrigger'
+        type: array
     type: object
   pro.ManagedDBBackupRequest:
     properties:
@@ -1239,71 +1446,59 @@ definitions:
     properties:
       restrictToConstellation:
         type: boolean
-    type: object
-  pro.RegistryAccessCreateRequest:
-    properties:
-      allowAnonymousPull:
-        type: boolean
-      host:
-        type: string
-      internal:
-        type: boolean
-      name:
-        type: string
-      registries:
-        items:
-          type: string
-        type: array
-      tags:
-        items:
-          type: string
-        type: array
-    type: object
-  pro.RegistryAccessSettingsRequest:
-    properties:
-      allowAnonymousPull:
-        type: boolean
-      host:
-        type: string
-      internal:
-        type: boolean
-      registries:
-        items:
-          type: string
-        type: array
-      tags:
-        items:
-          type: string
-        type: array
-    type: object
-  pro.RegistryAccessTokenCreateRequest:
-    properties:
-      expiryDays:
-        type: integer
-      name:
-        type: string
-      scopes:
-        items:
-          type: string
-        type: array
+      route:
+        allOf:
+        - $ref: '#/definitions/utils.ProxyRouteConfig'
+        description: Route replaces the user-facing half of the proxy route; its RestrictToConstellation
+          wins when both are sent.
     type: object
   pro.RegistryCreateRequest:
     properties:
+      allowAnonymousPull:
+        type: boolean
+      host:
+        type: string
+      internal:
+        type: boolean
       name:
         type: string
       quotaBytes:
         type: integer
+      route:
+        allOf:
+        - $ref: '#/definitions/utils.ProxyRouteConfig'
+        description: Route's Host / RestrictToConstellation win over the scalars above
+          when set.
       storage:
         $ref: '#/definitions/pro.RegistryStorage'
+      tags:
+        items:
+          type: string
+        type: array
       type:
-        description: Type is docker, npm, static or generic. Required and immutable
+        description: Type is docker, npm, static, generic or pypi. Required and immutable
           afterwards.
         type: string
     type: object
   pro.RegistrySettingsRequest:
     properties:
+      allowAnonymousPull:
+        type: boolean
+      host:
+        type: string
+      internal:
+        type: boolean
       quotaBytes:
         type: integer
+      route:
+        allOf:
+        - $ref: '#/definitions/utils.ProxyRouteConfig'
+        description: Route's Host / RestrictToConstellation win over the scalars above
+          when both are sent.
+      tags:
+        items:
+          type: string
+        type: array
     type: object
   pro.RegistryStaticActivateRequest:
     properties:
@@ -1321,11 +1516,15 @@ definitions:
         - local
         type: string
       bucket:
+        description: |-
+          Bucket is the object-store bucket for both S3-family backends. Generated
+          as RegistryBucketName(name) for managed SeaweedFS.
         type: string
       endpoint:
         description: External S3 only.
         type: string
       path:
+        description: Path is the filesystem root when Backend is "local".
         type: string
       region:
         type: string
@@ -1336,6 +1535,17 @@ definitions:
         type: string
     required:
     - backend
+    type: object
+  pro.RegistryTokenCreateRequest:
+    properties:
+      expiryDays:
+        type: integer
+      name:
+        type: string
+      scopes:
+        items:
+          type: string
+        type: array
     type: object
   pro.SeaweedFSCreateRequest:
     properties:
@@ -2125,6 +2335,16 @@ definitions:
         type: string
       LBStickyMode:
         type: boolean
+      ManagedByKind:
+        description: ManagedByKind / ManagedByName identify the feature that owns
+          this route (see ManagedByKinds); both empty for a user-created route.
+        type: string
+      ManagedByName:
+        type: string
+      ManagedByVersion:
+        description: ManagedByVersion is the owner's spec version this copy was rendered
+          from (deployments only; see the routes-only apply in scheduler_node.go).
+        type: integer
       acceptInsecureHTTPSTarget:
         type: boolean
       addionalFilters:
@@ -2222,6 +2442,17 @@ definitions:
         items:
           $ref: '#/definitions/utils.Permission'
         type: array
+    type: object
+  utils.ShieldWhitelistEntry:
+    properties:
+      BypassGeo:
+        type: boolean
+      BypassIPRestriction:
+        type: boolean
+      IP:
+        type: string
+      Label:
+        type: string
     type: object
   utils.SingleBackupConfig:
     properties:
@@ -2327,7 +2558,7 @@ info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.24.0-unstable007
+  version: 0.24.0-unstable011
 paths:
   /_logs:
     get:
@@ -3391,6 +3622,158 @@ paths:
       summary: Block or unblock a Constellation device
       tags:
       - constellation
+  /api/constellation/ci/builds:
+    get:
+      responses: {}
+  /api/constellation/ci/detect:
+    post:
+      responses: {}
+  /api/constellation/ci/hooks/{name}:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a push / pull-request delivery for the named project and
+        queues a build (Pro feature)
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      summary: Receive a CI provider webhook
+      tags:
+      - ci
+  /api/constellation/ci/projects:
+    get:
+      responses: {}
+    post:
+      responses: {}
+  /api/constellation/ci/projects/{name}:
+    delete:
+      parameters:
+      - description: Project name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses: {}
+    get:
+      parameters:
+      - description: Project name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses: {}
+    put:
+      parameters:
+      - description: Project name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses: {}
+  /api/constellation/ci/projects/{name}/builds:
+    get:
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses: {}
+    post:
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses: {}
+  /api/constellation/ci/projects/{name}/builds/{number}:
+    delete:
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Build number
+        in: path
+        name: number
+        required: true
+        type: string
+      responses: {}
+    get:
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Build number
+        in: path
+        name: number
+        required: true
+        type: string
+      responses: {}
+  /api/constellation/ci/projects/{name}/builds/{number}/{action}:
+    post:
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Build number
+        in: path
+        name: number
+        required: true
+        type: string
+      - description: Action
+        in: path
+        name: action
+        required: true
+        type: string
+      responses: {}
+  /api/constellation/ci/projects/{name}/builds/{number}/logs:
+    get:
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Build number
+        in: path
+        name: number
+        required: true
+        type: string
+      responses: {}
+  /api/constellation/ci/projects/{name}/webhook/{action}:
+    post:
+      parameters:
+      - description: CI project name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Action
+        in: path
+        name: action
+        required: true
+        type: string
+      responses: {}
+  /api/constellation/ci/runners:
+    get:
+      responses: {}
   /api/constellation/config:
     get:
       produces:
@@ -4857,7 +5240,11 @@ paths:
       - registry
   /api/constellation/registries/{name}/packages:
     get:
-      description: Returns every package with its versions and their files (Pro feature)
+      description: |-
+        Returns every package with its versions and their files. Works for every
+        registry type but static: a docker image's versions are its manifests
+        (named by digest, with the tags resolving to each), an npm package's are
+        its published versions with their dist-tags (Pro feature)
       parameters:
       - description: Registry name
         in: path
@@ -4873,7 +5260,7 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: List the packages of a generic or pypi registry
+      summary: List the packages of a registry
       tags:
       - registry
   /api/constellation/registries/{name}/packages/{package}:
@@ -4902,7 +5289,7 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: Get or delete one generic or pypi package
+      summary: Get or delete one package
       tags:
       - registry
   /api/constellation/registries/{name}/packages/{package}/versions:
@@ -4953,8 +5340,9 @@ paths:
     delete:
       description: |-
         Removes the version and its file entries; the stored files are reclaimed
-        by the next GC pass. "latest" is re-pointed at the newest remaining
-        version (Pro feature).
+        by the next GC pass. For generic and pypi, "latest" is re-pointed at the
+        newest remaining version; for docker (a manifest, by digest) and npm every
+        tag resolving to the deleted version is dropped instead (Pro feature).
       parameters:
       - description: Registry name
         in: path
@@ -4980,7 +5368,7 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: Delete one generic or pypi package version
+      summary: Delete one package version
       tags:
       - registry
   /api/constellation/registries/{name}/packages/{package}/versions/{version}/files/{file}:
@@ -4989,7 +5377,8 @@ paths:
         GET streams the file (the version may be "latest"); accepts a Cosmos token
         with the Resources read permission OR a registry deploy token with pull
         scope. DELETE removes the file entry — and the version, when it was its
-        last file; the stored bytes are reclaimed by the next GC pass (Pro feature).
+        last file; the stored bytes are reclaimed by the next GC pass. Refused for
+        docker and npm, whose versions are deleted whole (Pro feature).
       parameters:
       - description: Registry name
         in: path
@@ -5020,15 +5409,17 @@ paths:
             type: file
       security:
       - BearerAuth: []
-      summary: Download or delete one file of a generic or pypi package version
+      summary: Download or delete one file of a package version
       tags:
       - registry
   /api/constellation/registries/{name}/settings:
     put:
       consumes:
       - application/json
-      description: Replaces the quota. Absent fields keep their stored value (Pro
-        feature).
+      description: |-
+        Replaces the quota, the host, the visibility, the anonymous-pull policy, the
+        serving tags or the whole user-facing route. Absent fields keep their stored
+        value (Pro feature).
       parameters:
       - description: Registry name
         in: path
@@ -5050,7 +5441,7 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: Update a registry's storage settings
+      summary: Update a registry's settings
       tags:
       - registry
   /api/constellation/registries/{name}/sites:
@@ -5156,8 +5547,8 @@ paths:
         version (default: a UTC timestamp), activate (default true for the
         site's first deployment), host/internal/spa/tags to configure the
         site's route on first upload. Accepts a Cosmos token with the
-        Resources permission OR a registry deploy token with push scope on an
-        access that exposes this registry (Pro feature).
+        Resources permission OR a deploy token of this registry with push scope
+        (Pro feature).
       parameters:
       - description: Registry name
         in: path
@@ -5248,134 +5639,15 @@ paths:
       summary: Download one static-site deployment archive
       tags:
       - registry
-  /api/constellation/registry-accesses:
-    get:
-      description: Returns every registry endpoint with the nodes currently serving
-        it, token hashes redacted (Pro feature)
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-      security:
-      - BearerAuth: []
-      summary: List registry accesses
-      tags:
-      - registry
+  /api/constellation/registries/{name}/tokens:
     post:
       consumes:
       - application/json
       description: |-
-        Publishes one or more registries on a hostname. Every exposed registry
-        must share ONE type, so an access serves exactly one protocol (several
-        docker registries are fine — they namespace by path; an npm or generic
-        access exposes exactly one registry); an empty tag list means every node
-        serves it; internal restricts the endpoint to the constellation (Pro feature).
+        Creates a deploy token on the registry. The raw token is returned ONCE, in this
+        response, and never stored. Scopes default to pull+push (Pro feature).
       parameters:
-      - description: Access to create
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/pro.RegistryAccessCreateRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-      security:
-      - BearerAuth: []
-      summary: Create a registry access
-      tags:
-      - registry
-  /api/constellation/registry-accesses/{name}:
-    delete:
-      description: |-
-        Removes the endpoint. The registries it published and everything
-        stored in them are untouched (Pro feature).
-      parameters:
-      - description: Access name
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-      security:
-      - BearerAuth: []
-      summary: Delete a registry access
-      tags:
-      - registry
-    get:
-      description: Returns the endpoint with the nodes currently serving it, token
-        hashes redacted (Pro feature)
-      parameters:
-      - description: Access name
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-      security:
-      - BearerAuth: []
-      summary: Get one registry access
-      tags:
-      - registry
-  /api/constellation/registry-accesses/{name}/settings:
-    put:
-      consumes:
-      - application/json
-      description: |-
-        Replaces the host, exposed registries, visibility, anonymous-pull toggle
-        and/or serving tags. Absent fields keep their stored value (Pro feature).
-      parameters:
-      - description: Access name
-        in: path
-        name: name
-        required: true
-        type: string
-      - description: Settings to change
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/pro.RegistryAccessSettingsRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-      security:
-      - BearerAuth: []
-      summary: Update a registry access
-      tags:
-      - registry
-  /api/constellation/registry-accesses/{name}/tokens:
-    post:
-      consumes:
-      - application/json
-      description: |-
-        Returns the raw token ONCE — only its sha256 is stored. Scopes are
-        pull/push, optionally qualified by protocol (e.g. "docker:push") (Pro feature).
-      parameters:
-      - description: Access name
+      - description: Registry name
         in: path
         name: name
         required: true
@@ -5385,7 +5657,7 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/pro.RegistryAccessTokenCreateRequest'
+          $ref: '#/definitions/pro.RegistryTokenCreateRequest'
       produces:
       - application/json
       responses:
@@ -5398,11 +5670,13 @@ paths:
       summary: Mint a registry deploy token
       tags:
       - registry
-  /api/constellation/registry-accesses/{name}/tokens/{tokenName}:
+  /api/constellation/registries/{name}/tokens/{tokenName}:
     delete:
-      description: Revokes the token on every node (Pro feature)
+      description: |-
+        Removes the token; it stops working on this node at once and on the others
+        within their cache TTL (Pro feature).
       parameters:
-      - description: Access name
+      - description: Registry name
         in: path
         name: name
         required: true
@@ -5421,7 +5695,7 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: Delete a registry deploy token
+      summary: Revoke a registry deploy token
       tags:
       - registry
   /api/constellation/reset:
@@ -5533,6 +5807,41 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a managed SeaweedFS instance
+      tags:
+      - seaweedfs
+  /api/constellation/seaweedfs/{name}/route:
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Replaces the user-facing settings of the instance's S3 route (auth,
+        shield, whitelist...). Name, mode, target, tunnel and owner are
+        forced server-side; the restriction flag is mirrored onto the record.
+        The route lives in the filer deployment's compose, so this is a compose
+        rewrite + version bump; nodes apply it without recreating the filers
+        (Pro feature).
+      parameters:
+      - description: Instance name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update the S3 endpoint's proxy route
       tags:
       - seaweedfs
   /api/constellation/tag-nodes:

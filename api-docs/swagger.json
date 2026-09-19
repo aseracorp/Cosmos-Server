@@ -4,7 +4,7 @@
         "description": "REST API for Cosmos Cloud server management",
         "title": "Cosmos Server API",
         "contact": {},
-        "version": "0.24.0-unstable007"
+        "version": "0.24.0-unstable011"
     },
     "basePath": "/cosmos",
     "paths": {
@@ -1668,6 +1668,235 @@
                         }
                     }
                 }
+            }
+        },
+        "/api/constellation/ci/builds": {
+            "get": {
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/detect": {
+            "post": {
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/hooks/{name}": {
+            "post": {
+                "description": "Accepts a push / pull-request delivery for the named project and queues a build (Pro feature)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ci"
+                ],
+                "summary": "Receive a CI provider webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/constellation/ci/projects": {
+            "get": {
+                "responses": {}
+            },
+            "post": {
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/projects/{name}": {
+            "get": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            },
+            "put": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/projects/{name}/builds": {
+            "get": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            },
+            "post": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/projects/{name}/builds/{number}": {
+            "get": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Build number",
+                        "name": "number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            },
+            "delete": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Build number",
+                        "name": "number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/projects/{name}/builds/{number}/logs": {
+            "get": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Build number",
+                        "name": "number",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/projects/{name}/builds/{number}/{action}": {
+            "post": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Build number",
+                        "name": "number",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Action",
+                        "name": "action",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/projects/{name}/webhook/{action}": {
+            "post": {
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "CI project name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Action",
+                        "name": "action",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/api/constellation/ci/runners": {
+            "get": {
+                "responses": {}
             }
         },
         "/api/constellation/config": {
@@ -3872,14 +4101,14 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns every package with its versions and their files (Pro feature)",
+                "description": "Returns every package with its versions and their files. Works for every\nregistry type but static: a docker image's versions are its manifests\n(named by digest, with the tags resolving to each), an npm package's are\nits published versions with their dist-tags (Pro feature)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "registry"
                 ],
-                "summary": "List the packages of a generic or pypi registry",
+                "summary": "List the packages of a registry",
                 "parameters": [
                     {
                         "type": "string",
@@ -3913,7 +4142,7 @@
                 "tags": [
                     "registry"
                 ],
-                "summary": "Get or delete one generic or pypi package",
+                "summary": "Get or delete one package",
                 "parameters": [
                     {
                         "type": "string",
@@ -4003,14 +4232,14 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Removes the version and its file entries; the stored files are reclaimed\nby the next GC pass. \"latest\" is re-pointed at the newest remaining\nversion (Pro feature).",
+                "description": "Removes the version and its file entries; the stored files are reclaimed\nby the next GC pass. For generic and pypi, \"latest\" is re-pointed at the\nnewest remaining version; for docker (a manifest, by digest) and npm every\ntag resolving to the deleted version is dropped instead (Pro feature).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "registry"
                 ],
-                "summary": "Delete one generic or pypi package version",
+                "summary": "Delete one package version",
                 "parameters": [
                     {
                         "type": "string",
@@ -4051,14 +4280,14 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "GET streams the file (the version may be \"latest\"); accepts a Cosmos token\nwith the Resources read permission OR a registry deploy token with pull\nscope. DELETE removes the file entry — and the version, when it was its\nlast file; the stored bytes are reclaimed by the next GC pass (Pro feature).",
+                "description": "GET streams the file (the version may be \"latest\"); accepts a Cosmos token\nwith the Resources read permission OR a registry deploy token with pull\nscope. DELETE removes the file entry — and the version, when it was its\nlast file; the stored bytes are reclaimed by the next GC pass. Refused for\ndocker and npm, whose versions are deleted whole (Pro feature).",
                 "produces": [
                     "application/octet-stream"
                 ],
                 "tags": [
                     "registry"
                 ],
-                "summary": "Download or delete one file of a generic or pypi package version",
+                "summary": "Download or delete one file of a package version",
                 "parameters": [
                     {
                         "type": "string",
@@ -4106,7 +4335,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replaces the quota. Absent fields keep their stored value (Pro feature).",
+                "description": "Replaces the quota, the host, the visibility, the anonymous-pull policy, the\nserving tags or the whole user-facing route. Absent fields keep their stored\nvalue (Pro feature).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4116,7 +4345,7 @@
                 "tags": [
                     "registry"
                 ],
-                "summary": "Update a registry's storage settings",
+                "summary": "Update a registry's settings",
                 "parameters": [
                     {
                         "type": "string",
@@ -4283,7 +4512,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Stores a zip as one immutable deployment. Accepts a multipart form\n(field \"file\") or the raw zip as the request body. Query parameters:\nversion (default: a UTC timestamp), activate (default true for the\nsite's first deployment), host/internal/spa/tags to configure the\nsite's route on first upload. Accepts a Cosmos token with the\nResources permission OR a registry deploy token with push scope on an\naccess that exposes this registry (Pro feature).",
+                "description": "Stores a zip as one immutable deployment. Accepts a multipart form\n(field \"file\") or the raw zip as the request body. Query parameters:\nversion (default: a UTC timestamp), activate (default true for the\nsite's first deployment), host/internal/spa/tags to configure the\nsite's route on first upload. Accepts a Cosmos token with the\nResources permission OR a deploy token of this registry with push scope\n(Pro feature).",
                 "consumes": [
                     "application/octet-stream"
                 ],
@@ -4416,188 +4645,14 @@
                 }
             }
         },
-        "/api/constellation/registry-accesses": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns every registry endpoint with the nodes currently serving it, token hashes redacted (Pro feature)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "registry"
-                ],
-                "summary": "List registry accesses",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/utils.APIResponse"
-                        }
-                    }
-                }
-            },
+        "/api/constellation/registries/{name}/tokens": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Publishes one or more registries on a hostname. Every exposed registry\nmust share ONE type, so an access serves exactly one protocol (several\ndocker registries are fine — they namespace by path; an npm or generic\naccess exposes exactly one registry); an empty tag list means every node\nserves it; internal restricts the endpoint to the constellation (Pro feature).",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "registry"
-                ],
-                "summary": "Create a registry access",
-                "parameters": [
-                    {
-                        "description": "Access to create",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/pro.RegistryAccessCreateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/utils.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/constellation/registry-accesses/{name}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns the endpoint with the nodes currently serving it, token hashes redacted (Pro feature)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "registry"
-                ],
-                "summary": "Get one registry access",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Access name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/utils.APIResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Removes the endpoint. The registries it published and everything\nstored in them are untouched (Pro feature).",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "registry"
-                ],
-                "summary": "Delete a registry access",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Access name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/utils.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/constellation/registry-accesses/{name}/settings": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Replaces the host, exposed registries, visibility, anonymous-pull toggle\nand/or serving tags. Absent fields keep their stored value (Pro feature).",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "registry"
-                ],
-                "summary": "Update a registry access",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Access name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Settings to change",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/pro.RegistryAccessSettingsRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/utils.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/constellation/registry-accesses/{name}/tokens": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Returns the raw token ONCE — only its sha256 is stored. Scopes are\npull/push, optionally qualified by protocol (e.g. \"docker:push\") (Pro feature).",
+                "description": "Creates a deploy token on the registry. The raw token is returned ONCE, in this\nresponse, and never stored. Scopes default to pull+push (Pro feature).",
                 "consumes": [
                     "application/json"
                 ],
@@ -4611,7 +4666,7 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Access name",
+                        "description": "Registry name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -4622,7 +4677,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/pro.RegistryAccessTokenCreateRequest"
+                            "$ref": "#/definitions/pro.RegistryTokenCreateRequest"
                         }
                     }
                 ],
@@ -4636,25 +4691,25 @@
                 }
             }
         },
-        "/api/constellation/registry-accesses/{name}/tokens/{tokenName}": {
+        "/api/constellation/registries/{name}/tokens/{tokenName}": {
             "delete": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Revokes the token on every node (Pro feature)",
+                "description": "Removes the token; it stops working on this node at once and on the others\nwithin their cache TTL (Pro feature).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "registry"
                 ],
-                "summary": "Delete a registry deploy token",
+                "summary": "Revoke a registry deploy token",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Access name",
+                        "description": "Registry name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -4833,6 +4888,52 @@
                         "description": "Keep the auto-provisioned filer database",
                         "name": "keepFilerDB",
                         "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/constellation/seaweedfs/{name}/route": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Replaces the user-facing settings of the instance's S3 route (auth,\nshield, whitelist...). Name, mode, target, tunnel and owner are\nforced server-side; the restriction flag is mirrored onto the record.\nThe route lives in the filer deployment's compose, so this is a compose\nrewrite + version bump; nodes apply it without recreating the filers\n(Pro feature).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "seaweedfs"
+                ],
+                "summary": "Update the S3 endpoint's proxy route",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
                     }
                 ],
                 "responses": {
@@ -11695,6 +11796,12 @@
                 "serverToken": {
                     "type": "string"
                 },
+                "shieldWhitelist": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/utils.ShieldWhitelistEntry"
+                    }
+                },
                 "storage": {
                     "$ref": "#/definitions/utils.StorageConfig"
                 },
@@ -12140,19 +12247,31 @@
         "pro.Deployment": {
             "type": "object",
             "required": [
-                "compose",
                 "name"
             ],
             "properties": {
                 "compose": {
-                    "$ref": "#/definitions/docker.DockerServiceCreateRequest"
+                    "description": "Compose is the service spec the nodes apply. Exclusive with Function:\na deployment declares one or the other (ValidateDeploymentSpec).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/docker.DockerServiceCreateRequest"
+                        }
+                    ]
+                },
+                "function": {
+                    "description": "Function makes this a function deployment: the compose is DERIVED from\nit (one service per handler, see functions.go) when the scheduler\ndispatches. Its Source.Token is redacted by the API and preserved across\nuser updates.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/pro.DeploymentFunction"
+                        }
+                    ]
                 },
                 "maxReplicas": {
                     "type": "integer",
                     "minimum": 1
                 },
                 "minReplicas": {
-                    "description": "MinReplicas/MaxReplicas select load-based autoscaling clamped to [min,max], one step per cooldown.",
+                    "description": "MinReplicas/MaxReplicas switch the deployment to load-based autoscaling:\neach reconcile cycle the leader targets the current replica count clamped\nto [min,max], stepping up by one when the nodes running the deployment\naverage above DeployScaleUpThreshold busyness (max of CPU%/RAM% from\nheartbeats) and down by one below DeployScaleDownThreshold, at most one\nstep per DeployScaleCooldown. Nodes without trusted metrics\n(MonitoringOn=false) hold the count steady.\nUse Tags to restrict which nodes autoscaled replicas may land on — the\nsame affinity filter as the other modes.",
                     "type": "integer",
                     "minimum": 1
                 },
@@ -12162,19 +12281,19 @@
                     "minLength": 3
                 },
                 "owner": {
-                    "description": "Owner marks a system-owned deployment (e.g. \"seaweedfs:\u003cinstance\u003e\"); the HTTP API refuses user create/update/delete on it.",
+                    "description": "Owner marks a deployment as system-owned (e.g. \"seaweedfs:\u003cinstance\u003e\").\nOwned deployments are created and mutated exclusively by the owning Go\nfeature: the HTTP API refuses user create/update/delete on them so a UI\naction can't desync the owner's record from the deployed spec. Empty for\nevery user-created deployment.",
                     "type": "string"
                 },
                 "preserveVolumesOnRemove": {
-                    "description": "PreserveVolumesOnRemove keeps the deployment's named volumes on disk on replica removal or\nfull delete; stamped as the cosmos-deployment-keep-volumes label on containers and volumes.",
+                    "description": "PreserveVolumesOnRemove keeps the deployment's named volumes on disk when a\nreplica is removed — a fill-mode scale-down (node untagged) or a full delete.\nStamped as the cosmos-deployment-keep-volumes label on the containers so the\nnode-side teardown honors it even for orphan removal, which runs after the\nKV record is already gone. Used by system-owned data deployments (managed\nSeaweedFS volume servers) where a stray untag must never destroy data.",
                     "type": "boolean"
                 },
                 "replicaFill": {
-                    "description": "ReplicaFill: one replica on every alive node matching Tags (DaemonSet-style).",
+                    "description": "ReplicaFill switches the deployment to fill mode: exactly one replica on\nEVERY alive, non-broken node matching Tags (every node when Tags is\nempty — DaemonSet-style). The replica count follows the eligible node\nset as nodes join/leave. Exclusive with the other two modes.",
                     "type": "boolean"
                 },
                 "replicaFillMode": {
-                    "description": "fill sub-mode: \"full\" (default) = every eligible node; \"bare\" = autoscale between 1 and the\neligible set; \"empty\" = bare with lazy scale-to-zero.",
+                    "description": "ReplicaFillMode refines fill mode (only valid with ReplicaFill). The tag\nset still defines the placement universe; the sub-mode sets how much of\nit is occupied:\n  - \"full\" (default, empty string): one replica on every eligible node,\n    always.\n  - \"bare\": load-based between 1 and the whole eligible set — the\n    autoscale stepper (busyness thresholds + cooldown) with min=1 and\n    max=eligible node count. Idle collapses to one replica.\n  - \"empty\": bare, plus every container carries the cosmos-lazy label so\n    the idle floor replica is stopped by the lazy layer and woken by the\n    proxy on the next request — the tag scales from zero.",
                     "type": "string",
                     "enum": [
                         "full",
@@ -12183,7 +12302,7 @@
                     ]
                 },
                 "replicas": {
-                    "description": "Exactly one of the three replica modes (fixed Replicas, autoscale Min/MaxReplicas, fill ReplicaFill)\nmust be set; ValidateReplicaConfig enforces the exclusivity.",
+                    "description": "Replicas is the fixed replica count (the original mode). Exactly one of\nthe three replica modes must be configured — fixed (Replicas), autoscale\n(MinReplicas/MaxReplicas) or fill (ReplicaFill); ValidateReplicaConfig\nenforces the exclusivity since struct tags can't express it. In every\nmode, Tags restricts which nodes are eligible.",
                     "type": "integer",
                     "minimum": 1
                 },
@@ -12210,8 +12329,203 @@
                     }
                 },
                 "version": {
-                    "description": "Version is a server-assigned monotonic integer bumped on every create/update, stamped on containers\nas cosmos-deployment-version so the scheduler can detect stale specs.",
+                    "description": "Version is a monotonic integer bumped on every create/update. It is\nserver-assigned (the client never sets it) and is stamped onto every\ncontainer as the cosmos-deployment-version label so the scheduler can tell\na node running a stale spec from one running the current spec. A bump\ntriggers a rolling re-apply across the nodes already running the deployment;\nsee runReconcileCycle. Pre-version KV records and pre-version containers both\nread as 0, so upgrading an existing install causes no spurious re-apply.",
                     "type": "integer"
+                }
+            }
+        },
+        "pro.DeploymentFunction": {
+            "type": "object",
+            "required": [
+                "handlers",
+                "runtime"
+            ],
+            "properties": {
+                "env": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "handlers": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/pro.FunctionHandler"
+                    }
+                },
+                "image": {
+                    "description": "Image overrides the runtime's default image (private mirror, patched\nruntime); it must honour the same contract.",
+                    "type": "string"
+                },
+                "limits": {
+                    "$ref": "#/definitions/pro.FunctionLimits"
+                },
+                "releases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pro.FunctionRelease"
+                    }
+                },
+                "rev": {
+                    "type": "integer"
+                },
+                "runtime": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/pro.FunctionSource"
+                }
+            }
+        },
+        "pro.FunctionCronTrigger": {
+            "type": "object",
+            "required": [
+                "crontab",
+                "name"
+            ],
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "crontab": {
+                    "description": "Crontab is the 6-field form used everywhere in Cosmos (seconds first).",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "minLength": 1
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "pro.FunctionHandler": {
+            "type": "object",
+            "required": [
+                "handler",
+                "name"
+            ],
+            "properties": {
+                "entry": {
+                    "description": "Entry is FUNCTION_SOURCE: node = file inside the package, python =\nmodule path. Empty = the package's main / import name.",
+                    "type": "string"
+                },
+                "env": {
+                    "description": "Env is merged over the deployment-level env for this handler only.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "handler": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 1
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "minLength": 3
+                },
+                "route": {
+                    "description": "Route is the user-facing part of the function's URL (host, path, auth,\nshield, restrictions...). Name, mode, target, tunnel and visibility are\nforced when the compose is derived.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.ProxyRouteConfig"
+                        }
+                    ]
+                },
+                "triggers": {
+                    "$ref": "#/definitions/pro.FunctionTriggers"
+                }
+            }
+        },
+        "pro.FunctionLimits": {
+            "type": "object",
+            "properties": {
+                "cpu": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "idleTTL": {
+                    "description": "IdleTTL is how long a replica stays awake without connections before the\nlazy layer stops it (Go duration string).",
+                    "type": "string"
+                },
+                "memoryMB": {
+                    "type": "integer",
+                    "maximum": 1048576,
+                    "minimum": 32
+                },
+                "timeoutSec": {
+                    "type": "integer",
+                    "maximum": 86400,
+                    "minimum": 1
+                }
+            }
+        },
+        "pro.FunctionRelease": {
+            "type": "object",
+            "properties": {
+                "deployedAt": {
+                    "type": "string"
+                },
+                "deployedBy": {
+                    "type": "string"
+                },
+                "rev": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "pro.FunctionSource": {
+            "type": "object",
+            "required": [
+                "package",
+                "registry"
+            ],
+            "properties": {
+                "package": {
+                    "description": "Package is the package name in that registry (npm name, possibly scoped;\nPyPI project name, normalized on save).",
+                    "type": "string",
+                    "maxLength": 214,
+                    "minLength": 1
+                },
+                "registry": {
+                    "description": "Registry is the registry instance name; its type must match the runtime\n(npm for node*, pypi for python*).",
+                    "type": "string",
+                    "maxLength": 27,
+                    "minLength": 3
+                },
+                "token": {
+                    "description": "Token is the read-only registry token minted for this function on the\nregistry (named \"function-\u003cname\u003e\"). Persisted, redacted in API output.",
+                    "type": "string"
+                },
+                "version": {
+                    "description": "Version is the PINNED version the deployment runs; set by deploy, never\na tag. Empty until the first deploy.",
+                    "type": "string"
+                }
+            }
+        },
+        "pro.FunctionTriggers": {
+            "type": "object",
+            "properties": {
+                "cron": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pro.FunctionCronTrigger"
+                    }
                 }
             }
         },
@@ -12336,95 +12650,54 @@
             "properties": {
                 "restrictToConstellation": {
                     "type": "boolean"
-                }
-            }
-        },
-        "pro.RegistryAccessCreateRequest": {
-            "type": "object",
-            "properties": {
-                "allowAnonymousPull": {
-                    "type": "boolean"
                 },
-                "host": {
-                    "type": "string"
-                },
-                "internal": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "registries": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "pro.RegistryAccessSettingsRequest": {
-            "type": "object",
-            "properties": {
-                "allowAnonymousPull": {
-                    "type": "boolean"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "internal": {
-                    "type": "boolean"
-                },
-                "registries": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "tags": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "pro.RegistryAccessTokenCreateRequest": {
-            "type": "object",
-            "properties": {
-                "expiryDays": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "scopes": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "route": {
+                    "description": "Route replaces the user-facing half of the proxy route; its RestrictToConstellation wins when both are sent.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.ProxyRouteConfig"
+                        }
+                    ]
                 }
             }
         },
         "pro.RegistryCreateRequest": {
             "type": "object",
             "properties": {
+                "allowAnonymousPull": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "internal": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
                 "quotaBytes": {
                     "type": "integer"
                 },
+                "route": {
+                    "description": "Route's Host / RestrictToConstellation win over the scalars above when set.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.ProxyRouteConfig"
+                        }
+                    ]
+                },
                 "storage": {
                     "$ref": "#/definitions/pro.RegistryStorage"
                 },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "type": {
-                    "description": "Type is docker, npm, static or generic. Required and immutable afterwards.",
+                    "description": "Type is docker, npm, static, generic or pypi. Required and immutable afterwards.",
                     "type": "string"
                 }
             }
@@ -12432,8 +12705,31 @@
         "pro.RegistrySettingsRequest": {
             "type": "object",
             "properties": {
+                "allowAnonymousPull": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "internal": {
+                    "type": "boolean"
+                },
                 "quotaBytes": {
                     "type": "integer"
+                },
+                "route": {
+                    "description": "Route's Host / RestrictToConstellation win over the scalars above when both are sent.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/utils.ProxyRouteConfig"
+                        }
+                    ]
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -12463,6 +12759,7 @@
                     ]
                 },
                 "bucket": {
+                    "description": "Bucket is the object-store bucket for both S3-family backends. Generated\nas RegistryBucketName(name) for managed SeaweedFS.",
                     "type": "string"
                 },
                 "endpoint": {
@@ -12470,6 +12767,7 @@
                     "type": "string"
                 },
                 "path": {
+                    "description": "Path is the filesystem root when Backend is \"local\".",
                     "type": "string"
                 },
                 "region": {
@@ -12481,6 +12779,23 @@
                 },
                 "secretKey": {
                     "type": "string"
+                }
+            }
+        },
+        "pro.RegistryTokenCreateRequest": {
+            "type": "object",
+            "properties": {
+                "expiryDays": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -13532,6 +13847,17 @@
                 "LBStickyMode": {
                     "type": "boolean"
                 },
+                "ManagedByKind": {
+                    "description": "ManagedByKind / ManagedByName identify the feature that owns this route (see ManagedByKinds); both empty for a user-created route.",
+                    "type": "string"
+                },
+                "ManagedByName": {
+                    "type": "string"
+                },
+                "ManagedByVersion": {
+                    "description": "ManagedByVersion is the owner's spec version this copy was rendered from (deployments only; see the routes-only apply in scheduler_node.go).",
+                    "type": "integer"
+                },
                 "acceptInsecureHTTPSTarget": {
                     "type": "boolean"
                 },
@@ -13673,6 +13999,23 @@
                     "items": {
                         "$ref": "#/definitions/utils.Permission"
                     }
+                }
+            }
+        },
+        "utils.ShieldWhitelistEntry": {
+            "type": "object",
+            "properties": {
+                "BypassGeo": {
+                    "type": "boolean"
+                },
+                "BypassIPRestriction": {
+                    "type": "boolean"
+                },
+                "IP": {
+                    "type": "string"
+                },
+                "Label": {
+                    "type": "string"
                 }
             }
         },
