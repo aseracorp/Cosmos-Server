@@ -30,13 +30,9 @@ func RegistryStaticSitesRoute(w http.ResponseWriter, req *http.Request, lock *sy
 }
 
 // RegistryStaticSiteIdRoute godoc
-// @Summary Get, configure or delete one static site
-// @Description GET returns the site with its deployments; PUT replaces its route
-// @Description configuration (host, internal, spa, tags — absent fields keep their
-// @Description stored value); DELETE removes the site and all its deployments (the
-// @Description stored zips are reclaimed by the next GC pass) (Pro feature)
+// @Summary Get one static site
+// @Description Returns the site with its deployments (Pro feature)
 // @Tags registry
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param name path string true "Registry name"
@@ -123,4 +119,49 @@ func RegistryStaticVersionIdRoute(w http.ResponseWriter, req *http.Request, lock
 func RegistryStaticVersionDownloadRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
 	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
 	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// registryStaticUpdateSite godoc
+// @Summary Configure one static site
+// @Description Replaces the site's route configuration (host, internal, spa, tags or the whole user-facing
+// @Description route); absent fields keep their stored value. Admin only: a deploy token cannot move a site (Pro feature).
+// @Tags registry
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Registry name"
+// @Param site path string true "Site name"
+// @Param body body RegistryStaticSiteSettings true "Settings to change"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/registries/{name}/sites/{site} [put]
+func registryStaticUpdateSite(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// registryStaticDeleteSite godoc
+// @Summary Delete one static site
+// @Description Removes the site and all its deployments; the stored zips are reclaimed by the next GC pass (Pro feature)
+// @Tags registry
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Registry name"
+// @Param site path string true "Site name"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/registries/{name}/sites/{site} [delete]
+func registryStaticDeleteSite(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// RegistryStaticSiteSettings is the shape of a site's route configuration.
+// Pointers so an absent field keeps its stored value: a CI upload that only
+// sends a zip must not clear the hostname the site is published on.
+type RegistryStaticSiteSettings struct {
+	Host     *string   `json:"host,omitempty"`
+	Internal *bool     `json:"internal,omitempty"`
+	SPA      *bool     `json:"spa,omitempty"`
+	Tags     *[]string `json:"tags,omitempty"`
+	// Route replaces the user-facing half of the serving route; its Host / RestrictToConstellation win over the scalars above.
+	Route *utils.ProxyRouteConfig `json:"route,omitempty"`
 }

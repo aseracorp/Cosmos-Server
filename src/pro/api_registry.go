@@ -56,7 +56,7 @@ func RegistryIdRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMute
 
 // listRegistries godoc
 // @Summary List package registries
-// @Description Returns every registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+// @Description Returns every registry with the nodes serving it and its stored-size rollup, secrets redacted (Pro feature)
 // @Tags registry
 // @Produce json
 // @Security BearerAuth
@@ -69,7 +69,7 @@ func listRegistries(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex
 
 // getRegistry godoc
 // @Summary Get one package registry
-// @Description Returns the registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)
+// @Description Returns the registry with the nodes serving it and its stored-size rollup, secrets redacted (Pro feature)
 // @Tags registry
 // @Produce json
 // @Security BearerAuth
@@ -84,8 +84,8 @@ func getRegistry(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, j
 // createRegistry godoc
 // @Summary Create a package registry
 // @Description Claims the name, provisions the backing bucket and marks the registry ready.
-// @Description A registry is typed storage (docker/npm/static/generic): publish it by creating
-// @Description an access (Pro feature).
+// @Description Every type but static is served on the given host from then on; a static
+// @Description registry publishes its sites instead (Pro feature).
 // @Tags registry
 // @Accept json
 // @Produce json
@@ -100,8 +100,8 @@ func createRegistry(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex
 
 // deleteRegistry godoc
 // @Summary Delete a package registry
-// @Description Removes the record and every metadata key. Refused while an access
-// @Description still publishes it. Stored blobs are PRESERVED unless purgeData=true,
+// @Description Removes the record and every metadata key; serving nodes withdraw
+// @Description the endpoint. Stored blobs are PRESERVED unless purgeData=true,
 // @Description which best-effort empties the backing bucket (the bucket itself is
 // @Description left in place) (Pro feature).
 // @Tags registry
@@ -134,6 +134,7 @@ func RegistrySettingsRoute(w http.ResponseWriter, req *http.Request, lock *sync.
 	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
 }
 
+// RegistryTokensRoute godoc
 // @Summary Mint a registry deploy token
 // @Description Creates a deploy token on the registry. The raw token is returned ONCE, in this
 // @Description response, and never stored. Scopes default to pull+push (Pro feature).

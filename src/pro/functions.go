@@ -99,3 +99,32 @@ type DeploymentFunction struct {
 func StartFunctionTriggers() {
 	// Pro feature stub.
 }
+
+// Function is the API view of ONE handler of a function deployment: the
+// deployment-level settings flattened next to the handler's own. It is what
+// the Functions page reads and what create/update accept.
+type Function struct {
+	Name string `json:"name" validate:"required,min=3,max=40,alphanum"`
+	// Deployment is the deployment carrying the handler; on create, empty
+	// means "fn<name>".
+	Deployment string                 `json:"deployment,omitempty"`
+	Runtime    string                 `json:"runtime" validate:"required"`
+	Image      string                 `json:"image,omitempty"`
+	Source     FunctionSource         `json:"source"`
+	Handler    string                 `json:"handler" validate:"required,min=1,max=128"`
+	Entry      string                 `json:"entry,omitempty"`
+	Env        map[string]string      `json:"env,omitempty"`
+	Tags       []string               `json:"tags,omitempty" validate:"omitempty,dive,min=1,max=64"`
+	Limits     FunctionLimits         `json:"limits"`
+	Route      utils.ProxyRouteConfig `json:"route"`
+	Triggers   FunctionTriggers       `json:"triggers"`
+
+	Rev      int               `json:"rev"`
+	Releases []FunctionRelease `json:"releases,omitempty"`
+	// Status is "created" (no version pinned yet) or "deployed".
+	Status string `json:"status"`
+	// Siblings are the other handlers of the same deployment.
+	Siblings  []string  `json:"siblings,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}

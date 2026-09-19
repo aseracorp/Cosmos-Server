@@ -125,6 +125,13 @@ func (p *CosmosProvider) Resources(_ context.Context) []func() resource.Resource
 		resources.NewStorageMountResource,
 		resources.NewGroupResource,
 		resources.NewDeploymentResource,
+		resources.NewRegistryResource,
+		resources.NewRegistryTokenResource,
+		resources.NewDatabaseResource,
+		resources.NewDatabaseLogicalResource,
+		resources.NewObjectStorageResource,
+		resources.NewFunctionResource,
+		resources.NewCIProjectResource,
 		resources.NewInstallResource,
 		resources.NewRemoteInstallResource,
 	}
