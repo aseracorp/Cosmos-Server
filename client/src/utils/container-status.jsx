@@ -1,9 +1,11 @@
 // Container status helpers.
 //
-// We show health first when a container has a healthcheck configured
-// (healthy / starting / unhealthy), and only fall back to the raw Docker
-// run state otherwise. An exited container is shown as "completed" when it
-// stopped cleanly (exit code 0) and as "exited" otherwise.
+// We show health first when a container is RUNNING and has a healthcheck
+// configured (healthy / starting / unhealthy). Health is meaningless once the
+// container is gone: Docker keeps the last health value in its inspect even
+// after a stop, so a stopped container must never be reported as "unhealthy".
+// An exited container is shown as "completed" when it stopped cleanly (exit
+// code 0) and as "exited" otherwise.
 //
 // The servapps list endpoint returns the summary shape (State is a plain
 // string, Health/ExitCode are extra flat fields), while the container detail
@@ -50,10 +52,14 @@ function exitCodeFromContainer(container) {
 export function getContainerDisplayStatus(container) {
   const state = stateFromContainer(container);
 
-  // Health takes priority over the run state when a healthcheck exists.
-  const health = healthFromContainer(container);
-  if (health && HEALTH_STATUSES.indexOf(health) !== -1) {
-    return health;
+  // Health only counts while the container is actually running: a stopped
+  // container must never show "unhealthy" (or "healthy"/"starting").
+  if (state === 'running') {
+    const health = healthFromContainer(container);
+    if (health && HEALTH_STATUSES.indexOf(health) !== -1) {
+      return health;
+    }
+    return 'running';
   }
 
   // Split "exited" into "exited" (failure) vs "completed" (clean stop).
