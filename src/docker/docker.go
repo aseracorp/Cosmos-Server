@@ -169,18 +169,6 @@ func Connect() error {
 }
 
 func RecreateContainer(containerID string, containerConfig types.ContainerJSON) (string, error) {
-	// A dormant lazy container keeps its status across the recreate: stamp the
-	// persisted dormant label onto the config handed to EditContainer, so the
-	// recreated container is born with it (and LazyIsDormant keeps reporting
-	// dormant afterwards - e.g. after an auto update).
-	wasDormant := LazyIsDormant(strings.TrimPrefix(containerID, "/"))
-	if wasDormant && containerConfig.Config != nil {
-		if containerConfig.Config.Labels == nil {
-			containerConfig.Config.Labels = map[string]string{}
-		}
-		containerConfig.Config.Labels[LazyDormantLabel] = "true"
-	}
-
 	if utils.IsInsideContainer  && os.Getenv("HOSTNAME") == containerID[1:] {
 		err := SelfRecreate()
 		if err != nil {
