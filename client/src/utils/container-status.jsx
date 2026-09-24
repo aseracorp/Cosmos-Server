@@ -5,9 +5,12 @@
 // container is gone: Docker keeps the last health value in its inspect even
 // after a stop, so a stopped container must never be reported as "unhealthy".
 //
-// A lazy container that Cosmos itself put to sleep (idle reaper) is
-// "dormant". A lazy container stopped by the user is "stopped", never
-// "dormant". An exited container is shown as "stopped" when it stopped
+// A lazy container that is not running is "dormant" - this matches upstream
+// Cosmos semantics (a lazy container sleeping, stopped, or updated while
+// stopped is dormant). The "dormant" state does NOT distinguish who stopped
+// the container: it is derived from the cosmos-lazy label and the run state,
+// so it survives a Cosmos reboot and a container update without any extra
+// bookkeeping. An exited container is shown as "stopped" when it stopped
 // cleanly (exit code 0) and as "exited" otherwise.
 //
 // The servapps list endpoint returns the summary shape (State is a plain
@@ -48,22 +51,30 @@ function exitCodeFromContainer(container) {
   return null;
 }
 
-// Whether Cosmos itself put the lazy container to sleep (idle reaper). A
-// manual stop is never dormant. Accepts both the summary shape (flat Dormant
-// field) and the inspect shape (flat Dormant field added by the API).
+// Whether the container is a lazy container that is not running (upstream
+// semantics: dormant = cosmos-lazy label set AND not running). Works for both
+// the summary shape (flat Labels map + string State) and the inspect shape
+// (Config.Labels + State object). The backend also exposes a flat Dormant
+// flag with the same meaning; checking the label + state directly keeps the
+// UI correct even when the flag is absent.
 export function isContainerDormant(container) {
-  return !!(container && container.Dormant);
+  if (!container) return false;
+  const labels = (container.Labels) || (container.Config && container.Config.Labels) || {};
+  if (labels['cosmos-lazy'] !== 'true') return false;
+  const state = stateFromContainer(container);
+  return state !== 'running';
 }
 
 // Returns a display status string:
-//   dormant  (lazy container put to sleep by Cosmos' idle reaper)
+//   dormant  (lazy container not running - upstream semantics)
 //   healthy | starting | unhealthy   (health, only while running)
 //   running | paused | created | restarting | removing | dead
 //   stopped (clean manual stop, exit code 0) | exited (non-zero exit)
 export function getContainerDisplayStatus(container) {
   const state = stateFromContainer(container);
 
-  // A container Cosmos put to sleep is dormant, regardless of its raw state.
+  // A lazy container that is not running is dormant, regardless of its raw
+  // state (sleeping, stopped, or updated while stopped).
   if (isContainerDormant(container)) {
     return 'dormant';
   }

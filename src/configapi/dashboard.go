@@ -22,10 +22,10 @@ type DashboardRoute struct {
 	HideFromDashboard bool   `json:"HideFromDashboard"`
 	// Container info (for SERVAPP routes)
 	ContainerRunning bool `json:"ContainerRunning"`
-	// ContainerDormant is true when Cosmos itself put the lazy container to
-	// sleep (idle reaper). Such a route stays on the home page: the container
-	// is reachable and will be woken on demand. A manually stopped container
-	// is neither running nor dormant and is hidden.
+	// ContainerDormant follows upstream semantics: true when the lazy container
+	// is not running. Such a route stays on the home page: the container is
+	// reachable and will be woken on demand. A non-lazy stopped container is
+	// neither running nor dormant and is hidden.
 	ContainerDormant bool   `json:"ContainerDormant,omitempty"`
 	ContainerIcon    string `json:"ContainerIcon,omitempty"`
 }

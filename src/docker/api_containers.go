@@ -64,8 +64,9 @@ func ListContainersRoute(w http.ResponseWriter, req *http.Request) {
 		withState := make([]ContainerWithState, 0, len(containers))
 		for _, c := range containers {
 			entry := ContainerWithState{Container: c}
-			// Dormant is a Cosmos-level notion: the idle reaper put this lazy
-			// container to sleep. It is independent of the raw Docker state.
+			// Dormant follows upstream semantics: any lazy container that is
+			// not running is dormant (whether the reaper slept it, it was
+			// stopped manually, or updated while stopped).
 			if len(c.Names) > 0 {
 				entry.Dormant = LazyIsDormant(strings.TrimPrefix(c.Names[0], "/"))
 			}

@@ -676,27 +676,23 @@ func TestLazyConnCountNeverGoesNegative(t *testing.T) {
 func TestLazyIsDormant(t *testing.T) {
 	newLazyHarness(t)
 
-	// asleep: Cosmos' idle reaper stopped it -> dormant
-	seedLazy("asleep", func(st *lazyEntry) { st.dormant = true })
+	// asleep: a lazy container not running (reaped, stopped, or updated
+	// while stopped) -> dormant. Upstream semantics: lazy && !running.
+	seedLazy("asleep", nil)
 	// up: running lazy container -> not dormant
 	seedLazy("up", func(st *lazyEntry) { st.running = true })
-	// stopped: lazy container stopped manually (not by the reaper) -> NOT dormant
-	seedLazy("stopped", nil)
-	// reaped-then-started: dormant flag must be cleared on a wake
-	seedLazy("woken", func(st *lazyEntry) { st.dormant = true; st.running = true })
+	// woken: running again after a wake -> not dormant
+	seedLazy("woken", func(st *lazyEntry) { st.running = true })
 	seedLazy("notlazy", func(st *lazyEntry) { st.lazy = false })
 
 	if !LazyIsDormant("asleep") {
-		t.Fatal("lazy container put to sleep by the reaper must be dormant")
+		t.Fatal("a lazy container that is not running must be dormant")
 	}
 	if LazyIsDormant("up") {
 		t.Fatal("running lazy container must not be dormant")
 	}
-	if LazyIsDormant("stopped") {
-		t.Fatal("lazy container stopped manually must NOT be dormant")
-	}
 	if LazyIsDormant("woken") {
-		t.Fatal("a woken (running) container must not be dormant")
+		t.Fatal("a running container must not be dormant")
 	}
 	if LazyIsDormant("notlazy") {
 		t.Fatal("non-lazy container must never be dormant")
@@ -706,13 +702,15 @@ func TestLazyIsDormant(t *testing.T) {
 	}
 }
 
-// The dormant status must survive a recreate (auto update). RecreateContainer
-// stamps the persisted dormant label onto the recreate config, and the `create`
-// event restores the in-memory dormant flag from it.
-func TestLazyDormantSurvivesRecreateViaLabel(t *testing.T) {
+// The dormant status must survive a recreate (auto update) WITHOUT any
+// persisted label: dormant is derived from `lazy && !running` (upstream
+// semantics). When the reaper sleeps an idle lazy container, then the
+// container is recreated (auto update) and stays non-running, LazyIsDormant
+// must keep reporting true even though the in-memory entry was rebuilt.
+func TestLazyDormantSurvivesRecreateWithoutLabel(t *testing.T) {
 	h := newLazyHarness(t)
 
-	// 1. reaper sleeps an idle lazy container -> dormant
+	// 1. reaper sleeps an idle lazy container -> not running -> dormant.
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	lazyNow = func() time.Time { return now }
 
@@ -726,37 +724,34 @@ func TestLazyDormantSurvivesRecreateViaLabel(t *testing.T) {
 
 	lazyReaperTick()
 
-	st := getLazy("app")
-	if !st.dormant {
-		t.Fatal("reaper must mark the container dormant")
-	}
 	if !LazyIsDormant("app") {
-		t.Fatal("dormant container must report dormant while the entry is alive")
+		t.Fatal("a reaped (non-running) lazy container must report dormant")
+	}
+	if getLazy("app").running {
+		t.Fatal("reaper must leave the container not running")
 	}
 
-	// 2. Simulate the auto-update recreate: the old (dormant) container is
-	// destroyed (entry dropped) and a fresh container is created carrying the
-	// persisted dormant label (stamped by RecreateContainer). The `create`
-	// event must restore dormant from the label.
+	// 2. Simulate the auto-update recreate: the old container is destroyed
+	// (entry dropped) and a fresh container is created, still not running.
+	// No label involved - dormant must be derived purely from lazy && !running.
 	lazyMu.Lock()
 	delete(lazyStates, "app")
 	lazyMu.Unlock()
 
-	labeled := lazyLabels(map[string]string{LazyDormantLabel: "true"})
-	// lazyLabelsForEvent inspects the container to get its labels.
+	labeled := lazyLabels(nil) // lazy label set, no dormant label
 	h.onInspect(func(name string, n int) (types.ContainerJSON, error) {
 		return inspectJSON(false, labeled, nil, ""), nil
 	})
 	lazyOnContainerEvent("create", "newid", "app", labeled)
 
 	if !LazyIsDormant("app") {
-		t.Fatal("after recreate, a dormant container with the persisted label must stay dormant")
+		t.Fatal("after recreate, a non-running lazy container must stay dormant (no label needed)")
 	}
 	if getLazy("app").running {
 		t.Fatal("a recreated dormant container must not be running")
 	}
 
-	// 3. A manual `start` of that container wakes it: dormant is cleared.
+	// 3. A manual `start` of that container wakes it: not dormant anymore.
 	lazyOnContainerEvent("start", "newid", "app", labeled)
 	if LazyIsDormant("app") {
 		t.Fatal("starting a dormant container must clear dormant")
@@ -823,8 +818,8 @@ func TestReaperStopsOnlyIdleUnusedContainers(t *testing.T) {
 	if !st.stoppedByReaper {
 		t.Fatal("reaped container must carry stoppedByReaper")
 	}
-	if !st.dormant {
-		t.Fatal("reaped container must be marked dormant (Cosmos stopped it)")
+	if !LazyIsDormant("idle") {
+		t.Fatal("a reaped (non-running) lazy container must report dormant")
 	}
 
 	ev := h.eventsOf("cosmos.container.lazy.stopped")
@@ -1026,8 +1021,8 @@ func TestLazyEventHookDowngradesDieOnlyWhenReaped(t *testing.T) {
 	if st.running {
 		t.Fatal("die must mark the container not running")
 	}
-	if !st.dormant {
-		t.Fatal("reaper-initiated die must mark the container dormant")
+	if !LazyIsDormant("reaped") {
+		t.Fatal("a reaped (non-running) lazy container must report dormant after die")
 	}
 	// The reaper marker must survive `die`: the trailing `stop` event of the
 	// same `docker stop` sequence still needs it (see the real-sequence test).
@@ -1042,8 +1037,8 @@ func TestLazyEventHookDowngradesDieOnlyWhenReaped(t *testing.T) {
 	if level != "debug" {
 		t.Fatalf("second die while still in the reaper sequence level = %q, want debug", level)
 	}
-	if !getLazy("reaped").dormant {
-		t.Fatal("second reaper-attributed die must keep dormant")
+	if !LazyIsDormant("reaped") {
+		t.Fatal("a non-running lazy container must stay dormant after the second die")
 	}
 
 	_, level = lazyOnContainerEvent("die", "id2", "someone-else", map[string]string{})
@@ -1077,8 +1072,8 @@ func TestLazyEventHookDowngradesDieAcrossRealStopSequence(t *testing.T) {
 		t.Fatalf("die after reaper kill level = %q, want debug", level)
 	}
 	st := getLazy("reaped")
-	if !st.dormant {
-		t.Fatal("die during a reaper stop must keep the container dormant")
+	if !LazyIsDormant("reaped") {
+		t.Fatal("die during a reaper stop must leave the lazy container dormant")
 	}
 	if !st.stoppedByReaper {
 		t.Fatal("die must NOT consume the reaper flag yet: the trailing stop event still needs it")
@@ -1088,8 +1083,8 @@ func TestLazyEventHookDowngradesDieAcrossRealStopSequence(t *testing.T) {
 		t.Fatalf("stop level override = %q, want none", level)
 	}
 	st = getLazy("reaped")
-	if !st.dormant {
-		t.Fatal("trailing stop must keep the container dormant (this is the regression)")
+	if !LazyIsDormant("reaped") {
+		t.Fatal("trailing stop must leave the lazy container dormant (this is the regression)")
 	}
 	if st.stoppedByReaper {
 		t.Fatal("the final stop event must consume the reaper flag")
