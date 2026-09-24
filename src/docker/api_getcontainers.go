@@ -14,8 +14,8 @@ import (
 )
 
 // ContainerJSONWithState adds the Cosmos-level Dormant flag to the inspect
-// response. Dormant is true only when the idle reaper put the lazy container
-// to sleep; a manual stop is never dormant.
+// response. Dormant follows upstream semantics: a lazy container that is not
+// running is dormant, whether the idle reaper slept it or it was stopped.
 type ContainerJSONWithState struct {
 	types.ContainerJSON
 	Dormant bool `json:"Dormant,omitempty"`
