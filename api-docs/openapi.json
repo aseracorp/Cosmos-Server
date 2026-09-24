@@ -4,7 +4,7 @@
     "description": "REST API for Cosmos Cloud server management",
     "title": "Cosmos Server API",
     "contact": {},
-    "version": "0.24.0-unstable007"
+    "version": "0.24.0-unstable012"
   },
   "paths": {
     "/_logs": {
@@ -2029,6 +2029,669 @@
         }
       }
     },
+    "/api/constellation/ci/builds": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the most recent builds of every project, newest first (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "List recent builds across CI projects",
+        "parameters": [
+          {
+            "description": "Maximum number of builds",
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/detect": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Clones the repository and reports what CI would do with it, without creating anything (Pro feature).",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Detect what CI would build from a repository",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.CIDetectRequest"
+              }
+            }
+          },
+          "description": "Repository to inspect",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/hooks/{name}": {
+      "post": {
+        "description": "Accepts a push / pull-request delivery for the named project and queues a build (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Receive a CI provider webhook",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/projects": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns every CI project with its last build, secrets and tokens redacted (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "List CI projects",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Validates the project, mints its registry tokens, registers the webhook on the\ngit provider (best effort: a failure comes back as a warning) and stores it.\nServer-owned fields (webhook, stats, previews, counters, dates) are ignored (Pro feature).",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Create a CI project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.CIProject"
+              }
+            }
+          },
+          "description": "Project to create",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/projects/{name}": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the project with its last build, secrets and tokens redacted (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Get one CI project",
+        "parameters": [
+          {
+            "description": "Project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Replaces the editable fields of the project. A secret sent with an empty value\nkeeps its stored value, and so does the git token (both are write-only) (Pro feature).",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Update a CI project",
+        "parameters": [
+          {
+            "description": "Project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.CIProject"
+              }
+            }
+          },
+          "description": "Project to store",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Removes the project with its previews and its webhook, and revokes its registry tokens (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Delete a CI project",
+        "parameters": [
+          {
+            "description": "Project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/projects/{name}/builds": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the most recent builds of the project, newest first (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "List the builds of a CI project",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum number of builds (default 50)",
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Queues a manual build of a branch (the project's default branch when none is\ngiven), optionally pinned to a commit. Manual builds run with secrets (Pro feature).",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Trigger a build of a CI project",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.CIBuildTriggerRequest"
+              }
+            }
+          },
+          "description": "Branch and commit to build"
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/projects/{name}/builds/{number}": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the build with its trigger, steps, artifacts and deploy result (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Get one build of a CI project",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Build number",
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Removes the build record and its logs. Refused while the build is queued or running: cancel it first (Pro feature).",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Delete one build of a CI project",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Build number",
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/projects/{name}/builds/{number}/logs": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the output of one step from chunk `from`. The answer carries `next`, the chunk to\nask for on the next poll, and `done` once the step has finished (Pro feature).",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Read the logs of a build step",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Build number",
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Step index",
+            "name": "step",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "First chunk to return",
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/projects/{name}/builds/{number}/{action}": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Runs one action on the build: cancel, retry, approve (a pull-request build waiting for\napproval) or deploy (Pro feature).",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Act on a build of a CI project",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Build number",
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Action",
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cancel",
+                "retry",
+                "approve",
+                "deploy"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/projects/{name}/webhook/{action}": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "rotate mints a new webhook secret; register re-creates the hook on the git provider (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "Rotate or re-register the webhook of a CI project",
+        "parameters": [
+          {
+            "description": "CI project name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Action",
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rotate",
+                "register"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/ci/runners": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns every node with its running builds and buildkitd state (Pro feature)",
+        "tags": [
+          "ci"
+        ],
+        "summary": "List the CI build capacity of the cluster",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/constellation/config": {
       "get": {
         "security": [
@@ -2063,6 +2726,73 @@
           },
           "500": {
             "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/config-manual-sync": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Rebuilds the device's configuration, without its private key or API key, for a resync QR code. Allowed for an admin or the device's owner.",
+        "tags": [
+          "constellation"
+        ],
+        "summary": "Rebuild a Constellation device configuration for a manual resync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/constellation.DeviceResyncRequest"
+              }
+            }
+          },
+          "description": "Device to resync",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2624,15 +3354,7 @@
           }
         ],
         "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/pro.ManagedDBBackupRequest"
-              }
-            }
-          },
-          "description": "Backup configuration",
-          "required": true
+          "$ref": "#/components/requestBodies/pro.ManagedDBBackupRequest"
         },
         "responses": {
           "200": {
@@ -4159,19 +4881,103 @@
     },
     "/api/constellation/function-runtimes": {
       "get": {
-        "responses": {}
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the runtime table: key, label, default image and the registry type it reads packages from (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "List the function runtimes",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/constellation/functions": {
       "get": {
-        "responses": {}
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns every function, its source token redacted (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "List functions",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "responses": {}
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Creates the function as a handler of a function deployment (\"fn<name>\" unless\ndeployment names one) and deploys source.version (empty = the registry's latest).\nServer-owned fields (rev, releases, status, siblings, dates) are ignored (Pro feature).",
+        "tags": [
+          "functions"
+        ],
+        "summary": "Create a function",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.Function"
+              }
+            }
+          },
+          "description": "Function to create",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/constellation/functions/{name}": {
       "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the function, its source token redacted (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "Get one function",
         "parameters": [
           {
             "description": "Function name",
@@ -4183,9 +4989,30 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       },
       "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Replaces the editable fields of the function and rewrites its deployment (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "Update a function",
         "parameters": [
           {
             "description": "Function name",
@@ -4197,9 +5024,41 @@
             }
           }
         ],
-        "responses": {}
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.Function"
+              }
+            }
+          },
+          "description": "Function to store",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       },
       "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Removes the handler from its deployment; the deployment goes with its last handler (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "Delete a function",
         "parameters": [
           {
             "description": "Function name",
@@ -4211,11 +5070,32 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/constellation/functions/{name}/deploy": {
       "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Pins a published version of the function's package and (re)writes the deployment (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "Deploy a version of a function",
         "parameters": [
           {
             "description": "Function name",
@@ -4227,11 +5107,42 @@
             }
           }
         ],
-        "responses": {}
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.FunctionDeployRequest"
+              }
+            }
+          },
+          "description": "Version to deploy"
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/constellation/functions/{name}/invoke": {
       "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Invokes the function from this node and returns the node, status, body and duration (admin test) (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "Invoke a function",
         "parameters": [
           {
             "description": "Function name",
@@ -4243,11 +5154,42 @@
             }
           }
         ],
-        "responses": {}
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.FunctionInvokeRequest"
+              }
+            }
+          },
+          "description": "Request to send"
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/constellation/functions/{name}/versions": {
       "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the versions of the function's package, newest first, with the registry's latest and the active one flagged (Pro feature)",
+        "tags": [
+          "functions"
+        ],
+        "summary": "List the published versions of a function",
         "parameters": [
           {
             "description": "Function name",
@@ -4259,7 +5201,18 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/constellation/get-next-ip": {
@@ -4532,7 +5485,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "Returns every registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)",
+        "description": "Returns every registry with the nodes serving it and its stored-size rollup, secrets redacted (Pro feature)",
         "tags": [
           "registry"
         ],
@@ -4556,7 +5509,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "Claims the name, provisions the backing bucket and marks the registry ready.\nA registry is typed storage (docker/npm/static/generic): publish it by creating\nan access (Pro feature).",
+        "description": "Claims the name, provisions the backing bucket and marks the registry ready.\nEvery type but static is served on the given host from then on; a static\nregistry publishes its sites instead (Pro feature).",
         "tags": [
           "registry"
         ],
@@ -4593,7 +5546,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "Returns the registry with the accesses publishing it and its stored-size rollup, secrets redacted (Pro feature)",
+        "description": "Returns the registry with the nodes serving it and its stored-size rollup, secrets redacted (Pro feature)",
         "tags": [
           "registry"
         ],
@@ -4628,7 +5581,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "Removes the record and every metadata key. Refused while an access\nstill publishes it. Stored blobs are PRESERVED unless purgeData=true,\nwhich best-effort empties the backing bucket (the bucket itself is\nleft in place) (Pro feature).",
+        "description": "Removes the record and every metadata key; serving nodes withdraw\nthe endpoint. Stored blobs are PRESERVED unless purgeData=true,\nwhich best-effort empties the backing bucket (the bucket itself is\nleft in place) (Pro feature).",
         "tags": [
           "registry"
         ],
@@ -4710,11 +5663,11 @@
             "BearerAuth": []
           }
         ],
-        "description": "Returns every package with its versions and their files (Pro feature)",
+        "description": "Returns every package with its versions and their files. Works for every\nregistry type but static: a docker image's versions are its manifests\n(named by digest, with the tags resolving to each), an npm package's are\nits published versions with their dist-tags (Pro feature)",
         "tags": [
           "registry"
         ],
-        "summary": "List the packages of a generic or pypi registry",
+        "summary": "List the packages of a registry",
         "parameters": [
           {
             "description": "Registry name",
@@ -4747,11 +5700,55 @@
             "BearerAuth": []
           }
         ],
-        "description": "GET returns the package with its versions and files; DELETE removes the\npackage and every version (the stored files are reclaimed by the next\nGC pass) (Pro feature)",
+        "description": "Returns the package with its versions and files (Pro feature)",
         "tags": [
           "registry"
         ],
-        "summary": "Get or delete one generic or pypi package",
+        "summary": "Get one package",
+        "parameters": [
+          {
+            "description": "Registry name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Package name",
+            "name": "package",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Removes the package and every version; the stored files are reclaimed by the next GC pass.\nAccepts a Cosmos token or a registry deploy token with push scope (Pro feature).",
+        "tags": [
+          "registry"
+        ],
+        "summary": "Delete one package",
         "parameters": [
           {
             "description": "Registry name",
@@ -4855,11 +5852,11 @@
             "BearerAuth": []
           }
         ],
-        "description": "Removes the version and its file entries; the stored files are reclaimed\nby the next GC pass. \"latest\" is re-pointed at the newest remaining\nversion (Pro feature).",
+        "description": "Removes the version and its file entries; the stored files are reclaimed\nby the next GC pass. For generic and pypi, \"latest\" is re-pointed at the\nnewest remaining version; for docker (a manifest, by digest) and npm every\ntag resolving to the deleted version is dropped instead (Pro feature).",
         "tags": [
           "registry"
         ],
-        "summary": "Delete one generic or pypi package version",
+        "summary": "Delete one package version",
         "parameters": [
           {
             "description": "Registry name",
@@ -4910,11 +5907,11 @@
             "BearerAuth": []
           }
         ],
-        "description": "GET streams the file (the version may be \"latest\"); accepts a Cosmos token\nwith the Resources read permission OR a registry deploy token with pull\nscope. DELETE removes the file entry — and the version, when it was its\nlast file; the stored bytes are reclaimed by the next GC pass (Pro feature).",
+        "description": "Streams the file (the version may be \"latest\"); accepts a Cosmos token\nwith the Resources read permission OR a registry deploy token with pull\nscope (Pro feature).",
         "tags": [
           "registry"
         ],
-        "summary": "Download or delete one file of a generic or pypi package version",
+        "summary": "Download one file of a package version",
         "parameters": [
           {
             "description": "Registry name",
@@ -4966,6 +5963,68 @@
             }
           }
         }
+      },
+      "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Removes the file entry, and the version when it was its last file; the stored bytes are\nreclaimed by the next GC pass. Refused for docker and npm, whose versions are deleted whole.\nAccepts a Cosmos token or a registry deploy token with push scope (Pro feature).",
+        "tags": [
+          "registry"
+        ],
+        "summary": "Delete one file of a package version",
+        "parameters": [
+          {
+            "description": "Registry name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Package name",
+            "name": "package",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Version",
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filename",
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/constellation/registries/{name}/settings": {
@@ -4975,11 +6034,11 @@
             "BearerAuth": []
           }
         ],
-        "description": "Replaces the quota. Absent fields keep their stored value (Pro feature).",
+        "description": "Replaces the quota, the host, the visibility, the anonymous-pull policy, the\nserving tags or the whole user-facing route. Absent fields keep their stored\nvalue (Pro feature).",
         "tags": [
           "registry"
         ],
-        "summary": "Update a registry's storage settings",
+        "summary": "Update a registry's settings",
         "parameters": [
           {
             "description": "Registry name",
@@ -5060,11 +6119,110 @@
             "BearerAuth": []
           }
         ],
-        "description": "GET returns the site with its deployments; PUT replaces its route\nconfiguration (host, internal, spa, tags — absent fields keep their\nstored value); DELETE removes the site and all its deployments (the\nstored zips are reclaimed by the next GC pass) (Pro feature)",
+        "description": "Returns the site with its deployments (Pro feature)",
         "tags": [
           "registry"
         ],
-        "summary": "Get, configure or delete one static site",
+        "summary": "Get one static site",
+        "parameters": [
+          {
+            "description": "Registry name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Site name",
+            "name": "site",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Replaces the site's route configuration (host, internal, spa, tags or the whole user-facing\nroute); absent fields keep their stored value. Admin only: a deploy token cannot move a site (Pro feature).",
+        "tags": [
+          "registry"
+        ],
+        "summary": "Configure one static site",
+        "parameters": [
+          {
+            "description": "Registry name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Site name",
+            "name": "site",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.RegistryStaticSiteSettings"
+              }
+            }
+          },
+          "description": "Settings to change",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Removes the site and all its deployments; the stored zips are reclaimed by the next GC pass (Pro feature)",
+        "tags": [
+          "registry"
+        ],
+        "summary": "Delete one static site",
         "parameters": [
           {
             "description": "Registry name",
@@ -5163,7 +6321,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "Stores a zip as one immutable deployment. Accepts a multipart form\n(field \"file\") or the raw zip as the request body. Query parameters:\nversion (default: a UTC timestamp), activate (default true for the\nsite's first deployment), host/internal/spa/tags to configure the\nsite's route on first upload. Accepts a Cosmos token with the\nResources permission OR a registry deploy token with push scope on an\naccess that exposes this registry (Pro feature).",
+        "description": "Stores a zip as one immutable deployment. Accepts a multipart form\n(field \"file\") or the raw zip as the request body. Query parameters:\nversion (default: a UTC timestamp), activate (default true for the\nsite's first deployment), host/internal/spa/tags to configure the\nsite's route on first upload. Accepts a Cosmos token with the\nResources permission OR a deploy token of this registry with push scope\n(Pro feature).",
         "tags": [
           "registry"
         ],
@@ -5313,202 +6471,21 @@
         }
       }
     },
-    "/api/constellation/registry-accesses": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Returns every registry endpoint with the nodes currently serving it, token hashes redacted (Pro feature)",
-        "tags": [
-          "registry"
-        ],
-        "summary": "List registry accesses",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.APIResponse"
-                }
-              }
-            }
-          }
-        }
-      },
+    "/api/constellation/registries/{name}/tokens": {
       "post": {
         "security": [
           {
             "BearerAuth": []
           }
         ],
-        "description": "Publishes one or more registries on a hostname. Every exposed registry\nmust share ONE type, so an access serves exactly one protocol (several\ndocker registries are fine — they namespace by path; an npm or generic\naccess exposes exactly one registry); an empty tag list means every node\nserves it; internal restricts the endpoint to the constellation (Pro feature).",
-        "tags": [
-          "registry"
-        ],
-        "summary": "Create a registry access",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/pro.RegistryAccessCreateRequest"
-              }
-            }
-          },
-          "description": "Access to create",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.APIResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/constellation/registry-accesses/{name}": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Returns the endpoint with the nodes currently serving it, token hashes redacted (Pro feature)",
-        "tags": [
-          "registry"
-        ],
-        "summary": "Get one registry access",
-        "parameters": [
-          {
-            "description": "Access name",
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.APIResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Removes the endpoint. The registries it published and everything\nstored in them are untouched (Pro feature).",
-        "tags": [
-          "registry"
-        ],
-        "summary": "Delete a registry access",
-        "parameters": [
-          {
-            "description": "Access name",
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.APIResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/constellation/registry-accesses/{name}/settings": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Replaces the host, exposed registries, visibility, anonymous-pull toggle\nand/or serving tags. Absent fields keep their stored value (Pro feature).",
-        "tags": [
-          "registry"
-        ],
-        "summary": "Update a registry access",
-        "parameters": [
-          {
-            "description": "Access name",
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/pro.RegistryAccessSettingsRequest"
-              }
-            }
-          },
-          "description": "Settings to change",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.APIResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/constellation/registry-accesses/{name}/tokens": {
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Returns the raw token ONCE — only its sha256 is stored. Scopes are\npull/push, optionally qualified by protocol (e.g. \"docker:push\") (Pro feature).",
+        "description": "Creates a deploy token on the registry. The raw token is returned ONCE, in this\nresponse, and never stored. Scopes default to pull+push (Pro feature).",
         "tags": [
           "registry"
         ],
         "summary": "Mint a registry deploy token",
         "parameters": [
           {
-            "description": "Access name",
+            "description": "Registry name",
             "name": "name",
             "in": "path",
             "required": true,
@@ -5521,7 +6498,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/pro.RegistryAccessTokenCreateRequest"
+                "$ref": "#/components/schemas/pro.RegistryTokenCreateRequest"
               }
             }
           },
@@ -5542,21 +6519,21 @@
         }
       }
     },
-    "/api/constellation/registry-accesses/{name}/tokens/{tokenName}": {
+    "/api/constellation/registries/{name}/tokens/{tokenName}": {
       "delete": {
         "security": [
           {
             "BearerAuth": []
           }
         ],
-        "description": "Revokes the token on every node (Pro feature)",
+        "description": "Removes the token; it stops working on this node at once and on the others\nwithin their cache TTL (Pro feature).",
         "tags": [
           "registry"
         ],
-        "summary": "Delete a registry deploy token",
+        "summary": "Revoke a registry deploy token",
         "parameters": [
           {
-            "description": "Access name",
+            "description": "Registry name",
             "name": "name",
             "in": "path",
             "required": true,
@@ -5720,6 +6697,41 @@
       }
     },
     "/api/constellation/seaweedfs/{name}": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the instance with heartbeat-derived status, secrets redacted (Pro feature)",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Get one managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "security": [
           {
@@ -5758,6 +6770,565 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/backup": {
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Sets the metadata-backup repository and schedules. The repository password is minted once\nand never rotated: it is the only key to the snapshots already written (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Configure the metadata backup of a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/pro.ManagedDBBackupRequest"
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Clears the backup configuration. The repository and its snapshots are left untouched (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Remove the metadata backup of a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/backup/run": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Starts a metadata backup on the node running the instance's jobs (Pro feature)",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Run the metadata backup of a managed SeaweedFS instance now",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/backup/snapshots": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the snapshots of the metadata-backup repository (Pro feature)",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "List the metadata snapshots of a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/drain": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Starts the evacuation of one live volume server, so its node can be untagged afterwards\nwithout ever being under-replicated (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Drain a volume server of a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.SeaweedFSDrainRequest"
+              }
+            }
+          },
+          "description": "Device to drain",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/jobs": {
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Replaces the maintenance-job configuration; the schedules are re-registered within a minute (Pro feature)",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Configure the maintenance jobs of a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.SwfsJobsConfig"
+              }
+            }
+          },
+          "description": "Job configuration",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/repair": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Starts the repair job that restores the replication of the volumes a lost node held (Pro feature)",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Repair a managed SeaweedFS instance after losing hardware",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/replace-master": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Swaps one pinned master for another manager (the next live manager outside the set when\nnewDevice is absent), then starts the rolling master re-provision (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Replace a master of a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.SeaweedFSReplaceMasterRequest"
+              }
+            }
+          },
+          "description": "Master to replace",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/restrict": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Toggles constellation-only access to the S3 endpoint. The filers are cycled one\nnode at a time to apply it (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Restrict a managed SeaweedFS instance to the constellation",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.SeaweedFSRestrictRequest"
+              }
+            }
+          },
+          "description": "Restriction to apply",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/route": {
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Replaces the user-facing settings of the instance's S3 route (auth,\nshield, whitelist...). Name, mode, target, tunnel and owner are\nforced server-side; the restriction flag is mirrored onto the record.\nThe route lives in the filer deployment's compose, so this is a compose\nrewrite + version bump; nodes apply it without recreating the filers\n(Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Update the S3 endpoint's proxy route",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.SeaweedFSRouteRequest"
+              }
+            }
+          },
+          "description": "Route to store",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/status": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Returns the unredacted instance status (S3 access and secret keys included) and\nthe S3 endpoint URLs. Hands out a credential, so it needs the write permission (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Get a managed SeaweedFS instance with its S3 credentials",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/storage": {
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Sets the storage cap per node (0 = unlimited) and rolls the volume servers one node at a\ntime. Lowering it below what a node holds deletes nothing: the node just stops receiving\nnew volumes until it is back under the cap (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Change the per-node storage cap of a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.SeaweedFSStorageRequest"
+              }
+            }
+          },
+          "description": "Storage cap",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/constellation/seaweedfs/{name}/upgrade": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Starts a rolling upgrade to the given image: the masters one at a time, then the volume\nand filer deployments one node at a time (Pro feature).",
+        "tags": [
+          "seaweedfs"
+        ],
+        "summary": "Upgrade a managed SeaweedFS instance",
+        "parameters": [
+          {
+            "description": "Instance name",
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/pro.SeaweedFSUpgradeRequest"
+              }
+            }
+          },
+          "description": "Image to upgrade to",
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -8628,83 +10199,6 @@
         }
       }
     },
-    "/api/network/{networkID}/relay": {
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "tags": [
-          "docker"
-        ],
-        "summary": "Enable or disable broadcast/multicast relaying on a Docker network",
-        "parameters": [
-          {
-            "description": "Network ID or name",
-            "name": "networkID",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/docker.setRelayPayload"
-              }
-            }
-          },
-          "description": "{",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.APIResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/networks": {
       "get": {
         "security": [
@@ -11152,23 +12646,97 @@
         }
       }
     },
-    "/api/setup/desec": {
-      "post": {
-        "description": "Registers/uses a deSEC account, creates a domain and zone records, and returns the token to use for LE DNS-01 + DDNS. Email activation is required for new accounts.",
-        "tags": [
-          "system"
+    "/api/shield/bans": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
         ],
-        "summary": "Auto-provision a deSEC domain + token + records for Cosmos",
-        "responses": {}
+        "description": "Returns every client with a strike or ban history on this node (the cluster's union when the constellation is up)",
+        "tags": [
+          "shield"
+        ],
+        "summary": "List SmartShield strikes and bans",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
       }
     },
-    "/api/setup/desec/status": {
-      "get": {
-        "tags": [
-          "system"
+    "/api/shield/unban": {
+      "post": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
         ],
-        "summary": "Poll deSEC account activation and finish setup",
-        "responses": {}
+        "description": "Clears a client's strikes and bans everywhere, and the abuse counter that drops its TCP/UDP connections",
+        "tags": [
+          "shield"
+        ],
+        "summary": "Unban a SmartShield client",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/proxy.ShieldUnbanRequest"
+              }
+            }
+          },
+          "description": "Client to unban",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/smart-def": {
@@ -12951,6 +14519,17 @@
         },
         "description": "SnapRAID config (POST only)"
       },
+      "pro.ManagedDBBackupRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/pro.ManagedDBBackupRequest"
+            }
+          }
+        },
+        "description": "Backup configuration",
+        "required": true
+      },
       "utils.CRONConfig": {
         "content": {
           "application/json": {
@@ -13075,10 +14654,6 @@
       "configapi.DashboardRoute": {
         "type": "object",
         "properties": {
-          "ContainerDormant": {
-            "description": "ContainerDormant is true when Cosmos itself put the lazy container to\nsleep (idle reaper). Such a route stays on the home page: the container\nis reachable and will be woken on demand. A manually stopped container\nis neither running nor dormant and is hidden.",
-            "type": "boolean"
-          },
           "ContainerIcon": {
             "type": "string"
           },
@@ -13263,6 +14838,23 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "constellation.DeviceResyncRequest": {
+        "type": "object",
+        "required": [
+          "deviceName"
+        ],
+        "properties": {
+          "deviceName": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 3
+          },
+          "nickname": {
+            "type": "string",
+            "maxLength": 32
           }
         }
       },
@@ -13467,37 +15059,12 @@
           }
         }
       },
-      "docker.BlkioThrottleDevice": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "rate": {
-            "type": "string"
-          }
-        }
-      },
-      "docker.BlkioWeightDevice": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "weight": {
-            "type": "integer"
-          }
-        }
-      },
       "docker.ContainerCreateRequestContainer": {
         "type": "object",
         "required": [
           "image"
         ],
         "properties": {
-          "blkio_config": {
-            "$ref": "#/components/schemas/docker.ContainerCreateRequestServiceBlkioConfig"
-          },
           "cap_add": {
             "type": "array",
             "items": {
@@ -13511,26 +15078,10 @@
             }
           },
           "command": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+            "type": "string"
           },
           "container_name": {
             "type": "string"
-          },
-          "cpu_period": {
-            "description": "Additional resource constraints (docker-compose parity)",
-            "type": "integer"
-          },
-          "cpu_quota": {
-            "type": "integer"
-          },
-          "cpu_rt_period": {
-            "type": "integer"
-          },
-          "cpu_rt_runtime": {
-            "type": "integer"
           },
           "cpu_shares": {
             "type": "integer"
@@ -13538,14 +15089,7 @@
           "cpus": {
             "type": "number"
           },
-          "cpuset": {
-            "type": "string"
-          },
           "cpuset_cpus": {
-            "description": "Legacy alias for cpuset (older Cosmos backups used cpuset_cpus). Kept for\nbackward compatibility; Cpuset takes precedence when both are present.",
-            "type": "string"
-          },
-          "cpuset_mems": {
             "type": "string"
           },
           "depends_on": {
@@ -13576,10 +15120,7 @@
             "type": "string"
           },
           "entrypoint": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+            "type": "string"
           },
           "environment": {
             "type": "array",
@@ -13601,12 +15142,6 @@
           },
           "gid": {
             "type": "integer"
-          },
-          "gpus": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/docker.ContainerCreateRequestGPURequest"
-            }
           },
           "healthcheck": {
             "$ref": "#/components/schemas/docker.ContainerCreateRequestContainerHealthcheck"
@@ -13642,12 +15177,6 @@
           "mem_reservation": {
             "type": "string"
           },
-          "mem_swappiness": {
-            "type": "integer"
-          },
-          "memswap_limit": {
-            "type": "string"
-          },
           "network_mode": {
             "type": "string"
           },
@@ -13656,12 +15185,6 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/docker.ContainerCreateRequestServiceNetwork"
             }
-          },
-          "oom_kill_disable": {
-            "type": "boolean"
-          },
-          "pids_limit": {
-            "type": "integer"
           },
           "ports": {
             "type": "array",
@@ -13696,9 +15219,6 @@
               "type": "string"
             }
           },
-          "shm_size": {
-            "type": "string"
-          },
           "stdin_open": {
             "type": "boolean"
           },
@@ -13726,20 +15246,13 @@
           "uid": {
             "type": "integer"
           },
-          "ulimits": {
-            "description": "ulimits as \"name=soft[:hard]\" strings (e.g. \"nofile=2048\" or\n\"nofile=1024:2048\"), matching docker-compose's ulimits object after\nnormalization. Parsed with go-units at create time.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
           "user": {
             "type": "string"
           },
           "volumes": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/docker.CosmosMount"
+              "$ref": "#/components/schemas/mount.Mount"
             }
           },
           "working_dir": {
@@ -13762,13 +15275,13 @@
         "type": "object",
         "properties": {
           "interval": {
-            "type": "string"
+            "type": "integer"
           },
           "retries": {
             "type": "integer"
           },
           "start_period": {
-            "type": "string"
+            "type": "integer"
           },
           "test": {
             "type": "array",
@@ -13777,18 +15290,7 @@
             }
           },
           "timeout": {
-            "type": "string"
-          }
-        }
-      },
-      "docker.ContainerCreateRequestGPURequest": {
-        "type": "object",
-        "properties": {
-          "count": {
             "type": "integer"
-          },
-          "driver": {
-            "type": "string"
           }
         }
       },
@@ -13844,44 +15346,6 @@
           }
         }
       },
-      "docker.ContainerCreateRequestServiceBlkioConfig": {
-        "type": "object",
-        "properties": {
-          "device_read_bps": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
-            }
-          },
-          "device_read_iops": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
-            }
-          },
-          "device_write_bps": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
-            }
-          },
-          "device_write_iops": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/docker.BlkioThrottleDevice"
-            }
-          },
-          "weight": {
-            "type": "integer"
-          },
-          "weight_device": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/docker.BlkioWeightDevice"
-            }
-          }
-        }
-      },
       "docker.ContainerCreateRequestServiceNetwork": {
         "type": "object",
         "properties": {
@@ -13926,6 +15390,12 @@
       "docker.ContainerForm": {
         "type": "object",
         "properties": {
+          "Volumes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/mount.Mount"
+            }
+          },
           "cpus": {
             "type": "number"
           },
@@ -13967,38 +15437,6 @@
             "type": "string"
           },
           "user": {
-            "type": "string"
-          },
-          "volumes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/docker.CosmosMount"
-            }
-          }
-        }
-      },
-      "docker.CosmosMount": {
-        "type": "object",
-        "properties": {
-          "noCopy": {
-            "description": "NoCopy is the volume-nocopy mount option (VolumeOptions.NoCopy). It is\nauto-enabled for subpath mounts on engines older than Docker 29.5.0 as a\nworkaround for moby#52546, but users can also set it explicitly; it is\npreserved through the export round-trip.",
-            "type": "boolean"
-          },
-          "readOnly": {
-            "description": "ReadOnly mounts the source read-only (compose short-syntax `:ro`).",
-            "type": "boolean"
-          },
-          "source": {
-            "type": "string"
-          },
-          "subpath": {
-            "description": "SubPath mounts a subdirectory (or a single file) inside a named\nvolume instead of the whole volume, like docker-compose's `subpath`.\nIt is wired to mount.VolumeOptions.Subpath for volume mounts.",
-            "type": "string"
-          },
-          "target": {
-            "type": "string"
-          },
-          "type": {
             "type": "string"
           }
         }
@@ -14058,9 +15496,6 @@
           "parentInterface": {
             "type": "string"
           },
-          "relayBroadcast": {
-            "type": "boolean"
-          },
           "subnet": {
             "type": "string"
           }
@@ -14078,17 +15513,6 @@
           },
           "https": {
             "type": "string"
-          }
-        }
-      },
-      "docker.setRelayPayload": {
-        "type": "object",
-        "required": [
-          "enabled"
-        ],
-        "properties": {
-          "enabled": {
-            "type": "boolean"
           }
         }
       },
@@ -14155,9 +15579,6 @@
           },
           "database": {
             "$ref": "#/components/schemas/utils.DatabaseConfig"
-          },
-          "ddns": {
-            "$ref": "#/components/schemas/utils.DDNSConfig"
           },
           "disableHostModeWarning": {
             "type": "boolean"
@@ -14227,6 +15648,12 @@
           },
           "serverToken": {
             "type": "string"
+          },
+          "shieldWhitelist": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/utils.ShieldWhitelistEntry"
+            }
           },
           "storage": {
             "$ref": "#/components/schemas/utils.StorageConfig"
@@ -14378,6 +15805,167 @@
           }
         }
       },
+      "mount.BindOptions": {
+        "type": "object",
+        "properties": {
+          "createMountpoint": {
+            "type": "boolean"
+          },
+          "nonRecursive": {
+            "type": "boolean"
+          },
+          "propagation": {
+            "$ref": "#/components/schemas/mount.Propagation"
+          },
+          "readOnlyForceRecursive": {
+            "description": "ReadOnlyForceRecursive raises an error if the mount cannot be made recursively read-only.",
+            "type": "boolean"
+          },
+          "readOnlyNonRecursive": {
+            "description": "ReadOnlyNonRecursive makes the mount non-recursively read-only, but still leaves the mount recursive\n(unless NonRecursive is set to true in conjunction).",
+            "type": "boolean"
+          }
+        }
+      },
+      "mount.ClusterOptions": {
+        "type": "object"
+      },
+      "mount.Consistency": {
+        "type": "string",
+        "enum": [
+          "consistent",
+          "cached",
+          "delegated",
+          "default"
+        ],
+        "x-enum-varnames": [
+          "ConsistencyFull",
+          "ConsistencyCached",
+          "ConsistencyDelegated",
+          "ConsistencyDefault"
+        ]
+      },
+      "mount.Driver": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "options": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "mount.Mount": {
+        "type": "object",
+        "properties": {
+          "bindOptions": {
+            "$ref": "#/components/schemas/mount.BindOptions"
+          },
+          "clusterOptions": {
+            "$ref": "#/components/schemas/mount.ClusterOptions"
+          },
+          "consistency": {
+            "$ref": "#/components/schemas/mount.Consistency"
+          },
+          "readOnly": {
+            "description": "attempts recursive read-only if possible",
+            "type": "boolean"
+          },
+          "source": {
+            "description": "Source specifies the name of the mount. Depending on mount type, this\nmay be a volume name or a host path, or even ignored.\nSource is not supported for tmpfs (must be an empty value)",
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "tmpfsOptions": {
+            "$ref": "#/components/schemas/mount.TmpfsOptions"
+          },
+          "type": {
+            "$ref": "#/components/schemas/mount.Type"
+          },
+          "volumeOptions": {
+            "$ref": "#/components/schemas/mount.VolumeOptions"
+          }
+        }
+      },
+      "mount.Propagation": {
+        "type": "string",
+        "enum": [
+          "rprivate",
+          "private",
+          "rshared",
+          "shared",
+          "rslave",
+          "slave"
+        ],
+        "x-enum-varnames": [
+          "PropagationRPrivate",
+          "PropagationPrivate",
+          "PropagationRShared",
+          "PropagationShared",
+          "PropagationRSlave",
+          "PropagationSlave"
+        ]
+      },
+      "mount.TmpfsOptions": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "description": "Mode of the tmpfs upon creation",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/os.FileMode"
+              }
+            ]
+          },
+          "sizeBytes": {
+            "description": "Size sets the size of the tmpfs, in bytes.\n\nThis will be converted to an operating system specific value\ndepending on the host. For example, on linux, it will be converted to\nuse a 'k', 'm' or 'g' syntax. BSD, though not widely supported with\ndocker, uses a straight byte value.\n\nPercentages are not supported.",
+            "type": "integer"
+          }
+        }
+      },
+      "mount.Type": {
+        "type": "string",
+        "enum": [
+          "bind",
+          "volume",
+          "tmpfs",
+          "npipe",
+          "cluster"
+        ],
+        "x-enum-varnames": [
+          "TypeBind",
+          "TypeVolume",
+          "TypeTmpfs",
+          "TypeNamedPipe",
+          "TypeCluster"
+        ]
+      },
+      "mount.VolumeOptions": {
+        "type": "object",
+        "properties": {
+          "driverConfig": {
+            "$ref": "#/components/schemas/mount.Driver"
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "noCopy": {
+            "type": "boolean"
+          },
+          "subpath": {
+            "type": "string"
+          }
+        }
+      },
       "nat.PortBinding": {
         "type": "object",
         "properties": {
@@ -14404,6 +15992,390 @@
         "type": "object",
         "additionalProperties": true
       },
+      "os.FileMode": {
+        "type": "integer",
+        "format": "uint32"
+      },
+      "pro.CIBuildSettings": {
+        "type": "object",
+        "properties": {
+          "dockerfile": {
+            "type": "string"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "platform": {
+            "description": "Platform is the image platform (default: the build node's).",
+            "type": "string"
+          },
+          "publishDir": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "timeoutMinutes": {
+            "type": "integer"
+          }
+        }
+      },
+      "pro.CIBuildTriggerRequest": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "description": "Branch defaults to the project's default branch.",
+            "type": "string"
+          },
+          "sha": {
+            "description": "SHA pins the commit; empty builds the branch head.",
+            "type": "string"
+          }
+        }
+      },
+      "pro.CIDeployRule": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "environments": {
+            "description": "Environments: branch glob -> environment. A branch matching no entry is\nbuilt but not deployed.",
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/pro.CIEnvironment"
+            }
+          },
+          "name": {
+            "description": "Name is the default target (deployment or site) name.",
+            "type": "string"
+          },
+          "previewHost": {
+            "description": "PreviewHost is the hostname template of previews; {{pr}} and {{name}}\nare substituted (\"pr-{{pr}}.preview.example.com\").",
+            "type": "string"
+          },
+          "previewTtl": {
+            "type": "string"
+          },
+          "pullRequests": {
+            "description": "PullRequests enables preview deployments, one per open PR, named\n<name>pr<number>, removed when the PR closes or after PreviewTTL.",
+            "type": "boolean"
+          },
+          "template": {
+            "$ref": "#/components/schemas/pro.CIDeployTemplate"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.CIDeployTemplate": {
+        "type": "object",
+        "properties": {
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "healthcheck": {
+            "description": "Healthcheck is a command run inside the container ([\"CMD\", ...]).",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "host": {
+            "type": "string"
+          },
+          "internal": {
+            "type": "boolean"
+          },
+          "memLimit": {
+            "type": "integer"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "replicas": {
+            "type": "integer"
+          },
+          "spa": {
+            "description": "SPA / Internal apply to static sites.",
+            "type": "boolean"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "pro.CIDetectRequest": {
+        "type": "object",
+        "properties": {
+          "build": {
+            "$ref": "#/components/schemas/pro.CIBuildSettings"
+          },
+          "project": {
+            "description": "Project names an existing project whose stored git token is used when Source.Token is empty.",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/pro.CISource"
+          }
+        }
+      },
+      "pro.CIEnvironment": {
+        "type": "object",
+        "properties": {
+          "autoDeploy": {
+            "type": "boolean"
+          },
+          "deployment": {
+            "description": "Deployment / Site is the target name; empty = the rule's default name.",
+            "type": "string"
+          },
+          "host": {
+            "description": "Host is the route hostname the target gets when CI creates it.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name is the environment label (\"production\", \"staging\").",
+            "type": "string"
+          }
+        }
+      },
+      "pro.CIPreview": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "build": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deployment": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "pr": {
+            "type": "integer"
+          }
+        }
+      },
+      "pro.CIProject": {
+        "type": "object",
+        "properties": {
+          "build": {
+            "$ref": "#/components/schemas/pro.CIBuildSettings"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deploy": {
+            "$ref": "#/components/schemas/pro.CIDeployRule"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lastBuildNumber": {
+            "description": "LastBuildNumber is the per-project build counter (CAS-bumped).",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "previews": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/pro.CIPreview"
+            }
+          },
+          "registry": {
+            "$ref": "#/components/schemas/pro.CIRegistryTarget"
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/pro.CISecret"
+            }
+          },
+          "source": {
+            "$ref": "#/components/schemas/pro.CISource"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/pro.CIProjectStats"
+          },
+          "tags": {
+            "description": "Tags select the nodes builds may run on (AND semantics, like\ndeployments). Empty = any node.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "trust": {
+            "$ref": "#/components/schemas/pro.CITrust"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/pro.CIWebhook"
+          }
+        }
+      },
+      "pro.CIProjectStats": {
+        "type": "object",
+        "properties": {
+          "failed": {
+            "type": "integer"
+          },
+          "lastBuild": {
+            "type": "integer"
+          },
+          "lastBuildAt": {
+            "type": "string"
+          },
+          "lastDurationMs": {
+            "type": "integer"
+          },
+          "lastStatus": {
+            "type": "string"
+          },
+          "succeeded": {
+            "type": "integer"
+          }
+        }
+      },
+      "pro.CIRegistryTarget": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "registry": {
+            "description": "Registry: the docker registry to push to (its host prefixes the image); Image: repository name (default: project name).",
+            "type": "string"
+          },
+          "staticRegistry": {
+            "description": "StaticRegistry receives static-site archives.",
+            "type": "string"
+          },
+          "tokens": {
+            "description": "Tokens are Cosmos-minted deploy tokens keyed by registry. Never user-visible.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "pro.CISecret": {
+        "type": "object",
+        "properties": {
+          "availableToPRs": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.CISource": {
+        "type": "object",
+        "properties": {
+          "apiUrl": {
+            "description": "APIURL overrides the provider API base for self-hosted GitLab / Gitea /\nGitHub Enterprise; empty derives it from RepoURL.",
+            "type": "string"
+          },
+          "branches": {
+            "description": "Branches is the UI branch filter (globs). Empty = every branch. Rules\ninside cosmos.json / .woodpecker.yml apply INSIDE this filter.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "defaultBranch": {
+            "description": "DefaultBranch is what a manual run builds when no branch is given.",
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "repoUrl": {
+            "description": "RepoURL is the https clone URL (https://github.com/owner/repo[.git]).",
+            "type": "string"
+          },
+          "rootDir": {
+            "description": "RootDir is the sub-folder to build (monorepos).",
+            "type": "string"
+          },
+          "token": {
+            "description": "Token authenticates clones and provider API calls (webhook creation,\ncommit statuses, collaborator checks). Write-only through the API.",
+            "type": "string"
+          },
+          "username": {
+            "description": "Username pairs with Token for providers that need one (Bitbucket app\npasswords, plain git basic auth). Defaults per provider.",
+            "type": "string"
+          }
+        }
+      },
+      "pro.CITrust": {
+        "type": "object",
+        "properties": {
+          "pullRequests": {
+            "description": "PullRequests: off | collaborators | nosecrets | approval.",
+            "type": "string"
+          }
+        }
+      },
+      "pro.CIWebhook": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "lastDeliveryAt": {
+            "type": "string"
+          },
+          "providerHookId": {
+            "description": "ProviderHookID is the id of the hook Cosmos created through the provider\nAPI, when it could.",
+            "type": "string"
+          },
+          "registered": {
+            "type": "boolean"
+          },
+          "secret": {
+            "description": "Secret signs inbound deliveries (HMAC / shared token, per provider).",
+            "type": "string"
+          }
+        }
+      },
       "pro.CreateGroupRequest": {
         "type": "object",
         "required": [
@@ -14424,19 +16396,31 @@
       "pro.Deployment": {
         "type": "object",
         "required": [
-          "compose",
           "name"
         ],
         "properties": {
           "compose": {
-            "$ref": "#/components/schemas/docker.DockerServiceCreateRequest"
+            "description": "Compose is the service spec the nodes apply. Exclusive with Function:\na deployment declares one or the other (ValidateDeploymentSpec).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/docker.DockerServiceCreateRequest"
+              }
+            ]
+          },
+          "function": {
+            "description": "Function makes this a function deployment: the compose is DERIVED from\nit (one service per handler, see functions.go) when the scheduler\ndispatches. Its Source.Token is redacted by the API and preserved across\nuser updates.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/pro.DeploymentFunction"
+              }
+            ]
           },
           "maxReplicas": {
             "type": "integer",
             "minimum": 1
           },
           "minReplicas": {
-            "description": "MinReplicas/MaxReplicas select load-based autoscaling clamped to [min,max], one step per cooldown.",
+            "description": "MinReplicas/MaxReplicas switch the deployment to load-based autoscaling:\neach reconcile cycle the leader targets the current replica count clamped\nto [min,max], stepping up by one when the nodes running the deployment\naverage above DeployScaleUpThreshold busyness (max of CPU%/RAM% from\nheartbeats) and down by one below DeployScaleDownThreshold, at most one\nstep per DeployScaleCooldown. Nodes without trusted metrics\n(MonitoringOn=false) hold the count steady.\nUse Tags to restrict which nodes autoscaled replicas may land on — the\nsame affinity filter as the other modes.",
             "type": "integer",
             "minimum": 1
           },
@@ -14446,19 +16430,19 @@
             "minLength": 3
           },
           "owner": {
-            "description": "Owner marks a system-owned deployment (e.g. \"seaweedfs:<instance>\"); the HTTP API refuses user create/update/delete on it.",
+            "description": "Owner marks a deployment as system-owned (e.g. \"seaweedfs:<instance>\").\nOwned deployments are created and mutated exclusively by the owning Go\nfeature: the HTTP API refuses user create/update/delete on them so a UI\naction can't desync the owner's record from the deployed spec. Empty for\nevery user-created deployment.",
             "type": "string"
           },
           "preserveVolumesOnRemove": {
-            "description": "PreserveVolumesOnRemove keeps the deployment's named volumes on disk on replica removal or\nfull delete; stamped as the cosmos-deployment-keep-volumes label on containers and volumes.",
+            "description": "PreserveVolumesOnRemove keeps the deployment's named volumes on disk when a\nreplica is removed — a fill-mode scale-down (node untagged) or a full delete.\nStamped as the cosmos-deployment-keep-volumes label on the containers so the\nnode-side teardown honors it even for orphan removal, which runs after the\nKV record is already gone. Used by system-owned data deployments (managed\nSeaweedFS volume servers) where a stray untag must never destroy data.",
             "type": "boolean"
           },
           "replicaFill": {
-            "description": "ReplicaFill: one replica on every alive node matching Tags (DaemonSet-style).",
+            "description": "ReplicaFill switches the deployment to fill mode: exactly one replica on\nEVERY alive, non-broken node matching Tags (every node when Tags is\nempty — DaemonSet-style). The replica count follows the eligible node\nset as nodes join/leave. Exclusive with the other two modes.",
             "type": "boolean"
           },
           "replicaFillMode": {
-            "description": "fill sub-mode: \"full\" (default) = every eligible node; \"bare\" = autoscale between 1 and the\neligible set; \"empty\" = bare with lazy scale-to-zero.",
+            "description": "ReplicaFillMode refines fill mode (only valid with ReplicaFill). The tag\nset still defines the placement universe; the sub-mode sets how much of\nit is occupied:\n  - \"full\" (default, empty string): one replica on every eligible node,\n    always.\n  - \"bare\": load-based between 1 and the whole eligible set — the\n    autoscale stepper (busyness thresholds + cooldown) with min=1 and\n    max=eligible node count. Idle collapses to one replica.\n  - \"empty\": bare, plus every container carries the cosmos-lazy label so\n    the idle floor replica is stopped by the lazy layer and woken by the\n    proxy on the next request — the tag scales from zero.",
             "type": "string",
             "enum": [
               "full",
@@ -14467,7 +16451,7 @@
             ]
           },
           "replicas": {
-            "description": "Exactly one of the three replica modes (fixed Replicas, autoscale Min/MaxReplicas, fill ReplicaFill)\nmust be set; ValidateReplicaConfig enforces the exclusivity.",
+            "description": "Replicas is the fixed replica count (the original mode). Exactly one of\nthe three replica modes must be configured — fixed (Replicas), autoscale\n(MinReplicas/MaxReplicas) or fill (ReplicaFill); ValidateReplicaConfig\nenforces the exclusivity since struct tags can't express it. In every\nmode, Tags restricts which nodes are eligible.",
             "type": "integer",
             "minimum": 1
           },
@@ -14494,8 +16478,309 @@
             }
           },
           "version": {
-            "description": "Version is a server-assigned monotonic integer bumped on every create/update, stamped on containers\nas cosmos-deployment-version so the scheduler can detect stale specs.",
+            "description": "Version is a monotonic integer bumped on every create/update. It is\nserver-assigned (the client never sets it) and is stamped onto every\ncontainer as the cosmos-deployment-version label so the scheduler can tell\na node running a stale spec from one running the current spec. A bump\ntriggers a rolling re-apply across the nodes already running the deployment;\nsee runReconcileCycle. Pre-version KV records and pre-version containers both\nread as 0, so upgrading an existing install causes no spurious re-apply.",
             "type": "integer"
+          }
+        }
+      },
+      "pro.DeploymentFunction": {
+        "type": "object",
+        "required": [
+          "handlers",
+          "runtime"
+        ],
+        "properties": {
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "handlers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/pro.FunctionHandler"
+            }
+          },
+          "image": {
+            "description": "Image overrides the runtime's default image (private mirror, patched\nruntime); it must honour the same contract.",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/pro.FunctionLimits"
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/pro.FunctionRelease"
+            }
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "runtime": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/pro.FunctionSource"
+          }
+        }
+      },
+      "pro.Function": {
+        "type": "object",
+        "required": [
+          "handler",
+          "name",
+          "runtime"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "deployment": {
+            "description": "Deployment is the deployment carrying the handler; on create, empty\nmeans \"fn<name>\".",
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "handler": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "image": {
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/pro.FunctionLimits"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 3
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/pro.FunctionRelease"
+            }
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "route": {
+            "$ref": "#/components/schemas/utils.ProxyRouteConfig"
+          },
+          "runtime": {
+            "type": "string"
+          },
+          "siblings": {
+            "description": "Siblings are the other handlers of the same deployment.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "$ref": "#/components/schemas/pro.FunctionSource"
+          },
+          "status": {
+            "description": "Status is \"created\" (no version pinned yet) or \"deployed\".",
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "triggers": {
+            "$ref": "#/components/schemas/pro.FunctionTriggers"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.FunctionCronTrigger": {
+        "type": "object",
+        "required": [
+          "crontab",
+          "name"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "crontab": {
+            "description": "Crontab is the 6-field form used everywhere in Cosmos (seconds first).",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "method": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.FunctionDeployRequest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "description": "Version to pin; empty or \"latest\" = the registry's latest.",
+            "type": "string"
+          }
+        }
+      },
+      "pro.FunctionHandler": {
+        "type": "object",
+        "required": [
+          "handler",
+          "name"
+        ],
+        "properties": {
+          "entry": {
+            "description": "Entry is FUNCTION_SOURCE: node = file inside the package, python =\nmodule path. Empty = the package's main / import name.",
+            "type": "string"
+          },
+          "env": {
+            "description": "Env is merged over the deployment-level env for this handler only.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "handler": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 3
+          },
+          "route": {
+            "description": "Route is the user-facing part of the function's URL (host, path, auth,\nshield, restrictions...). Name, mode, target, tunnel and visibility are\nforced when the compose is derived.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/utils.ProxyRouteConfig"
+              }
+            ]
+          },
+          "triggers": {
+            "$ref": "#/components/schemas/pro.FunctionTriggers"
+          }
+        }
+      },
+      "pro.FunctionInvokeRequest": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.FunctionLimits": {
+        "type": "object",
+        "properties": {
+          "cpu": {
+            "type": "number",
+            "minimum": 0
+          },
+          "idleTTL": {
+            "description": "IdleTTL is how long a replica stays awake without connections before the\nlazy layer stops it (Go duration string).",
+            "type": "string"
+          },
+          "memoryMB": {
+            "type": "integer",
+            "maximum": 1048576,
+            "minimum": 32
+          },
+          "timeoutSec": {
+            "type": "integer",
+            "maximum": 86400,
+            "minimum": 1
+          }
+        }
+      },
+      "pro.FunctionRelease": {
+        "type": "object",
+        "properties": {
+          "deployedAt": {
+            "type": "string"
+          },
+          "deployedBy": {
+            "type": "string"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.FunctionSource": {
+        "type": "object",
+        "required": [
+          "package",
+          "registry"
+        ],
+        "properties": {
+          "package": {
+            "description": "Package is the package name in that registry (npm name, possibly scoped;\nPyPI project name, normalized on save).",
+            "type": "string",
+            "maxLength": 214,
+            "minLength": 1
+          },
+          "registry": {
+            "description": "Registry is the registry instance name; its type must match the runtime\n(npm for node*, pypi for python*).",
+            "type": "string",
+            "maxLength": 27,
+            "minLength": 3
+          },
+          "token": {
+            "description": "Token is the read-only registry token minted for this function on the\nregistry (named \"function-<name>\"). Persisted, redacted in API output.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version is the PINNED version the deployment runs; set by deploy, never\na tag. Empty until the first deploy.",
+            "type": "string"
+          }
+        }
+      },
+      "pro.FunctionTriggers": {
+        "type": "object",
+        "properties": {
+          "cron": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/pro.FunctionCronTrigger"
+            }
           }
         }
       },
@@ -14620,95 +16905,54 @@
         "properties": {
           "restrictToConstellation": {
             "type": "boolean"
-          }
-        }
-      },
-      "pro.RegistryAccessCreateRequest": {
-        "type": "object",
-        "properties": {
-          "allowAnonymousPull": {
-            "type": "boolean"
           },
-          "host": {
-            "type": "string"
-          },
-          "internal": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "registries": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "pro.RegistryAccessSettingsRequest": {
-        "type": "object",
-        "properties": {
-          "allowAnonymousPull": {
-            "type": "boolean"
-          },
-          "host": {
-            "type": "string"
-          },
-          "internal": {
-            "type": "boolean"
-          },
-          "registries": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "pro.RegistryAccessTokenCreateRequest": {
-        "type": "object",
-        "properties": {
-          "expiryDays": {
-            "type": "integer"
-          },
-          "name": {
-            "type": "string"
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          "route": {
+            "description": "Route replaces the user-facing half of the proxy route; its RestrictToConstellation wins when both are sent.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/utils.ProxyRouteConfig"
+              }
+            ]
           }
         }
       },
       "pro.RegistryCreateRequest": {
         "type": "object",
         "properties": {
+          "allowAnonymousPull": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "internal": {
+            "type": "boolean"
+          },
           "name": {
             "type": "string"
           },
           "quotaBytes": {
             "type": "integer"
           },
+          "route": {
+            "description": "Route's Host / RestrictToConstellation win over the scalars above when set.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/utils.ProxyRouteConfig"
+              }
+            ]
+          },
           "storage": {
             "$ref": "#/components/schemas/pro.RegistryStorage"
           },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "type": {
-            "description": "Type is docker, npm, static or generic. Required and immutable afterwards.",
+            "description": "Type is docker, npm, static, generic or pypi. Required and immutable afterwards.",
             "type": "string"
           }
         }
@@ -14716,8 +16960,31 @@
       "pro.RegistrySettingsRequest": {
         "type": "object",
         "properties": {
+          "allowAnonymousPull": {
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "internal": {
+            "type": "boolean"
+          },
           "quotaBytes": {
             "type": "integer"
+          },
+          "route": {
+            "description": "Route's Host / RestrictToConstellation win over the scalars above when both are sent.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/utils.ProxyRouteConfig"
+              }
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -14726,6 +16993,34 @@
         "properties": {
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "pro.RegistryStaticSiteSettings": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "internal": {
+            "type": "boolean"
+          },
+          "route": {
+            "description": "Route replaces the user-facing half of the serving route; its Host / RestrictToConstellation win over the scalars above.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/utils.ProxyRouteConfig"
+              }
+            ]
+          },
+          "spa": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -14747,6 +17042,7 @@
             ]
           },
           "bucket": {
+            "description": "Bucket is the object-store bucket for both S3-family backends. Generated\nas RegistryBucketName(name) for managed SeaweedFS.",
             "type": "string"
           },
           "endpoint": {
@@ -14754,6 +17050,7 @@
             "type": "string"
           },
           "path": {
+            "description": "Path is the filesystem root when Backend is \"local\".",
             "type": "string"
           },
           "region": {
@@ -14765,6 +17062,23 @@
           },
           "secretKey": {
             "type": "string"
+          }
+        }
+      },
+      "pro.RegistryTokenCreateRequest": {
+        "type": "object",
+        "properties": {
+          "expiryDays": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -14806,6 +17120,117 @@
           }
         }
       },
+      "pro.SeaweedFSDrainRequest": {
+        "type": "object",
+        "properties": {
+          "device": {
+            "description": "Device is the constellation device name of the volume server to evacuate.",
+            "type": "string"
+          }
+        }
+      },
+      "pro.SeaweedFSReplaceMasterRequest": {
+        "type": "object",
+        "properties": {
+          "newDevice": {
+            "description": "NewDevice is optional: the next live manager outside the master set is picked when absent.",
+            "type": "string"
+          },
+          "oldDevice": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.SeaweedFSRestrictRequest": {
+        "type": "object",
+        "properties": {
+          "restrictToConstellation": {
+            "description": "*bool, deliberately: with a plain bool an EMPTY body would decode as\nfalse and silently publish the object store — the exact inversion of the\nrestrict-by-default posture. Absent means invalid, never \"unrestrict\".",
+            "type": "boolean"
+          }
+        }
+      },
+      "pro.SeaweedFSRouteRequest": {
+        "type": "object",
+        "properties": {
+          "route": {
+            "description": "Route is required: the user-facing settings of the S3 route.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/utils.ProxyRouteConfig"
+              }
+            ]
+          }
+        }
+      },
+      "pro.SeaweedFSStorageRequest": {
+        "type": "object",
+        "properties": {
+          "maxStorageGBPerNode": {
+            "description": "MaxStorageGBPerNode is required; 0 means unlimited.",
+            "type": "integer"
+          }
+        }
+      },
+      "pro.SeaweedFSUpgradeRequest": {
+        "type": "object",
+        "properties": {
+          "image": {
+            "type": "string"
+          }
+        }
+      },
+      "pro.SwfsJobsConfig": {
+        "type": "object",
+        "properties": {
+          "diskAlertPercent": {
+            "type": "number"
+          },
+          "ecCrontab": {
+            "type": "string"
+          },
+          "ecEnabled": {
+            "description": "EC is OFF by default: encoding transiently needs a lot of disk headroom,\nand ECMinFreeDiskPercent is a hard guard the job checks first.",
+            "type": "boolean"
+          },
+          "ecFullPercent": {
+            "type": "number"
+          },
+          "ecMinFreeDiskPercent": {
+            "type": "number"
+          },
+          "ecQuietForSec": {
+            "type": "integer"
+          },
+          "garbageThreshold": {
+            "type": "number"
+          },
+          "monitorCrontab": {
+            "type": "string"
+          },
+          "repackCrontab": {
+            "description": "Repack registers iff ECEnabled: EC shards never vacuum in place, so repack\nis the only way deleted space inside an EC volume is reclaimed.",
+            "type": "string"
+          },
+          "repackDeleteRatio": {
+            "type": "number"
+          },
+          "scrubCrontab": {
+            "type": "string"
+          },
+          "scrubEnabled": {
+            "description": "Scrub runs volume.check.disk to verify replica consistency (bitrot).",
+            "type": "boolean"
+          },
+          "vacuumCrontab": {
+            "type": "string"
+          },
+          "vacuumEnabled": {
+            "description": "Without vacuum, deleted data never frees disk and full volumes flip read-only.",
+            "type": "boolean"
+          }
+        }
+      },
       "pro.UpdateGroupRequest": {
         "type": "object",
         "properties": {
@@ -14817,6 +17242,14 @@
             "items": {
               "$ref": "#/components/schemas/utils.Permission"
             }
+          }
+        }
+      },
+      "proxy.ShieldUnbanRequest": {
+        "type": "object",
+        "properties": {
+          "clientID": {
+            "type": "string"
           }
         }
       },
@@ -15419,27 +17852,6 @@
           }
         }
       },
-      "utils.DDNSConfig": {
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "fqdn": {
-            "type": "string"
-          },
-          "lastKnownIp": {
-            "description": "LastKnownIP and LastUpdate are bookkeeping for the periodic worker.",
-            "type": "string"
-          },
-          "lastUpdate": {
-            "type": "string"
-          },
-          "token": {
-            "type": "string"
-          }
-        }
-      },
       "utils.DatabaseConfig": {
         "type": "object",
         "properties": {
@@ -15467,13 +17879,6 @@
         "properties": {
           "defaultDataPath": {
             "type": "string"
-          },
-          "relayNetworks": {
-            "description": "RelayNetworks lists Docker networks on which Cosmos relays IPv4\nbroadcast/multicast frames to other relay-enabled networks. Persisted in\nthe main config because Docker labels on existing networks cannot be\nmutated in place; networks created via Cosmos also carry the\n\"cosmos.broadcastrelay\" label as a machine-readable marker.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           },
           "skipPruneImages": {
             "type": "boolean"
@@ -15824,6 +18229,17 @@
           "LBStickyMode": {
             "type": "boolean"
           },
+          "ManagedByKind": {
+            "description": "ManagedByKind / ManagedByName identify the feature that owns this route (see ManagedByKinds); both empty for a user-created route.",
+            "type": "string"
+          },
+          "ManagedByName": {
+            "type": "string"
+          },
+          "ManagedByVersion": {
+            "description": "ManagedByVersion is the owner's spec version this copy was rendered from (deployments only; see the routes-only apply in scheduler_node.go).",
+            "type": "integer"
+          },
           "acceptInsecureHTTPSTarget": {
             "type": "boolean"
           },
@@ -15965,6 +18381,23 @@
             "items": {
               "$ref": "#/components/schemas/utils.Permission"
             }
+          }
+        }
+      },
+      "utils.ShieldWhitelistEntry": {
+        "type": "object",
+        "properties": {
+          "BypassGeo": {
+            "type": "boolean"
+          },
+          "BypassIPRestriction": {
+            "type": "boolean"
+          },
+          "IP": {
+            "type": "string"
+          },
+          "Label": {
+            "type": "string"
           }
         }
       },
@@ -16119,10 +18552,6 @@
             "type": "integer"
           }
         }
-      },
-      "os.FileMode": {
-        "type": "integer",
-        "format": "uint32"
       }
     }
   }

@@ -424,6 +424,9 @@ func remountAll() {
 		}
 	}
 
+	// Materialize share routes first: the serve port below is read from the allocated route.
+	ReconcileShareRoutes()
+
 	shares := utils.GetMainConfig().RemoteStorage.Shares
 	cleanupCosmosSambaShares()
 

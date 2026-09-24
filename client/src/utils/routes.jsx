@@ -219,6 +219,12 @@ export const HostnameChecker = ({hostname}) => {
 
 const hostnameIsDomainReg = /^((?!localhost|\d+\.\d+\.\d+\.\d+)[a-zA-Z0-9\-]{1,63}\.)+[a-zA-Z]{2,63}$/
 
+// True when this server is reached through a real domain name, i.e. a subdomain can be built from it.
+export const originIsDomain = (overrideOrigin) => {
+  let origin = overrideOrigin || window.location.origin.split('://')[1];
+  return !!origin.split(':')[0].match(hostnameIsDomainReg);
+}
+
 export const getHostnameFromName = (name, route, config, overrideOrigin) => {
   let origin = overrideOrigin || window.location.origin.split('://')[1];
   let protocol = overrideOrigin || window.location.origin.split('://')[0];
@@ -265,3 +271,25 @@ export const IsRouteSocketProxy = (route) => {
   if(!route.Target || route.Target == "") return false;
   return (route.Mode == "PROXY" || route.Mode == "SERVAPP") && !route.Target.startsWith('http://') && !route.Target.startsWith('https://');
 }
+// Where a managed route is edited. The (kind, name) pair is typed: same-named owners of different kinds never collide.
+export const managedRouteOwner = (route) => {
+  if (!route || !route.ManagedByKind) return null;
+  const kind = route.ManagedByKind;
+  const name = route.ManagedByName || '';
+  const enc = encodeURIComponent;
+  const links = {
+    'deployment': '/cosmos-ui/deployments/view/' + enc(name),
+    'function': '/cosmos-ui/functions/view/' + enc(name),
+    'seaweedfs': '/cosmos-ui/object-storage/view/' + enc(name),
+    'manageddb': '/cosmos-ui/databases/view/' + enc(name),
+    'registry': '/cosmos-ui/registries/view/' + enc(name),
+    // "<registry>/<site>": the site is edited from its registry's page.
+    'registry-site': '/cosmos-ui/registries/view/' + enc(name.split('/')[0]),
+    // The CI owner name is the deployment it wrote.
+    'ci': '/cosmos-ui/deployments/view/' + enc(name),
+    'share': '/cosmos-ui/storage',
+  };
+  return { kind, name, link: links[kind] || '' };
+};
+
+export const isManagedRoute = (route) => !!(route && route.ManagedByKind);

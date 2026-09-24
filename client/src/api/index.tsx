@@ -17,6 +17,8 @@ import createDatabasesAPI from './databases';
 import createSeaweedFSAPI from './seaweedfs';
 import createRegistryAPI from './registry';
 import createFunctionsAPI from './functions';
+import createCIAPI from './ci';
+import createShieldAPI from './shield';
 
 import * as authDemo from './authentication.demo';
 import * as usersDemo from './users.demo';
@@ -67,6 +69,8 @@ export function createClient({ baseUrl, token }) {
     seaweedfs: createSeaweedFSAPI(apiFetch),
     registry: createRegistryAPI(apiFetch),
     functions: createFunctionsAPI(apiFetch),
+    ci: createCIAPI(apiFetch),
+    shield: createShieldAPI(apiFetch),
 
     getStatus: () => {
       return wrap(apiFetch('/cosmos/api/status', {
@@ -446,6 +450,8 @@ let databases = createDatabasesAPI(defaultFetch);
 let seaweedfs = createSeaweedFSAPI(defaultFetch);
 let registry = createRegistryAPI(defaultFetch);
 let functions = createFunctionsAPI(defaultFetch);
+let ci = createCIAPI(defaultFetch);
+let shield = createShieldAPI(defaultFetch);
 
 if(isDemo) {
   auth = authDemo;
@@ -507,4 +513,6 @@ export {
   seaweedfs,
   registry,
   functions,
+  ci,
+  shield,
 };

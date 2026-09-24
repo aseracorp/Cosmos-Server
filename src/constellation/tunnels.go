@@ -466,9 +466,9 @@ func ClientHeartbeatInit() {
 					seaweedFS = nil
 				}
 
-				// Derived from access records and tags, not docker; read before
+				// Derived from registry records and tags, not docker; read before
 				// the config lock is taken below — the helper takes it too.
-				registries := pro.RegistryAccessesServedHere(&clientConfigLock, js, device.Tags)
+				registries := pro.RegistriesServedHere(&clientConfigLock, js, device.Tags)
 
 				// Read the latest cached resource sample. Cheap — the
 				// sampler's own goroutine paid the cpu.Percent cost.

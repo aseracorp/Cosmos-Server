@@ -4,6 +4,7 @@
 package pro
 
 import (
+	"github.com/azukaar/cosmos-server/src/utils"
 	"github.com/nats-io/nats.go"
 	"sync"
 	"time"
@@ -15,17 +16,21 @@ type RegistryStorage struct {
 	Backend string `json:"backend" validate:"required,oneof=seaweedfs s3 local"`
 	// SeaweedFS is the managed instance name when Backend is "seaweedfs".
 	SeaweedFS string `json:"seaweedfs,omitempty"`
-	Bucket    string `json:"bucket,omitempty"`
+	// Bucket is the object-store bucket for both S3-family backends. Generated
+	// as RegistryBucketName(name) for managed SeaweedFS.
+	Bucket string `json:"bucket,omitempty"`
 	// External S3 only.
 	Endpoint  string `json:"endpoint,omitempty"`
 	AccessKey string `json:"accessKey,omitempty"`
 	SecretKey string `json:"secretKey,omitempty"`
 	Region    string `json:"region,omitempty"`
-	Path      string `json:"path,omitempty"`
+	// Path is the filesystem root when Backend is "local".
+	Path string `json:"path,omitempty"`
 }
 
-// RegistryToken is a deploy credential stored on the access record so it
-// replicates with it; only the hash is kept.
+// RegistryToken is a deploy credential stored ON the registry record, so it
+// replicates with it and any serving node can verify a push without a second
+// lookup. Only the hash is kept — the raw token is shown once, at mint.
 type RegistryToken struct {
 	Name        string `json:"name" validate:"required,min=1,max=64"`
 	TokenHash   string `json:"tokenHash"`
@@ -34,62 +39,55 @@ type RegistryToken struct {
 	Scopes []string `json:"scopes,omitempty"`
 	// ExpiresAt zero means never.
 	ExpiresAt time.Time `json:"expiresAt,omitempty"`
-	// LastUsedAt is written lazily by the protocol paths (throttled).
+	// LastUsedAt is written lazily by the protocol paths (throttled) — a CAS
+	// write per pull would make the record the registry's bottleneck.
 	LastUsedAt time.Time `json:"lastUsedAt,omitempty"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
-// RegistryInstance is the persistent record of one registry. Who may reach it
-// is an access concern — see RegistryAccess.
+// RegistryInstance is one registry's persistent record: typed storage plus the endpoint publishing it.
 type RegistryInstance struct {
-	// Name is alphanumeric and lowercased so every derived identifier (bucket
-	// name, KV key prefix, OCI repository path) is valid without transformation.
+	// Name is alphanumeric and lowercased, like SeaweedFSInstance.Name, so
+	// every derived identifier (bucket, KV key, route name) is valid without transformation.
 	Name string `json:"name" validate:"required,min=3,max=27,alphanum"`
 	// Type is the protocol this registry's contents speak. Immutable.
 	Type    string          `json:"type" validate:"required,oneof=docker npm static generic pypi"`
 	Storage RegistryStorage `json:"storage"`
 	// QuotaBytes caps the registry's stored size; 0 is unlimited.
 	QuotaBytes int64 `json:"quotaBytes"`
+
+	// Host is the registry's own hostname; required for every type but static, whose sites publish on their own routes.
+	Host string `json:"host,omitempty"`
+	// Internal restricts the endpoint to the constellation: the materialized
+	// route carries RestrictToConstellation, and the direct mux handler
+	// enforces the same check itself, because a request can reach the handler
+	// without ever passing through the route.
+	Internal           bool `json:"internal"`
+	AllowAnonymousPull bool `json:"allowAnonymousPull"`
+	// Tags select the serving nodes with nodeMatchesTags AND-semantics. Unlike
+	// SeaweedFS, EMPTY is meaningful and is the default: no tag filter, so
+	// every node serves the endpoint. A default tag here would silently make a
+	// fresh registry unreachable on an untagged cluster.
+	Tags   []string        `json:"tags"`
+	Tokens []RegistryToken `json:"tokens,omitempty"`
+	// Route is the user-facing half of the serving route; identity fields are forced at render (BuildRegistryRoute).
+	Route utils.ProxyRouteConfig `json:"route" validate:"-"`
+
 	// Status: provisioning -> ready; deleting during teardown.
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// RegistryAccess is an endpoint publishing one or more registries of one type.
-type RegistryAccess struct {
-	Name string `json:"name" validate:"required,min=3,max=27,alphanum"`
-	// Host is required: docker clients only address a registry by hostname over
-	// TLS, and npm's tarball URLs are absolute.
-	Host string `json:"host" validate:"required"`
-	// Paths outside Registries 404, never 403 — no existence oracle.
-	Registries []string `json:"registries" validate:"required,min=1"`
-	// Internal restricts the endpoint to the constellation; the direct mux
-	// handler enforces it too, since a request can bypass the route.
-	Internal           bool `json:"internal"`
-	AllowAnonymousPull bool `json:"allowAnonymousPull"`
-	// Unlike SeaweedFS, EMPTY Tags is meaningful and the default: no filter, so
-	// every node serves the endpoint.
-	Tags   []string        `json:"tags"`
-	Tokens []RegistryToken `json:"tokens,omitempty"`
-	// Status: ready; deleting during teardown.
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-// RegistryStatus is a registry record plus derived data; nothing here is persisted.
+// RegistryStatus: a record plus derived serving nodes and stored-size rollup — nothing here is persisted.
 type RegistryStatus struct {
 	RegistryInstance
-	Accesses []string      `json:"accesses"`
-	Stats    RegistryStats `json:"stats"`
+	// ServingNodes are the devices whose heartbeat advertises this registry.
+	ServingNodes []string      `json:"servingNodes"`
+	Stats        RegistryStats `json:"stats"`
 }
 
-type RegistryAccessStatus struct {
-	RegistryAccess
-	ServingNodes []string `json:"servingNodes"`
-}
-
-// ListRegistriesWithStatus returns records, the accesses publishing them and
-// their stats; a failed stats read leaves the zero rollup.
+// ListRegistriesWithStatus returns records, their serving nodes and their
+// stats; a failed stats read leaves the zero rollup.
 func ListRegistriesWithStatus(lock *sync.RWMutex, js nats.JetStreamContext) ([]RegistryStatus, error) {
 	// Pro feature stub.
 	var r0 []RegistryStatus
@@ -97,16 +95,9 @@ func ListRegistriesWithStatus(lock *sync.RWMutex, js nats.JetStreamContext) ([]R
 	return r0, r1
 }
 
-func ListRegistryAccessesWithStatus(lock *sync.RWMutex, js nats.JetStreamContext) ([]RegistryAccessStatus, error) {
-	// Pro feature stub.
-	var r0 []RegistryAccessStatus
-	var r1 error
-	return r0, r1
-}
-
-// RegistryAccessesServedHere returns the endpoints this node serves given its
-// constellation tags; a KV failure degrades to an empty list.
-func RegistryAccessesServedHere(lock *sync.RWMutex, js nats.JetStreamContext, nodeTags []string) []string {
+// RegistriesServedHere returns the registry endpoint names this node serves,
+// given its tags; a KV failure degrades to an empty list.
+func RegistriesServedHere(lock *sync.RWMutex, js nats.JetStreamContext, nodeTags []string) []string {
 	// Pro feature stub.
 	var r0 []string
 	return r0

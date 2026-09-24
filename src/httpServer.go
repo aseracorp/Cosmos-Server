@@ -370,14 +370,25 @@ func SecureAPI(userRouter *mux.Router, public bool, publicCors bool, strict bool
 	}
 
 	if(strict) {
+		// Login, sudo, MFA, password reset, register and setup. Every field is
+		// explicit on purpose: this policy must never inherit the deployment
+		// profile, whose Pro values are sized for serving traffic, not for the
+		// one router an attacker brute-forces. A failed login is a POST (x5)
+		// answered 401 (x30) = 150 budget, so 3000 is 20 failed attempts per
+		// hour per source IP before a 1h strike, three strikes is a 4h ban.
 		userRouter.Use(proxy.SmartShieldMiddleware(
-			"__COSMOS",
+			"__COSMOS-strict",
 			utils.ProxyRouteConfig{
 				Name: "Cosmos-Internal-login",
 				SmartShield: utils.SmartShieldPolicy{
-					Enabled: true,
-					PolicyStrictness: 1,
-					PerUserRequestLimit: 10000,
+					Enabled:               true,
+					PolicyStrictness:      utils.STRICT,
+					PerUserTimeBudget:     0,
+					PerUserRequestLimit:   3000,
+					PerUserByteLimit:      1024 * 1024 * 1024, // 1GB
+					PerUserSimultaneous:   20,
+					MaxGlobalSimultaneous: 2000,
+					PrivilegedGroups:      utils.ADMIN,
 				},
 			},
 		))
@@ -666,6 +677,8 @@ func InitServer() *mux.Router {
 	srapi.HandleFunc("/api/dashboard", configapi.DashboardApiGet)
 
 	srapi.HandleFunc("/api/terminal/{route}", HostTerminalRoute)
+	// CI webhooks: signed by the provider, verified in the handler.
+	srapi.HandleFunc("/api/constellation/ci/hooks/{name}", constellation.CIWebhookRoute)
 	
 	srapiAdmin := router.PathPrefix("/cosmos").Subrouter()
 	srapiAdmin.Use(utils.ContentTypeMiddleware("application/json"))
@@ -760,6 +773,19 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/constellation/functions/{name}/versions", constellation.FunctionsVersionsRoute)
 	srapiAdmin.HandleFunc("/api/constellation/functions/{name}/invoke", constellation.FunctionsInvokeRoute)
 	srapiAdmin.HandleFunc("/api/constellation/functions/{name}", constellation.FunctionsIdRoute)
+
+	// CI (Pro): deepest paths first. The inbound webhook is on the public
+	// router below (providers call it unauthenticated; deliveries are signed).
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/builds/{number}/logs", constellation.CIBuildLogsRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/builds/{number}/{action}", constellation.CIBuildActionRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/builds/{number}", constellation.CIBuildIdRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/builds", constellation.CIBuildsRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/webhook/{action}", constellation.CIProjectWebhookRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}", constellation.CIProjectsIdRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects", constellation.CIProjectsRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/builds", constellation.CIAllBuildsRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/detect", constellation.CIDetectRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/runners", constellation.CIRunnersRoute)
 	srapiAdmin.HandleFunc("/api/constellation/databases", constellation.ManagedDBRoute)
 	// Before {name}: mux matches in registration order, so "databases/restore" must precede the catch-all.
 	srapiAdmin.HandleFunc("/api/constellation/databases/restore", constellation.ManagedDBRestoreRoute)
@@ -775,6 +801,7 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/constellation/seaweedfs/{name}", constellation.SeaweedFSIdRoute)
 	srapiAdmin.HandleFunc("/api/constellation/seaweedfs/{name}/status", constellation.SeaweedFSStatusRoute)
 	srapiAdmin.HandleFunc("/api/constellation/seaweedfs/{name}/restrict", constellation.SeaweedFSRestrictRoute)
+	srapiAdmin.HandleFunc("/api/constellation/seaweedfs/{name}/route", constellation.SeaweedFSS3RouteRoute)
 	srapiAdmin.HandleFunc("/api/constellation/seaweedfs/{name}/jobs", constellation.SeaweedFSJobsRoute)
 	srapiAdmin.HandleFunc("/api/constellation/seaweedfs/{name}/storage", constellation.SeaweedFSStorageRoute)
 	srapiAdmin.HandleFunc("/api/constellation/seaweedfs/{name}/backup", constellation.SeaweedFSBackupRoute)
@@ -800,16 +827,14 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/constellation/registries/{name}/packages/{package}/versions", constellation.RegistryGenericVersionsRoute)
 	srapiAdmin.HandleFunc("/api/constellation/registries/{name}/packages/{package}", constellation.RegistryGenericPackageIdRoute)
 	srapiAdmin.HandleFunc("/api/constellation/registries/{name}/packages", constellation.RegistryGenericPackagesRoute)
+	srapiAdmin.HandleFunc("/api/constellation/registries/{name}/tokens", constellation.RegistryTokensRoute)
+	srapiAdmin.HandleFunc("/api/constellation/registries/{name}/tokens/{tokenName}", constellation.RegistryTokenIdRoute)
 	srapiAdmin.HandleFunc("/api/constellation/registries/{name}", constellation.RegistryIdRoute)
 
-	// Registry accesses: the endpoints that publish registries.
-	srapiAdmin.HandleFunc("/api/constellation/registry-accesses", constellation.RegistryAccessRoute)
-	srapiAdmin.HandleFunc("/api/constellation/registry-accesses/{name}/tokens", constellation.RegistryAccessTokensRoute)
-	srapiAdmin.HandleFunc("/api/constellation/registry-accesses/{name}/tokens/{tokenName}", constellation.RegistryAccessTokenIdRoute)
-	srapiAdmin.HandleFunc("/api/constellation/registry-accesses/{name}/settings", constellation.RegistryAccessSettingsRoute)
-	srapiAdmin.HandleFunc("/api/constellation/registry-accesses/{name}", constellation.RegistryAccessIdRoute)
-
 	srapiAdmin.HandleFunc("/api/events", metrics.API_ListEvents)
+
+	srapiAdmin.HandleFunc("/api/shield/bans", proxy.API_ShieldBans)
+	srapiAdmin.HandleFunc("/api/shield/unban", proxy.API_ShieldUnban)
 
 	srapiAdmin.HandleFunc("/api/alerts/{name}", metrics.AlertsIdRoute)
 	srapiAdmin.HandleFunc("/api/alerts", metrics.AlertsRoute)
@@ -946,7 +971,7 @@ func InitServer() *mux.Router {
 	SecureAPI(OpenIDDetect, true, true, false)
 	authorizationserver.RegisterHandlersDetect(OpenIDDetect, srapiStrict)
 
-	// Registry protocol endpoints: registered BEFORE BuildFromConfig so mux registration order keeps the serving route targeting this node's own listener from answering (see pro.BuildRegistryAccessRoute).
+	// Registry protocol endpoints: registered BEFORE BuildFromConfig so they win mux registration order (see pro.BuildRegistryRoute).
 	pro.RegisterRegistryProtocolRoutes(router)
 
 	router = proxy.BuildFromConfig(router, HTTPConfig.ProxyConfig)

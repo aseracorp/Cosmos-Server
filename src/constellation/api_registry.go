@@ -71,37 +71,17 @@ func RegistryGenericFileRoute(w http.ResponseWriter, req *http.Request) {
 	pro.RegistryGenericFileRoute(w, req, &clientConfigLock, js)
 }
 
-func RegistryAccessRoute(w http.ResponseWriter, req *http.Request) {
-	pro.RegistryAccessRoute(w, req, &clientConfigLock, js)
+func RegistryTokensRoute(w http.ResponseWriter, req *http.Request) {
+	pro.RegistryTokensRoute(w, req, &clientConfigLock, js)
 }
 
-func RegistryAccessIdRoute(w http.ResponseWriter, req *http.Request) {
-	pro.RegistryAccessIdRoute(w, req, &clientConfigLock, js)
-}
-
-func RegistryAccessSettingsRoute(w http.ResponseWriter, req *http.Request) {
-	pro.RegistryAccessSettingsRoute(w, req, &clientConfigLock, js)
-}
-
-func RegistryAccessTokensRoute(w http.ResponseWriter, req *http.Request) {
-	pro.RegistryAccessTokensRoute(w, req, &clientConfigLock, js)
-}
-
-func RegistryAccessTokenIdRoute(w http.ResponseWriter, req *http.Request) {
-	pro.RegistryAccessTokenIdRoute(w, req, &clientConfigLock, js)
+func RegistryTokenIdRoute(w http.ResponseWriter, req *http.Request) {
+	pro.RegistryTokenIdRoute(w, req, &clientConfigLock, js)
 }
 
 // RegistryList is best-effort: a KV failure returns nil, treated as "unavailable", never "no registries".
 func RegistryList() []pro.RegistryStatus {
 	list, err := pro.ListRegistriesWithStatus(&clientConfigLock, js)
-	if err != nil {
-		return nil
-	}
-	return list
-}
-
-func RegistryAccessList() []pro.RegistryAccessStatus {
-	list, err := pro.ListRegistryAccessesWithStatus(&clientConfigLock, js)
 	if err != nil {
 		return nil
 	}

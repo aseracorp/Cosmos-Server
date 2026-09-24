@@ -414,6 +414,11 @@ func BlockByCountryMiddleware(blockedCountries []string, CountryBlacklistIsWhite
 				return
 			}
 
+			if ShieldBypassesGeo(ip) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			countryCode, err := GetIPLocation(ip)
 
 			if err == nil {
@@ -710,7 +715,8 @@ func CheckRouteIPAccess(clientIP string, remoteAddr string, restrictToConstellat
 
 func checkIPAccess(clientIP string, remoteAddr string, restrictToConstellation bool, whitelistIPs []string, allowLocalPeer bool) bool {
 	isUsingWhiteList := len(whitelistIPs) > 0
-	isInWhitelist := false
+	// the global shield whitelist can vouch for an IP on every route
+	isInWhitelist := ShieldBypassesIPRestriction(clientIP)
 	isInConstellation := IsConstellationIP(remoteAddr)
 	isLocalPeer := allowLocalPeer && IsLocalPeer(remoteAddr)
 

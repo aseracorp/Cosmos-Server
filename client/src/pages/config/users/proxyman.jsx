@@ -33,11 +33,11 @@ import { EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
 import AnimateButton from '../../../components/@extended/AnimateButton';
 import RestartModal from './restart';
 import RouteManagement from '../routes/routeman';
-import { getFaviconURL, sanitizeRoute, ValidateRoute, getContainerFromRoute } from '../../../utils/routes';
+import { getFaviconURL, sanitizeRoute, ValidateRoute, getContainerFromRoute, managedRouteOwner, isManagedRoute } from '../../../utils/routes';
 import PrettyTableView from '../../../components/tableView/prettyTableView';
 import HostChip from '../../../components/hostChip';
 import Ellipsis from '../../../components/ellipsis';
-import {RouteActions, RouteMode, RouteSecurity} from '../../../components/routeComponents';
+import { RouteActions, RouteMode, RouteSecurity, ManagedByChip } from '../../../components/routeComponents';
 import { useNavigate } from 'react-router';
 import NewRouteCreate from '../routes/newRoute';
 import LazyLoad from 'react-lazyload';
@@ -47,6 +47,9 @@ import { useTranslation } from 'react-i18next';
 import { useClientInfos } from '../../../utils/hooks';
 import { PERM_CONFIGURATION } from '../../../utils/permissions';
 import PermissionGuard from '../../../components/permissionGuard';
+import PrettyTabbedView from '../../../components/tabbedView/tabbedView';
+import ShieldDashboard from './shieldDashboard';
+import ShieldWhitelist from './shieldWhitelist';
 
 const stickyButton = {
   position: 'fixed',
@@ -220,7 +223,7 @@ const ProxyManagement = () => {
     routes = [...tunnelRoutes, ...routes];
   }
 
-  return <div style={{ maxWidth: "1200px", margin: "auto" }}>
+  const urlsTab = <div style={{ maxWidth: "1200px", margin: "auto" }}>
     <Stack direction="row" spacing={1} style={{ marginBottom: '20px' }}>
       <PermissionGuard permission={PERM_CONFIGURATION}>
         <Button variant="contained" color="primary" startIcon={<PlusCircleOutlined />} onClick={() => {
@@ -239,7 +242,11 @@ const ProxyManagement = () => {
       {routes && <PrettyTableView 
         data={routes}
         getKey={(r, k) => k + r.Name + r.Target + r.Mode + (r._IsTunnel ? '_tunnel' : '')}
-        linkTo={(r) => r._IsTunnel ? '' : ('/cosmos-ui/config-url/' + r.Name)}
+        linkTo={(r) => {
+          const owner = managedRouteOwner(r);
+          if (owner) return owner.link || ('/cosmos-ui/config-url/' + r.Name);
+          return '/cosmos-ui/config-url/' + r.Name;
+        }}
         columns={[
           { 
             title: '', 
@@ -258,7 +265,7 @@ const ProxyManagement = () => {
                 display: 'block',
                 marginLeft: '10px',
               }} src={ConstellationIcon} />
-            </> : <Checkbox disabled={isLoading} size='large' color={!r.Disabled ? 'success' : 'default'}
+            </> : <Checkbox disabled={isLoading || isManagedRoute(r)} size='large' color={!r.Disabled ? 'success' : 'default'}
               onChange={setRouteEnabled(routes.indexOf(r))}
               checked={!r.Disabled}
             />,
@@ -271,11 +278,12 @@ const ProxyManagement = () => {
             underline: true,
             field: (r) => <>
               <div style={{display:'inline-block', textDecoration: 'inherit', fontSize:'125%', color: isDark ? theme.palette.primary.light : theme.palette.primary.dark}}>
-                {r.Name} {!r._IsTunnel && r.TunnelVia && <span>💫</span>}
+                {r.Name} {!r._IsTunnel && r.Tunnel && <span>💫</span>}
               </div>
               <br/>
               <div>
                 <div style={{ textDecoration: 'inherit', fontSize: '90%', opacity: '90%'}}>{r.Description}</div>
+                {isManagedRoute(r) ? <div style={{ marginTop: '4px' }}><ManagedByChip route={r} /></div> : ""}
                 {r._IsTunnel ? <div style={{ textDecoration: 'inherit', fontSize: '90%', opacity: '60%'}}>From {r._from.join(', ')}</div> : ""}
               </div>
             </>
@@ -295,7 +303,7 @@ const ProxyManagement = () => {
           },
           { title: t('global.securityTitle'), screenMin: 'lg', field: (r) => <RouteSecurity route={r} />,
           style: {minWidth: '70px'} },
-          { title: '', clickable:true, field: (r, k) => r._IsTunnel ? <Tooltip title={t('tooltip.route.tunnelWarn')}>
+          { title: '', clickable:true, field: (r, k) => (r._IsTunnel || isManagedRoute(r)) ? <Tooltip title={t(isManagedRoute(r) ? 'tooltip.route.managedWarn' : 'tooltip.route.tunnelWarn')}>
             <QuestionCircleOutlined style={{
               // color: 'gray',
               fontSize: '20px',
@@ -376,6 +384,15 @@ const ProxyManagement = () => {
       }
     </>}
   </div>;
+
+  return <PrettyTabbedView
+    rootURL="/cosmos-ui/config-url"
+    tabs={[
+      { title: t('mgmt.config.proxy.tabs.urls'), children: urlsTab, url: '/' },
+      { title: t('mgmt.config.proxy.tabs.shield'), children: <ShieldDashboard />, url: '/shield' },
+      { title: t('mgmt.config.proxy.tabs.whitelist'), children: <ShieldWhitelist />, url: '/whitelist' },
+    ]}
+  />;
 }
 
 export default ProxyManagement;

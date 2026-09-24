@@ -8,7 +8,7 @@ import { version } from '../../../package.json';
 
 // ==============================|| MENU ITEMS ||============================== //
 
-const UNSTABLE_ONLY = ['registries', 'functions'];
+const UNSTABLE_ONLY = [];
 
 const buildItems = () => {
     if (!isProBuild()) {

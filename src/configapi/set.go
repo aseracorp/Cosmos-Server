@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"github.com/azukaar/cosmos-server/src/constellation"
+	"github.com/azukaar/cosmos-server/src/storage"
 	"github.com/azukaar/cosmos-server/src/utils"
 )
 
@@ -241,8 +242,14 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 		utils.ConfigLock.Lock()
 		config = utils.ReadConfigFromFile()
 		restoreReplicatedDomains(&request, config)
+		// Managed routes are owned by their materializer: keep the stored copies whatever the payload says.
+		request.HTTPConfig.ProxyConfig.Routes = utils.PreserveManagedRoutes(
+			request.HTTPConfig.ProxyConfig.Routes, config.HTTPConfig.ProxyConfig.Routes)
 		utils.SetBaseMainConfig(request)
 		utils.ConfigLock.Unlock()
+
+		// Storage shares carry their own route; derive the ProxyConfig.Routes copies server-side.
+		storage.ReconcileShareRoutes()
 
 		utils.TriggerEvent(
 			"cosmos.settings",
