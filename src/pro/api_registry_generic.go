@@ -10,8 +10,11 @@ import (
 )
 
 // RegistryGenericPackagesRoute godoc
-// @Summary List the packages of a generic or pypi registry
-// @Description Returns every package with its versions and their files (Pro feature)
+// @Summary List the packages of a registry
+// @Description Returns every package with its versions and their files. Works for every
+// @Description registry type but static: a docker image's versions are its manifests
+// @Description (named by digest, with the tags resolving to each), an npm package's are
+// @Description its published versions with their dist-tags (Pro feature)
 // @Tags registry
 // @Produce json
 // @Security BearerAuth
@@ -24,10 +27,8 @@ func RegistryGenericPackagesRoute(w http.ResponseWriter, req *http.Request, lock
 }
 
 // RegistryGenericPackageIdRoute godoc
-// @Summary Get or delete one generic or pypi package
-// @Description GET returns the package with its versions and files; DELETE removes the
-// @Description package and every version (the stored files are reclaimed by the next
-// @Description GC pass) (Pro feature)
+// @Summary Get one package
+// @Description Returns the package with its versions and files (Pro feature)
 // @Tags registry
 // @Produce json
 // @Security BearerAuth
@@ -66,10 +67,11 @@ func RegistryGenericVersionsRoute(w http.ResponseWriter, req *http.Request, lock
 }
 
 // RegistryGenericVersionIdRoute godoc
-// @Summary Delete one generic or pypi package version
+// @Summary Delete one package version
 // @Description Removes the version and its file entries; the stored files are reclaimed
-// @Description by the next GC pass. "latest" is re-pointed at the newest remaining
-// @Description version (Pro feature).
+// @Description by the next GC pass. For generic and pypi, "latest" is re-pointed at the
+// @Description newest remaining version; for docker (a manifest, by digest) and npm every
+// @Description tag resolving to the deleted version is dropped instead (Pro feature).
 // @Tags registry
 // @Produce json
 // @Security BearerAuth
@@ -84,11 +86,10 @@ func RegistryGenericVersionIdRoute(w http.ResponseWriter, req *http.Request, loc
 }
 
 // RegistryGenericFileRoute godoc
-// @Summary Download or delete one file of a generic or pypi package version
-// @Description GET streams the file (the version may be "latest"); accepts a Cosmos token
+// @Summary Download one file of a package version
+// @Description Streams the file (the version may be "latest"); accepts a Cosmos token
 // @Description with the Resources read permission OR a registry deploy token with pull
-// @Description scope. DELETE removes the file entry — and the version, when it was its
-// @Description last file; the stored bytes are reclaimed by the next GC pass (Pro feature).
+// @Description scope (Pro feature).
 // @Tags registry
 // @Produce octet-stream
 // @Security BearerAuth
@@ -99,6 +100,41 @@ func RegistryGenericVersionIdRoute(w http.ResponseWriter, req *http.Request, loc
 // @Success 200 {file} binary
 // @Router /api/constellation/registries/{name}/packages/{package}/versions/{version}/files/{file} [get]
 func RegistryGenericFileRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// registryGenericDeletePackageRoute godoc
+// @Summary Delete one package
+// @Description Removes the package and every version; the stored files are reclaimed by the next GC pass.
+// @Description Accepts a Cosmos token or a registry deploy token with push scope (Pro feature).
+// @Tags registry
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Registry name"
+// @Param package path string true "Package name"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/registries/{name}/packages/{package} [delete]
+func registryGenericDeletePackageRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// registryGenericDeleteFileRoute godoc
+// @Summary Delete one file of a package version
+// @Description Removes the file entry, and the version when it was its last file; the stored bytes are
+// @Description reclaimed by the next GC pass. Refused for docker and npm, whose versions are deleted whole.
+// @Description Accepts a Cosmos token or a registry deploy token with push scope (Pro feature).
+// @Tags registry
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Registry name"
+// @Param package path string true "Package name"
+// @Param version path string true "Version"
+// @Param file path string true "Filename"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/registries/{name}/packages/{package}/versions/{version}/files/{file} [delete]
+func registryGenericDeleteFileRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
 	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
 	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
 }
