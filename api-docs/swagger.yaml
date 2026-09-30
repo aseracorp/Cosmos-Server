@@ -479,17 +479,17 @@ definitions:
   docker.ContainerCreateRequestContainerHealthcheck:
     properties:
       interval:
-        type: integer
+        type: string
       retries:
         type: integer
       start_period:
-        type: integer
+        type: string
       test:
         items:
           type: string
         type: array
       timeout:
-        type: integer
+        type: string
     type: object
   docker.ContainerCreateRequestNetwork:
     properties:

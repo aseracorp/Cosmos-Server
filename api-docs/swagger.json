@@ -12894,13 +12894,13 @@
             "type": "object",
             "properties": {
                 "interval": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "retries": {
                     "type": "integer"
                 },
                 "start_period": {
-                    "type": "integer"
+                    "type": "string"
                 },
                 "test": {
                     "type": "array",
@@ -12909,7 +12909,7 @@
                     }
                 },
                 "timeout": {
-                    "type": "integer"
+                    "type": "string"
                 }
             }
         },
