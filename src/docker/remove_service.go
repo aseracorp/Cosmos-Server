@@ -30,8 +30,7 @@ const DeploymentVersionLabel = "cosmos-deployment-version"
 // preserves its named volumes regardless of the keepVolumes argument. Stamped on containers AND volumes.
 const DeploymentKeepVolumesLabel = "cosmos-deployment-keep-volumes"
 
-// DeploymentRoutesLabel holds the comma-joined proxy route names carried by the deployment's
-// compose, so teardown can strip them from config after the KV record is gone.
+// DeploymentRoutesLabel holds the comma-joined owner pairs ("kind:name") of the deployment's proxy routes, so teardown can withdraw them after the KV record is gone.
 const DeploymentRoutesLabel = "cosmos-deployment-routes"
 
 // RemoveByDeploymentLabel discovers and tears down every container, network, and
@@ -190,8 +189,7 @@ func RemoveByDeploymentLabel(deploymentName string, OnLog func(string), keepVolu
 	return errs
 }
 
-// RouteNamesByDeploymentLabel returns the distinct proxy route names recorded on the
-// deployment's containers via DeploymentRoutesLabel; called by the scheduler BEFORE teardown.
+// RouteNamesByDeploymentLabel returns the distinct DeploymentRoutesLabel owner pairs on the deployment's containers; call BEFORE teardown.
 func RouteNamesByDeploymentLabel(deploymentName string) ([]string, error) {
 	if err := Connect(); err != nil {
 		return nil, err
@@ -322,6 +320,7 @@ func ListDeploymentVersionsRunningHere() (map[string]int, error) {
 	}
 
 	versions := map[string]int{}
+	owners := map[string]map[string]struct{}{}
 	for _, c := range containers {
 		if !deploymentContainerAlive(c) {
 			continue
@@ -340,8 +339,65 @@ func ListDeploymentVersionsRunningHere() (map[string]int, error) {
 		if existing, seen := versions[name]; !seen || v < existing {
 			versions[name] = v
 		}
+		if _, ok := owners[name]; !ok {
+			owners[name] = map[string]struct{}{}
+		}
+		for _, entry := range strings.Split(c.Labels[DeploymentRoutesLabel], ",") {
+			if entry = strings.TrimSpace(entry); entry != "" {
+				owners[name][entry] = struct{}{}
+			}
+		}
+	}
+	routes := utils.GetMainConfig().HTTPConfig.ProxyConfig.Routes
+	for name, v := range versions {
+		list := make([]string, 0, len(owners[name]))
+		for o := range owners[name] {
+			list = append(list, o)
+		}
+		versions[name] = EffectiveDeploymentVersion(routes, v, list)
 	}
 	return versions, nil
+}
+
+// DeploymentRunningAtSpecHash reports whether every named container is alive with this deployment's label and the given spec hash.
+func DeploymentRunningAtSpecHash(deploymentName string, containerNames []string, hash string) bool {
+	if len(containerNames) == 0 || hash == "" {
+		return false
+	}
+	if err := Connect(); err != nil {
+		return false
+	}
+
+	labelFilter := filters.NewArgs()
+	labelFilter.Add("label", DeploymentLabel+"="+deploymentName)
+
+	containers, err := DockerClient.ContainerList(DockerContext, conttype.ListOptions{
+		All:     true,
+		Filters: labelFilter,
+	})
+	if err != nil {
+		return false
+	}
+
+	runningAt := map[string]bool{}
+	for _, c := range containers {
+		if !deploymentContainerAlive(c) {
+			continue
+		}
+		if c.Labels[DeploymentSpecHashLabel] != hash {
+			continue
+		}
+		for _, n := range c.Names {
+			runningAt[strings.TrimPrefix(n, "/")] = true
+		}
+	}
+
+	for _, name := range containerNames {
+		if !runningAt[name] {
+			return false
+		}
+	}
+	return true
 }
 
 // DeploymentRunningAtVersion reports whether every named container is alive with this deployment's label at exactly the given spec version.
