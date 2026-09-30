@@ -13,7 +13,9 @@ export default {
     SeaweedFSInstancePage: null,
     RegistriesPage: null,
     RegistryPage: null,
-    RegistryAccessPage: null,
     FunctionsPage: null,
     FunctionPage: null,
+    CIPage: null,
+    CIProjectPage: null,
+    CIBuildPage: null,
 }

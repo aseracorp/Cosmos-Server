@@ -4,7 +4,6 @@ import wrap, { type ApiResponse, type ApiFetch } from './wrap';
 
 export interface FunctionSource {
   registry: string;
-  access: string;
   package: string;
   // Pinned version; on create it is the version to deploy ("" = latest).
   version?: string;
