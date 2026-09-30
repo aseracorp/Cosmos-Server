@@ -4,7 +4,6 @@
 package pro
 
 import (
-	"github.com/azukaar/cosmos-server/src/utils"
 	"github.com/gorilla/mux"
 	"github.com/nats-io/nats.go"
 	"sync"
@@ -35,15 +34,6 @@ func SetRegistryClusterHandles(f func() (*sync.RWMutex, nats.JetStreamContext, *
 // the root.
 func RegisterRegistryProtocolRoutes(router *mux.Router) {
 	// Pro feature stub.
-}
-
-// BuildRegistryAccessRoute renders the advertisement route for an access.
-// pathPrefix must always be the path space RegisterRegistryProtocolRoutes
-// claims for this access. SmartShield applies to external accesses only.
-func BuildRegistryAccessRoute(acc RegistryAccess, pathPrefix string) utils.ProxyRouteConfig {
-	// Pro feature stub.
-	var r0 utils.ProxyRouteConfig
-	return r0
 }
 
 // StartRegistryServing starts the registry KV watcher and the upload-session
