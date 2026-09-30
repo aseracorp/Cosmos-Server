@@ -22,9 +22,12 @@ type ManagedDBCreateRequest struct {
 	RestrictToConstellation *bool `json:"restrictToConstellation"`
 }
 
-// ManagedDBUpdateRequest is the edit-instance body.
+// ManagedDBUpdateRequest is the edit-instance body. Only settings that can be
+// changed without recreating the container appear here.
 type ManagedDBUpdateRequest struct {
 	RestrictToConstellation *bool `json:"restrictToConstellation"`
+	// Route replaces the user-facing half of the proxy route; its RestrictToConstellation wins when both are sent.
+	Route *utils.ProxyRouteConfig `json:"route,omitempty"`
 }
 
 // ManagedDBLogicalRequest is the create-logical-database / rotate body.
