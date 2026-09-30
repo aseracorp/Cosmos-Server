@@ -906,6 +906,7 @@ func InitNATSClient() error {
 		utils.Debug("[NATS] Standalone constellation, skipping heartbeat and op-log")
 	} else {
 		go ClientHeartbeatInit()
+		ShieldSyncInit()
 
 		// the apply loop materializes this node's config from the op-log; it
 		// waits for JetStream itself, so starting it here is safe even if JS
@@ -1131,6 +1132,7 @@ func CloseNATSClient() {
 	StopOplogApply()
 
 	StopHeartbeat()
+	StopShieldSync()
 
 	utils.Debug("[NATS] Closing NATS client connection")
 
@@ -1266,6 +1268,10 @@ func MasterNATSClientRouter() {
 			utils.Warn("[SCHED-NODE] failed to register dispatch handler: " + subErr.Error())
 		}
 
+		if _, subErr := RegisterRoutesOpResponder(nc, self); subErr != nil {
+			utils.Warn("[ROUTES] failed to register op responder: " + subErr.Error())
+		}
+
 		if _, subErr := pro.RegisterManagedDBResponder(nc, self); subErr != nil {
 			utils.Warn("[MDB] failed to register op responder: " + subErr.Error())
 		}
@@ -1283,6 +1289,11 @@ func MasterNATSClientRouter() {
 		// GC and cron triggers are leadership-bound so each runs once per cluster.
 		pro.StartRegistryGC()
 		pro.StartFunctionTriggers()
+
+		if _, subErr := pro.RegisterCIResponder(nc, self); subErr != nil {
+			utils.Warn("[CI] failed to register op responder: " + subErr.Error())
+		}
+		pro.StartCIScheduler()
 
 		pro.StartFeatureMetrics()
 	} else {
