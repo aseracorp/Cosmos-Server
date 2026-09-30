@@ -1,5 +1,5 @@
 // assets
-import { CodeSandboxOutlined, DatabaseOutlined, DeploymentUnitOutlined, FunctionOutlined, InboxOutlined } from '@ant-design/icons';
+import { BuildOutlined, CodeSandboxOutlined, DatabaseOutlined, DeploymentUnitOutlined, FunctionOutlined, InboxOutlined } from '@ant-design/icons';
 import { PERM_RESOURCES_READ } from '../utils/permissions';
 import ConstellationIcon from '../assets/images/icons/constellation.png';
 import ConstellationWhiteIcon from '../assets/images/icons/constellation_white.png';
@@ -60,6 +60,14 @@ const constellation = {
             type: 'item',
             url: '/cosmos-ui/functions',
             icon: FunctionOutlined,
+            permission: PERM_RESOURCES_READ,
+        },
+        {
+            id: 'ci',
+            title: 'menu-items.constellation.ci',
+            type: 'item',
+            url: '/cosmos-ui/ci',
+            icon: BuildOutlined,
             permission: PERM_RESOURCES_READ,
         },
     ]

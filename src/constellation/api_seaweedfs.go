@@ -27,6 +27,10 @@ func SeaweedFSRestrictRoute(w http.ResponseWriter, req *http.Request) {
 	pro.SeaweedFSRestrictRoute(w, req, &clientConfigLock, js)
 }
 
+func SeaweedFSS3RouteRoute(w http.ResponseWriter, req *http.Request) {
+	pro.SeaweedFSS3RouteRoute(w, req, &clientConfigLock, js)
+}
+
 func SeaweedFSJobsRoute(w http.ResponseWriter, req *http.Request) {
 	pro.SeaweedFSJobsRoute(w, req, &clientConfigLock, js)
 }
