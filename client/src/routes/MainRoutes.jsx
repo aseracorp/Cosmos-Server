@@ -102,6 +102,26 @@ const MainRoutes = {
             element: <ProRoute component={proFeatures.FunctionsPage} />
         },
         {
+            path: '/cosmos-ui/ci',
+            element: <ProRoute component={proFeatures.CIPage} />
+        },
+        {
+            path: '/cosmos-ui/ci/view/:name/build/:number',
+            element: <ProRoute component={proFeatures.CIBuildPage} />
+        },
+        {
+            path: '/cosmos-ui/ci/view/:name/*',
+            element: <ProRoute component={proFeatures.CIProjectPage} />
+        },
+        {
+            path: '/cosmos-ui/ci/view/:name',
+            element: <ProRoute component={proFeatures.CIProjectPage} />
+        },
+        {
+            path: '/cosmos-ui/ci/*',
+            element: <ProRoute component={proFeatures.CIPage} />
+        },
+        {
             path: '/cosmos-ui/databases',
             element: <ProRoute component={proFeatures.DatabasesPage} />
         },
@@ -132,10 +152,6 @@ const MainRoutes = {
         {
             path: '/cosmos-ui/registries/view/:name',
             element: <ProRoute component={proFeatures.RegistryPage} />
-        },
-        {
-            path: '/cosmos-ui/registries/access/:name',
-            element: <ProRoute component={proFeatures.RegistryAccessPage} />
         },
         {
             path: '/cosmos-ui/registries/*',
@@ -175,6 +191,14 @@ const MainRoutes = {
         },
         {
             path: '/cosmos-ui/config-url',
+            element: <ProxyManagement />
+        },
+        {
+            path: '/cosmos-ui/config-url/shield',
+            element: <ProxyManagement />
+        },
+        {
+            path: '/cosmos-ui/config-url/whitelist',
             element: <ProxyManagement />
         },
         {
