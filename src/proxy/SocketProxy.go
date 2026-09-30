@@ -436,11 +436,8 @@ func InitInternalSocketProxy() {
 
 	remoteTunnels := constellation.GetLocalTunnelCache()
 
+    // Share routes live in config.Routes (materialized by storage.ReconcileShareRoutes).
     remoteListRoutes := []utils.ProxyRouteConfig{}
-    for _, shares := range config.RemoteStorage.Shares {
-        route := shares.Route
-        remoteListRoutes = append(remoteListRoutes, route)
-    }
 
 	targetPort := HTTPPort
 
