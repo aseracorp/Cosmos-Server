@@ -8,6 +8,7 @@ import * as API  from "../../api";
 import RouteSecurity from "./routes/routeSecurity";
 import RouteOverview from "./routes/routeoverview";
 import RouteMetrics from "../dashboard/routeMonitoring";
+import { getContainerFromRoute } from '../../utils/routes';
 import EventExplorerStandalone from "../dashboard/eventsExplorerStandalone";
 import { useTranslation } from 'react-i18next';
 import { managedRouteOwner } from "../../utils/routes";
@@ -18,6 +19,7 @@ const RouteConfigPage = () => {
   const { routeName } = useParams();
   const [config, setConfig] = useState(null);
   const [tunnelRoute, setTunnelRoute] = useState(null);
+  const [containers, setContainers] = useState([]);
   
   let currentRoute = null;
   if (config) {
@@ -38,6 +40,9 @@ const RouteConfigPage = () => {
         setTunnelRoute(null);
       }
     });
+    API.docker.list().then((res) => {
+      setContainers(res.data || []);
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -70,7 +75,7 @@ const RouteConfigPage = () => {
       {config && currentRoute && <PrettyTabbedView tabs={[
         {
           title: t('mgmt.servapps.overview'),
-          children: <RouteOverview routeConfig={currentRoute} refreshConfig={refreshConfig} readOnly={!!owner} />
+          children: <RouteOverview routeConfig={currentRoute} refreshConfig={refreshConfig} container={getContainerFromRoute(containers, currentRoute)} readOnly={!!owner} />
         },
         {
           title: t('mgmt.servapps.routeConfig.setup'),
