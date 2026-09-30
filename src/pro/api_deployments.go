@@ -12,16 +12,39 @@ import (
 
 type Deployment struct {
 	Name string `json:"name" validate:"required,min=3,max=64,alphanum"`
-	// Exactly one of the three replica modes (fixed Replicas, autoscale Min/MaxReplicas, fill ReplicaFill)
-	// must be set; ValidateReplicaConfig enforces the exclusivity.
+	// Replicas is the fixed replica count (the original mode). Exactly one of
+	// the three replica modes must be configured — fixed (Replicas), autoscale
+	// (MinReplicas/MaxReplicas) or fill (ReplicaFill); ValidateReplicaConfig
+	// enforces the exclusivity since struct tags can't express it. In every
+	// mode, Tags restricts which nodes are eligible.
 	Replicas int `json:"replicas,omitempty" validate:"omitempty,min=1"`
-	// MinReplicas/MaxReplicas select load-based autoscaling clamped to [min,max], one step per cooldown.
+	// MinReplicas/MaxReplicas switch the deployment to load-based autoscaling:
+	// each reconcile cycle the leader targets the current replica count clamped
+	// to [min,max], stepping up by one when the nodes running the deployment
+	// average above DeployScaleUpThreshold busyness (max of CPU%/RAM% from
+	// heartbeats) and down by one below DeployScaleDownThreshold, at most one
+	// step per DeployScaleCooldown. Nodes without trusted metrics
+	// (MonitoringOn=false) hold the count steady.
+	// Use Tags to restrict which nodes autoscaled replicas may land on — the
+	// same affinity filter as the other modes.
 	MinReplicas int `json:"minReplicas,omitempty" validate:"omitempty,min=1"`
 	MaxReplicas int `json:"maxReplicas,omitempty" validate:"omitempty,min=1"`
-	// ReplicaFill: one replica on every alive node matching Tags (DaemonSet-style).
+	// ReplicaFill switches the deployment to fill mode: exactly one replica on
+	// EVERY alive, non-broken node matching Tags (every node when Tags is
+	// empty — DaemonSet-style). The replica count follows the eligible node
+	// set as nodes join/leave. Exclusive with the other two modes.
 	ReplicaFill bool `json:"replicaFill,omitempty"`
-	// fill sub-mode: "full" (default) = every eligible node; "bare" = autoscale between 1 and the
-	// eligible set; "empty" = bare with lazy scale-to-zero.
+	// ReplicaFillMode refines fill mode (only valid with ReplicaFill). The tag
+	// set still defines the placement universe; the sub-mode sets how much of
+	// it is occupied:
+	//   - "full" (default, empty string): one replica on every eligible node,
+	//     always.
+	//   - "bare": load-based between 1 and the whole eligible set — the
+	//     autoscale stepper (busyness thresholds + cooldown) with min=1 and
+	//     max=eligible node count. Idle collapses to one replica.
+	//   - "empty": bare, plus every container carries the cosmos-lazy label so
+	//     the idle floor replica is stopped by the lazy layer and woken by the
+	//     proxy on the next request — the tag scales from zero.
 	ReplicaFillMode string `json:"replicaFillMode,omitempty" validate:"omitempty,oneof=full bare empty"`
 	// Strategy selects which PlacementStrategy the scheduler uses for this
 	// deployment. Empty is treated as "round-robin" for back-compat with
@@ -38,15 +61,35 @@ type Deployment struct {
 	// quarantine path. Not a placement filter: RCLONE config is cluster-synced
 	// via constellation, so every eligible node has the same remote set.
 	// ${storage.NAME} in compose fields resolves to the mount path on apply.
-	Storage []string                          `json:"storage,omitempty" validate:"omitempty,dive,min=1,max=64"`
-	Compose docker.DockerServiceCreateRequest `json:"compose" validate:"required"`
-	// PreserveVolumesOnRemove keeps the deployment's named volumes on disk on replica removal or
-	// full delete; stamped as the cosmos-deployment-keep-volumes label on containers and volumes.
+	Storage []string `json:"storage,omitempty" validate:"omitempty,dive,min=1,max=64"`
+	// Compose is the service spec the nodes apply. Exclusive with Function:
+	// a deployment declares one or the other (ValidateDeploymentSpec).
+	Compose docker.DockerServiceCreateRequest `json:"compose"`
+	// Function makes this a function deployment: the compose is DERIVED from
+	// it (one service per handler, see functions.go) when the scheduler
+	// dispatches. Its Source.Token is redacted by the API and preserved across
+	// user updates.
+	Function *DeploymentFunction `json:"function,omitempty"`
+	// PreserveVolumesOnRemove keeps the deployment's named volumes on disk when a
+	// replica is removed — a fill-mode scale-down (node untagged) or a full delete.
+	// Stamped as the cosmos-deployment-keep-volumes label on the containers so the
+	// node-side teardown honors it even for orphan removal, which runs after the
+	// KV record is already gone. Used by system-owned data deployments (managed
+	// SeaweedFS volume servers) where a stray untag must never destroy data.
 	PreserveVolumesOnRemove bool `json:"preserveVolumesOnRemove,omitempty"`
-	// Owner marks a system-owned deployment (e.g. "seaweedfs:<instance>"); the HTTP API refuses user create/update/delete on it.
+	// Owner marks a deployment as system-owned (e.g. "seaweedfs:<instance>").
+	// Owned deployments are created and mutated exclusively by the owning Go
+	// feature: the HTTP API refuses user create/update/delete on them so a UI
+	// action can't desync the owner's record from the deployed spec. Empty for
+	// every user-created deployment.
 	Owner string `json:"owner,omitempty"`
-	// Version is a server-assigned monotonic integer bumped on every create/update, stamped on containers
-	// as cosmos-deployment-version so the scheduler can detect stale specs.
+	// Version is a monotonic integer bumped on every create/update. It is
+	// server-assigned (the client never sets it) and is stamped onto every
+	// container as the cosmos-deployment-version label so the scheduler can tell
+	// a node running a stale spec from one running the current spec. A bump
+	// triggers a rolling re-apply across the nodes already running the deployment;
+	// see runReconcileCycle. Pre-version KV records and pre-version containers both
+	// read as 0, so upgrading an existing install causes no spurious re-apply.
 	Version int `json:"version"`
 }
 
