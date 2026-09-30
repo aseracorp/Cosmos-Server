@@ -1049,7 +1049,8 @@
 					"Type": "tcp"
 				}
 			],
-			"Labels": {},
+			"Labels": {
+			},
 			"State": "running",
 			"Status": "Up 12 days",
 			"HostConfig": {

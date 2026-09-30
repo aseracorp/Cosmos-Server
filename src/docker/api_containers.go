@@ -1,15 +1,15 @@
 package docker
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
+	"encoding/json"
 	"strings"
 
-	"github.com/azukaar/cosmos-server/src/utils"
+	"github.com/azukaar/cosmos-server/src/utils" 
 
-	"github.com/docker/docker/api/types"
 	"github.com/gorilla/mux"
+	"github.com/docker/docker/api/types"
 )
 
 var maxLimit = 1000
@@ -50,14 +50,14 @@ func ListContainersRoute(w http.ResponseWriter, req *http.Request) {
 	if limit == 0 {
 		limit = maxLimit
 	}
-
-	if req.Method == "GET" {
+	
+	if(req.Method == "GET") {
 		containers, err := ListContainers()
 
 		if err != nil {
 			utils.Error("ListContainersRoute: Error while getting containers", err)
 			utils.HTTPError(w, "Containers Get Error", http.StatusInternalServerError, "DL001")
-			return
+			return	
 		}
 
 		// Enrich with health / exit code / dormant flag.
@@ -91,7 +91,7 @@ func ListContainersRoute(w http.ResponseWriter, req *http.Request) {
 			"data":   withState,
 		})
 	} else {
-		utils.Error("UserList: Method not allowed"+req.Method, nil)
+		utils.Error("UserList: Method not allowed" + req.Method, nil)
 		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
 		return
 	}
@@ -135,7 +135,7 @@ func ExportContainerRoute(w http.ResponseWriter, req *http.Request) {
 			"data": service,
 		})
 	} else {
-		utils.Error("exportContainer: Method not allowed "+req.Method, nil)
+		utils.Error("exportContainer: Method not allowed " + req.Method, nil)
 		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
 		return
 	}

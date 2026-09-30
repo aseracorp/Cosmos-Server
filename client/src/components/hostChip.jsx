@@ -98,6 +98,7 @@ const HostChip = ({route, settings, container, style, ellipsis}) => {
     variant="outlined"
     style={{
       paddingRight: '4px',
+      // textDecoration: isOnline ? 'none' : 'underline wavy red',
       ...style,
       ...(ellipsis ? { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '250px' } : {})
     }}

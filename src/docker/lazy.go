@@ -20,6 +20,7 @@ const (
 	LazyLabel             = "cosmos-lazy"
 	LazyIdleLabel         = "cosmos-lazy-idle"
 	LazyStartTimeoutLabel = "cosmos-lazy-start-timeout"
+
 	LazyDefaultIdle         = time.Hour
 	LazyDefaultStartTimeout = 60 * time.Second
 	LazyReaperInterval      = 30 * time.Second
@@ -98,9 +99,9 @@ type lazyWake struct {
 }
 
 type lazyEntry struct {
-	name    string
-	lazy    bool
-	running bool
+	name            string
+	lazy            bool
+	running         bool
 	idle            time.Duration
 	startTimeout    time.Duration
 	lastActivity    time.Time
