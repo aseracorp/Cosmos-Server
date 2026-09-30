@@ -1,6 +1,6 @@
 import wrap, { type ApiResponse, type ApiFetch } from './wrap';
 
-// Native package registry (Pro). One access serves registries of ONE type (mixed refused, REG017).
+// Native package registry (Pro). One registry = typed storage + the endpoint publishing it (host, visibility, tokens).
 
 export type RegistryType = 'docker' | 'npm' | 'static' | 'generic' | 'pypi';
 export type RegistryBackend = 'seaweedfs' | 's3' | 'local';
@@ -27,17 +27,6 @@ export interface RegistryStats {
   updatedAt?: string;
 }
 
-export interface RegistryStatus {
-  name: string;
-  type: RegistryType;
-  storage: RegistryStorage;
-  quotaBytes: number;
-  status: string;
-  createdAt?: string;
-  accesses: string[];
-  stats: RegistryStats;
-}
-
 // Only the suffix is kept for display — the raw token exists once, in the mint response.
 export interface RegistryToken {
   name: string;
@@ -48,18 +37,24 @@ export interface RegistryToken {
   createdAt?: string;
 }
 
-export interface RegistryAccessStatus {
+export interface RegistryStatus {
   name: string;
+  type: RegistryType;
+  storage: RegistryStorage;
+  quotaBytes: number;
+  // The endpoint. Empty host for a static registry: its sites carry the URLs.
   host: string;
-  registries: string[];
   internal: boolean;
   allowAnonymousPull: boolean;
   tags: string[];
   tokens?: RegistryToken[];
+  // The user-facing half of the serving route (URL tab).
+  route?: any;
   status: string;
   createdAt?: string;
   // Derived from node heartbeats by the read endpoints, never stored.
   servingNodes: string[];
+  stats: RegistryStats;
 }
 
 export interface RegistryDeployment {
@@ -95,19 +90,29 @@ export interface RegistryGenericFile {
   md5?: string;
 }
 
+// One version of any package type: a docker manifest (version = its digest,
+// files = manifest + config + layers), an npm version (one tarball), a pypi
+// release or a generic version (the files uploaded into it).
 export interface RegistryGenericVersion {
   version: string;
   latest: boolean;
+  // The pointers resolving to this version: OCI tags, npm dist-tags. Absent for generic and pypi.
+  tags?: string[];
   files: RegistryGenericFile[];
   size: number;
+  // Protocol extras: kind/mediaType (docker), description/deprecated (npm), summary/requires_python (pypi).
+  props?: Record<string, string>;
   createdAt?: string;
 }
 
 export interface RegistryGenericPackage {
   registry: string;
+  type: RegistryType;
   name: string;
-  // The version "latest" resolves to; empty once every version is deleted.
+  // The version "latest" resolves to; empty once every version is deleted. A manifest digest for docker.
   latest: string;
+  // The whole pointer map, docker (tag -> digest) and npm (dist-tag -> version) only.
+  tags?: Record<string, string>;
   versions: RegistryGenericVersion[];
   createdAt?: string;
   updatedAt?: string;
@@ -129,7 +134,7 @@ export interface RegistryDeleteResult {
 
 export interface RegistryTokenMintResult {
   token: string;
-  access: RegistryAccessStatus;
+  registry: RegistryStatus;
 }
 
 export interface RegistryStaticUploadResult {
@@ -140,7 +145,6 @@ export interface RegistryStaticUploadResult {
 
 export default function createRegistryAPI(apiFetch: ApiFetch) {
   const base = '/cosmos/api/constellation/registries';
-  const accessBase = '/cosmos/api/constellation/registry-accesses';
 
   // --- registries -----------------------------------------------------------
 
@@ -159,11 +163,18 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
   }
 
   // type is immutable afterwards: the metadata namespace and protocol semantics hang off it.
+  // host is required for every type but static (refused there); empty tags = every node serves it.
   function create(values: {
     name: string;
     type: RegistryType;
     quotaBytes?: number;
     storage: RegistryStorage;
+    host?: string;
+    internal?: boolean;
+    allowAnonymousPull?: boolean;
+    tags?: string[];
+    // The whole user-facing route (URL tab); its host / restriction win.
+    route?: any;
   }): Promise<ApiResponse<RegistryStatus>> {
     return wrap(apiFetch(base, {
       method: 'POST',
@@ -172,7 +183,7 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
     }));
   }
 
-  // Refused while an access still publishes the registry; blobs survive unless purgeData is set.
+  // Serving nodes withdraw the endpoint; blobs survive unless purgeData is set.
   function remove(name: string, options?: { purgeData?: boolean }): Promise<ApiResponse<RegistryDeleteResult>> {
     const query = options && options.purgeData ? '?purgeData=true' : '';
     return wrap(apiFetch(base + '/' + name + query, {
@@ -181,8 +192,16 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
     }));
   }
 
-  // Only the quota can change; an absent field keeps its stored value.
-  function setSettings(name: string, values: { quotaBytes?: number }): Promise<ApiResponse<RegistryStatus>> {
+  // Absent fields keep their stored value — a partial body must not silently clear the tag list.
+  function setSettings(name: string, values: {
+    quotaBytes?: number;
+    host?: string;
+    internal?: boolean;
+    allowAnonymousPull?: boolean;
+    tags?: string[];
+    // The whole user-facing route (URL tab); its host / restriction win.
+    route?: any;
+  }): Promise<ApiResponse<RegistryStatus>> {
     return wrap(apiFetch(base + '/' + name + '/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -212,59 +231,7 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
     });
   }
 
-  // --- accesses -------------------------------------------------------------
-
-  function listAccesses(): Promise<ApiResponse<RegistryAccessStatus[]>> {
-    return wrap(apiFetch(accessBase, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    }));
-  }
-
-  function getAccess(name: string): Promise<ApiResponse<RegistryAccessStatus>> {
-    return wrap(apiFetch(accessBase + '/' + name, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    }));
-  }
-
-  // registries must exist and all share one type; empty tags = every node serves the endpoint.
-  function createAccess(values: {
-    name: string;
-    host: string;
-    registries: string[];
-    internal?: boolean;
-    allowAnonymousPull?: boolean;
-    tags?: string[];
-  }): Promise<ApiResponse<RegistryAccessStatus>> {
-    return wrap(apiFetch(accessBase, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
-    }));
-  }
-
-  function removeAccess(name: string): Promise<ApiResponse<{ deleted: string }>> {
-    return wrap(apiFetch(accessBase + '/' + name, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-    }));
-  }
-
-  // Absent fields keep their stored value — a partial body must not silently clear the tag list.
-  function setAccessSettings(name: string, values: {
-    host?: string;
-    registries?: string[];
-    internal?: boolean;
-    allowAnonymousPull?: boolean;
-    tags?: string[];
-  }): Promise<ApiResponse<RegistryAccessStatus>> {
-    return wrap(apiFetch(accessBase + '/' + name + '/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
-    }));
-  }
+  // --- deploy tokens -----------------------------------------------------------
 
   // The response is the ONLY time the raw token exists outside the client.
   function mintToken(name: string, values: {
@@ -272,15 +239,15 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
     scopes?: string[];
     expiryDays?: number;
   }): Promise<ApiResponse<RegistryTokenMintResult>> {
-    return wrap(apiFetch(accessBase + '/' + name + '/tokens', {
+    return wrap(apiFetch(base + '/' + name + '/tokens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(values),
     }));
   }
 
-  function revokeToken(name: string, tokenName: string): Promise<ApiResponse<RegistryAccessStatus>> {
-    return wrap(apiFetch(accessBase + '/' + name + '/tokens/' + tokenName, {
+  function revokeToken(name: string, tokenName: string): Promise<ApiResponse<RegistryStatus>> {
+    return wrap(apiFetch(base + '/' + name + '/tokens/' + tokenName, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
     }));
@@ -308,6 +275,7 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
     internal?: boolean;
     spa?: boolean;
     tags?: string[];
+    route?: any;
   }): Promise<ApiResponse<RegistryStaticSite>> {
     return wrap(apiFetch(base + '/' + registry + '/sites/' + site, {
       method: 'PUT',
@@ -374,7 +342,7 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
     return base + '/' + registry + '/sites/' + site + '/versions/' + encodeURIComponent(version) + '/download';
   }
 
-  // --- generic packages -----------------------------------------------------
+  // --- packages (every type but static) --------------------------------------
 
   function listPackages(registry: string): Promise<ApiResponse<RegistryGenericPackage[]>> {
     return wrap(apiFetch(base + '/' + registry + '/packages', {
@@ -441,7 +409,6 @@ export default function createRegistryAPI(apiFetch: ApiFetch) {
 
   return {
     list, get, create, remove, setSettings, gc,
-    listAccesses, getAccess, createAccess, removeAccess, setAccessSettings,
     mintToken, revokeToken,
     listSites, getSite, updateSite, removeSite,
     uploadSiteVersion, activateSiteVersion, removeSiteVersion, siteVersionDownloadURL,
