@@ -12,7 +12,6 @@ import (
 	"io/ioutil"
 	"os/user"
 	"errors"
-	"reflect"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
 	"github.com/docker/docker/api/types/mount"
@@ -924,38 +923,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 
-		// add routes 
-		for _, route := range container.Routes {
-			// check if route already exists
-			exists := false
-			existsAt := 0
-			for destRouteIndex, configRoute := range configRoutes {
-				if configRoute.Name == route.Name {
-					exists = true
-					existsAt = destRouteIndex
-					break
-				}
-			}
-
-			if !exists {
-				needsHTTPRestart = true
-				configRoutes = append([]utils.ProxyRouteConfig{(utils.ProxyRouteConfig)(route)}, configRoutes...)
-			} else {
-				// utils.Error("CreateService: Rolling back changes because of -- Route already exist", nil)
-				// OnLog(utils.DoErr("Rolling back changes because of -- Route already exist"))
-				// Rollback(rollbackActions, OnLog)
-				// return errors.New("Route already exist")
-
-				//overwrite route
-				if !reflect.DeepEqual(configRoutes[existsAt], (utils.ProxyRouteConfig)(route)) {
-					needsHTTPRestart = true
-				}
-				configRoutes[existsAt] = (utils.ProxyRouteConfig)(route)
-				utils.Warn("CreateService: Route " + route.Name + " already exist, overwriting.")
-				OnLog(utils.DoWarn("%s", "Route " + route.Name + " already exist, overwriting.\n"))
-			}
-		}
-		
+		// Routes are folded in once for the whole compose below.
 
 		// Create the networks for links
 		for _, targetContainer := range container.Links {
@@ -1085,7 +1053,12 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		
 	}
 	
-	// Save the route configs 
+	// Save the route configs: owner-stamped routes go through the owner merge, plain routes upsert by name.
+	var routesChanged bool
+	configRoutes, routesChanged = MergeComposeRoutes(configRoutes, serviceRequest, OnLog)
+	if routesChanged {
+		needsHTTPRestart = true
+	}
 	config.HTTPConfig.ProxyConfig.Routes = configRoutes
 	utils.SaveConfigTofile(config)
 	
