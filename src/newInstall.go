@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+	"errors"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -109,6 +111,9 @@ func NewInstallRoute(w http.ResponseWriter, req *http.Request) {
 
 			// Hostname
 			newConfig.HTTPConfig.Hostname = request.Hostname
+
+			// the DNS setup of the form becomes the first zone
+			utils.MigrateToZones(&newConfig, true)
 
 			utils.SaveConfigTofile(newConfig)
 			utils.LoadBaseMainConfig(newConfig)
@@ -327,6 +332,9 @@ func SetupRoute(w http.ResponseWriter, req *http.Request) {
 	config.HTTPConfig.TLSKey = request.TLSKey
 	config.HTTPConfig.AllowHTTPLocalIPAccess = request.AllowHTTPLocalIPAccess
 
+	// the DNS setup of the request becomes the first zone
+	utils.MigrateToZones(&config, true)
+
 	utils.SaveConfigTofile(config)
 	utils.LoadBaseMainConfig(config)
 
@@ -423,4 +431,141 @@ func SetupRoute(w http.ResponseWriter, req *http.Request) {
 		time.Sleep(1 * time.Second)
 		os.Exit(0)
 	}()
+}
+
+type SetupJoinJSON struct {
+	// ConstellationConfig is the constellation file of this server, as created on the cluster
+	ConstellationConfig string `json:"constellationConfig" validate:"required"`
+	// Hostname overrides the one derived from the cluster domain (<device>.<cluster domain>)
+	Hostname string `json:"hostname,omitempty"`
+	// Preview only returns the hostname the server would take, nothing is saved
+	Preview bool `json:"preview,omitempty"`
+}
+
+const joinFileName = "constellation-join.yml"
+
+// joinExistingConstellation is the whole setup of a server added to a cluster:
+// the constellation file gives it its identity and its hostname, the cluster
+// replicates everything else to it (users, zones, certificates).
+func joinExistingConstellation(yamlBody []byte, hostname string, preview bool) (string, error) {
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
+	if hostname == "" {
+		derived, err := constellation.PreviewJoinHostname(yamlBody)
+		if err != nil {
+			return "", err
+		}
+		hostname = derived
+	}
+	if hostname == "" {
+		return "", errors.New("this constellation file carries no cluster domain: a hostname is required")
+	}
+	if !utils.IsValidHostnameSyntax(hostname) {
+		return "", errors.New("invalid hostname \"" + hostname + "\": use a bare name like server.example.com, without scheme, path or trailing slash")
+	}
+	if preview {
+		return hostname, nil
+	}
+
+	config := utils.GetBaseMainConfig()
+	config, err := constellation.ConnectToExisting(yamlBody, config)
+	if err != nil {
+		return "", err
+	}
+	config.HTTPConfig.Hostname = hostname
+	// HTTPS on, and nothing more: the domain of each hostname decides how, be it
+	// one of the cluster or an automatic one
+	config.HTTPConfig.HTTPSCertificateMode = utils.HTTPSCertModeList["LETSENCRYPT"]
+
+	config.NewInstall = false
+	utils.SaveConfigTofile(config)
+	utils.LoadBaseMainConfig(config)
+
+	utils.Log("Setup: joined the constellation as " + config.ConstellationConfig.ThisDeviceName + ", hostname " + config.HTTPConfig.Hostname)
+	return config.HTTPConfig.Hostname, nil
+}
+
+// SetupJoinRoute godoc
+// @Summary Set a new server up by joining an existing Constellation
+// @Description Replaces the whole setup for a server added to a cluster: the constellation file gives the server its identity and its hostname (<device>.<cluster domain>, or the one given), users, zones and certificates are then replicated from the cluster. The server restarts once done. Only available when the server is in NewInstall mode.
+// @Tags system
+// @Accept json
+// @Produce json
+// @Param request body SetupJoinJSON true "Constellation file and optional hostname"
+// @Success 200 {object} utils.APIResponse
+// @Failure 400 {object} utils.HTTPErrorResult
+// @Failure 403 {object} utils.HTTPErrorResult
+// @Router /api/setup-join [post]
+func SetupJoinRoute(w http.ResponseWriter, req *http.Request) {
+	if !utils.GetMainConfig().NewInstall {
+		utils.Error("SetupJoin: not a new install", nil)
+		utils.HTTPError(w, "Server is already configured", http.StatusForbidden, "SU001")
+		return
+	}
+
+	if req.Method != "POST" {
+		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
+		return
+	}
+
+	var request SetupJoinJSON
+	if err := json.NewDecoder(req.Body).Decode(&request); err != nil || request.ConstellationConfig == "" {
+		utils.Error("SetupJoin: Invalid request", err)
+		utils.HTTPError(w, "Invalid request: a constellation file is required", http.StatusBadRequest, "SU002")
+		return
+	}
+
+	hostname, err := joinExistingConstellation([]byte(request.ConstellationConfig), request.Hostname, request.Preview)
+	if err != nil {
+		utils.Error("SetupJoin: cannot join", err)
+		utils.HTTPError(w, "Cannot join the Constellation: "+err.Error(), http.StatusBadRequest, "SU009")
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "OK",
+		"data": map[string]interface{}{
+			"hostname": hostname,
+		},
+	})
+
+	if !request.Preview {
+		// same as the last step of the wizard: come back up configured
+		go func() {
+			time.Sleep(time.Second)
+			os.Exit(0)
+		}()
+	}
+}
+
+// JoinFromFile sets a new server up without any UI or API call: a constellation
+// file dropped in the config folder, or pointed at by COSMOS_CONSTELLATION_FILE.
+func JoinFromFile() {
+	if !utils.GetMainConfig().NewInstall {
+		return
+	}
+
+	path := os.Getenv("COSMOS_CONSTELLATION_FILE")
+	dropped := false
+	if path == "" {
+		path = utils.CONFIGFOLDER + joinFileName
+		dropped = true
+	}
+
+	yamlBody, err := os.ReadFile(path)
+	if err != nil {
+		if !dropped {
+			utils.MajorError("Setup: cannot read COSMOS_CONSTELLATION_FILE", err)
+		}
+		return
+	}
+
+	if _, err := joinExistingConstellation(yamlBody, os.Getenv("COSMOS_HOSTNAME"), false); err != nil {
+		utils.MajorError("Setup: cannot join the constellation from "+path, err)
+		return
+	}
+
+	// the file holds this server's private key, and nebula.yml now has it
+	if dropped {
+		os.Remove(path)
+	}
 }

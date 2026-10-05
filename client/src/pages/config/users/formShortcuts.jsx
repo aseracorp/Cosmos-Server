@@ -203,7 +203,7 @@ export const CosmosSelect = ({ name, onChange, label, formik, disabled, options,
   );
 };
 
-export const CosmosCheckbox = ({ name, label, formik, style, disabled }) => {
+export const CosmosCheckbox = ({ name, label, formik, style, disabled, helperText }) => {
   disabled = disabled || React.useContext(FormReadOnlyContext);
   return <Grid item xs={12}>
     <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
@@ -217,6 +217,9 @@ export const CosmosCheckbox = ({ name, label, formik, style, disabled }) => {
         style={style}
       />
     </Stack>
+    {helperText && (
+      <FormHelperText>{helperText}</FormHelperText>
+    )}
     {formik.touched[name] && formik.errors[name] && (
       <FormHelperText error id="standard-weight-helper-text-name-login">
         {formik.errors[name]}

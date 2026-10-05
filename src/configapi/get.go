@@ -34,6 +34,13 @@ func ConfigApiGet(w http.ResponseWriter, req *http.Request) {
 		config.HTTPConfig.TLSKey = ""
 		config.HTTPConfig.CAPrivateKey = ""
 		config.HTTPConfig.SelfTLSKey = ""
+		for zone, cert := range config.HTTPConfig.ZoneCerts {
+			cert.TLSKey = ""
+			config.HTTPConfig.ZoneCerts[zone] = cert
+		}
+		for i := range config.HTTPConfig.DNSZones {
+			config.HTTPConfig.DNSZones[i].TLSKey = ""
+		}
 
 		if !canReadCredentials {
 			config.EmailConfig.Password = "***"
@@ -41,6 +48,9 @@ func ConfigApiGet(w http.ResponseWriter, req *http.Request) {
 			config.EmailConfig.Host = "***"
 			config.Database.PostgresPassword = "***"
 			config.HTTPConfig.DNSChallengeConfig = map[string]string{}
+			for i := range config.HTTPConfig.DNSZones {
+				config.HTTPConfig.DNSZones[i].DNSChallengeConfig = map[string]string{}
+			}
 			config.Licence = "***"
 			config.ServerToken = "***"
 

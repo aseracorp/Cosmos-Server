@@ -1,8 +1,11 @@
 package main
 
 import (
+	"sync"
+	"sync/atomic"
     "net/http"
-		"github.com/azukaar/cosmos-server/src/utils"
+		"github.com/azukaar/cosmos-server/src/dnsrecords"
+	"github.com/azukaar/cosmos-server/src/utils"
 		"github.com/azukaar/cosmos-server/src/user"
 		"github.com/azukaar/cosmos-server/src/configapi"
 		"github.com/azukaar/cosmos-server/src/proxy"
@@ -34,6 +37,9 @@ var HTTPServer *http.Server
 var HTTPServer2 *http.Server
 
 func startHTTPServer(router *mux.Router) error {
+	utils.HTTPSListening = false
+	utils.IsHTTPS = false
+
 	HTTPServer2 = nil
 	HTTPServer = &http.Server{
 		Addr: "0.0.0.0:" + serverPortHTTP,
@@ -64,62 +70,267 @@ func startHTTPServer(router *mux.Router) error {
 var primaryCert *tls.Certificate
 var secondaryCert *tls.Certificate
 
-// GetCertificate returns the appropriate certificate based on the client hello info
+// GetCertificate returns the certificate of the hostname of the handshake.
+// Its zone decides, no server-wide mode comes first: the certificate provided
+// for the zone, the one the cluster issued for it, or the self-signed one.
+// Whenever the right certificate is not there (yet), the next best one serves:
+// the node's own, itself the self-signed one until Let's Encrypt answers.
 func GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	config := utils.GetMainConfig()
-	
-	if config.HTTPConfig.HTTPSCertificateMode == "PROVIDED" {
-		return primaryCert, nil
-	} else if config.HTTPConfig.HTTPSCertificateMode == "SELFSIGNED" {
-		return secondaryCert, nil
-	}
 
 	host := clientHello.ServerName
 	if host == "" {
-			// If SNI is not used, check the connection's IP
-			if clientHello.Conn != nil {
-					host = clientHello.Conn.RemoteAddr().String()
-					// Extract just the IP from the address
-					if h, _, err := net.SplitHostPort(host); err == nil {
-							host = h
-					}
+		// If SNI is not used, check the connection's IP
+		if clientHello.Conn != nil {
+			host = clientHello.Conn.RemoteAddr().String()
+			// Extract just the IP from the address
+			if h, _, err := net.SplitHostPort(host); err == nil {
+				host = h
 			}
+		}
 	}
 
-	// Check if we should use self-signed certificate
-	shouldUseSelfSigned := false
-
-	// Check for IP address
-	if ip := net.ParseIP(host); ip != nil {
-			shouldUseSelfSigned = true
+	mode, zone := utils.HostHTTPSMode(config, host)
+	switch mode {
+	case utils.HTTPSCertModeList["SELFSIGNED"], utils.HTTPSCertModeList["DISABLED"]:
+		return secondaryCert, nil
+	case utils.HTTPSCertModeList["PROVIDED"]:
+		if zone == -1 {
+			// a server-wide provided certificate not moved into zones yet
+			return primaryCert, nil
+		}
+		if cert := providedCertFor(config.HTTPConfig.DNSZones[zone].Zone); cert != nil {
+			return cert, nil
+		}
+		return secondaryCert, nil
 	}
 
-	// Check for .local domain
-	if strings.HasSuffix(host, ".local") {
-			shouldUseSelfSigned = true
+	// what Let's Encrypt cannot certify: an IP, localhost, a .local name
+	if net.ParseIP(host) != nil || strings.HasSuffix(host, ".local") || host == "localhost" {
+		utils.Debug("Using self-signed certificate for: " + host)
+		return secondaryCert, nil
 	}
 
-	// Check for localhost
-	if host == "localhost" {
-			shouldUseSelfSigned = true
-	}
-
-	if shouldUseSelfSigned {
-			utils.Debug("Using self-signed certificate for: " + host)
-			return secondaryCert, nil
+	if cert := zoneCertFor(host); cert != nil {
+		return cert, nil
 	}
 
 	return primaryCert, nil
 }
 
+type loadedZoneCert struct {
+	cert  *tls.Certificate
+	hosts []string
+}
+
+// zone name -> certificate, swapped whole so handshakes never lock
+var zoneCertStore atomic.Value
+
+// zone name -> the certificate provided for it, same swap
+var providedCertStore atomic.Value
+
+// loadZoneCertStore rebuilds the serving store from the config. No restart
+// needed: a certificate received from the cluster is served right away.
+func loadZoneCertStore() {
+	store := map[string]loadedZoneCert{}
+	for zone, zoneCert := range utils.GetMainConfig().HTTPConfig.ZoneCerts {
+		cert, err := tls.X509KeyPair([]byte(zoneCert.TLSCert), []byte(zoneCert.TLSKey))
+		if err != nil {
+			utils.Error("Zones: cannot load the certificate of "+zone, err)
+			continue
+		}
+		store[zone] = loadedZoneCert{cert: &cert, hosts: zoneCert.Hosts}
+	}
+	zoneCertStore.Store(store)
+
+	provided := map[string]*tls.Certificate{}
+	for _, zone := range utils.GetMainConfig().HTTPConfig.DNSZones {
+		if zone.HTTPSCertificateMode != utils.HTTPSCertModeList["PROVIDED"] {
+			continue
+		}
+		cert, err := tls.X509KeyPair([]byte(zone.TLSCert), []byte(zone.TLSKey))
+		if err != nil {
+			utils.Error("Zones: cannot load the certificate provided for "+zone.Zone+", serving the self-signed one", err)
+			continue
+		}
+		provided[zone.Zone] = &cert
+	}
+	providedCertStore.Store(provided)
+}
+
+// providedCertFor returns the certificate provided for a zone, nil when it
+// cannot be used
+func providedCertFor(zone string) *tls.Certificate {
+	store, _ := providedCertStore.Load().(map[string]*tls.Certificate)
+	return store[zone]
+}
+
+// zoneCertFor returns the certificate of the zone owning the host, nil when
+// the zone has none (yet) or it does not cover the host: the node's own
+// certificate keeps serving until the zone's one does.
+func zoneCertFor(host string) *tls.Certificate {
+	zones := utils.GetMainConfig().HTTPConfig.DNSZones
+	i := utils.FindZone(zones, host)
+	if i == -1 {
+		return nil
+	}
+	store, _ := zoneCertStore.Load().(map[string]loadedZoneCert)
+
+	loaded, ok := store[zones[i].Zone]
+	if !ok || !utils.CertCovers(loaded.hosts, strings.ToLower(host)) {
+		return nil
+	}
+	return loaded.cert
+}
+
+// how long a server that joined a cluster waits for its zones before getting
+// its certificates on its own
+const zonesPendingTimeout = 10 * time.Minute
+
+var zonesPendingSince time.Time
+var zonesPendingWatch sync.Once
+
+// waitForZones reports whether the local certificate has to wait for the zones
+// of the cluster. The first time it does, it arranges for the server to come
+// back once they are there (or once waiting is pointless).
+func waitForZones() bool {
+	if !utils.ZonesPending() {
+		return false
+	}
+	if zonesPendingSince.IsZero() {
+		zonesPendingSince = time.Now()
+	}
+	if time.Since(zonesPendingSince) > zonesPendingTimeout {
+		return false
+	}
+
+	zonesPendingWatch.Do(func() {
+		go func() {
+			for utils.ZonesPending() && time.Since(zonesPendingSince) <= zonesPendingTimeout {
+				time.Sleep(5 * time.Second)
+			}
+			utils.Log("Zones: cluster state received, getting the certificates")
+			RestartHTTPServer()
+		}()
+	})
+	return true
+}
+
+// failed issuances are not retried before this long, whatever asks for them
+const zoneIssueRetryDelay = time.Hour
+
+var zoneIssueLock sync.Mutex
+var lastZoneIssueFailure = map[string]time.Time{}
+
+// issueZoneCerts obtains the certificates of the explicit zones that need one.
+// Only the zone issuer does it, everyone else receives them from the cluster.
+func issueZoneCerts(force bool) {
+	zoneIssueLock.Lock()
+	defer zoneIssueLock.Unlock()
+
+	// read under the lock: a caller that waited for an issuance to finish must
+	// see the certificate it produced, not order it a second time
+	config := utils.GetMainConfig()
+	if !utils.IsZoneIssuer() {
+		return
+	}
+	// the zones decide, not the issuer's own setup: an HTTP-only leader still
+	// issues for the servers of its cluster. Alone, it has no use for them.
+	if utils.ServerHTTPSDisabled(config.HTTPConfig) && !config.ConstellationConfig.Enabled {
+		return
+	}
+
+	issued := false
+
+	for name, wanted := range utils.ZoneCertsToIssue(config, force) {
+		i := utils.FindZone(config.HTTPConfig.DNSZones, name)
+		if i == -1 {
+			continue
+		}
+		zone := config.HTTPConfig.DNSZones[i]
+
+		if !force && time.Since(lastZoneIssueFailure[name]) < zoneIssueRetryDelay {
+			continue
+		}
+
+		utils.Log("Zones: getting a certificate for " + name + ": " + strings.Join(wanted, ", "))
+		pub, priv := utils.DoLetsEncrypt(wanted, &zone)
+		if pub == "" || priv == "" {
+			lastZoneIssueFailure[name] = time.Now()
+			utils.MajorError("Zones: couldn't get the TLS certificate of "+name+". Keeping the previous certificate if any", nil)
+			continue
+		}
+		delete(lastZoneIssueFailure, name)
+		issued = true
+
+		zoneCert := utils.ZoneCert{
+			TLSCert:    pub,
+			TLSKey:     priv,
+			Hosts:      wanted,
+			ValidUntil: time.Now().AddDate(0, 0, 90),
+			IssuedBy:   config.ConstellationConfig.ThisDeviceName,
+		}
+
+		baseMainConfig := utils.GetBaseMainConfig()
+		if baseMainConfig.HTTPConfig.ZoneCerts == nil {
+			baseMainConfig.HTTPConfig.ZoneCerts = map[string]utils.ZoneCert{}
+		}
+		baseMainConfig.HTTPConfig.ZoneCerts[name] = zoneCert
+		utils.SetBaseMainConfig(baseMainConfig)
+
+		utils.TriggerEvent(
+			"cosmos.proxy.certificate",
+			"Cosmos Certificate Renewed",
+			"important",
+			"",
+			map[string]interface{}{
+				"zone":    name,
+				"domains": wanted,
+		})
+
+		utils.WriteNotification(utils.Notification{
+			Recipient: "admin",
+			Title: "header.notification.title.certificateRenewed",
+			Message: "header.notification.message.certificateRenewed",
+			Vars: strings.Join(wanted, ", "),
+			Level: "info",
+		})
+	}
+
+	if issued {
+		utils.PublishZoneCerts()
+	}
+}
+
+// refreshZoneCerts is the no-restart path: the issuer found out while running
+// (leadership gained, new hostname in the cluster) that a zone needs a certificate.
+func refreshZoneCerts() {
+	issueZoneCerts(false)
+	loadZoneCertStore()
+}
+
+// plainHTTPHandler answers on the HTTP port of a server that serves HTTPS: the
+// hostnames of an HTTP-only zone are served there, everything else lives on HTTPS
+func plainHTTPHandler(router http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if utils.HostIsHTTPOnly(utils.GetMainConfig(), r.Host) {
+			router.ServeHTTP(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+}
+
 func startHTTPSServer(router *mux.Router) error {
 	//config  := utils.GetMainConfig()
 
-	utils.IsHTTPS = true
-		
-	// redirect http to https
+	// IsHTTPS is about the server's own hostname: on a server that serves both,
+	// it follows the zone of that hostname
+	utils.HTTPSListening = true
+	utils.IsHTTPS = !utils.HostIsHTTPOnly(utils.GetMainConfig(), utils.GetMainConfig().HTTPConfig.Hostname)
+
 	go (func () {
-		httpRouter := mux.NewRouter()
+		httpRouter := plainHTTPHandler(router)
 
 		HTTPServer2 = &http.Server{
 			Addr: "0.0.0.0:" + serverPortHTTP,
@@ -423,29 +634,22 @@ func CertificateIsExpired(validUntil time.Time) bool {
 	return isValid
 }
 
-var appliedDNSChallengeEnv []string
-
-// env vars are process-wide and survive soft restarts, so drop the ones removed from the config
-func applyDNSChallengeEnv(newEnv map[string]string) {
-	for _, key := range appliedDNSChallengeEnv {
-		if _, ok := newEnv[key]; !ok {
-			os.Unsetenv(key)
-		}
-	}
-
-	applied := make([]string, 0, len(newEnv))
-	for key, value := range newEnv {
-		key = strings.TrimSpace(key)
-		os.Setenv(key, strings.TrimSpace(value))
-		applied = append(applied, key)
-	}
-
-	appliedDNSChallengeEnv = applied
-}
-
 func InitServer() *mux.Router {
 	utils.RestartHTTPServer = RestartHTTPServer
+	utils.RefreshZoneCerts = refreshZoneCerts
+	utils.ReloadZoneCerts = loadZoneCertStore
 	baseMainConfig := utils.GetBaseMainConfig()
+
+	// a legacy HTTPS setup (upgrade, or a client still writing the old fields) moves into zones
+	zonesBefore := len(baseMainConfig.HTTPConfig.DNSZones)
+	if utils.MigrateToZones(&baseMainConfig, false) {
+		utils.Log("Zones: moved the HTTPS setup of this server into zones")
+		utils.SetBaseMainConfig(baseMainConfig)
+		// nothing to hand over when the zones of the cluster already covered it
+		if len(baseMainConfig.HTTPConfig.DNSZones) > zonesBefore {
+			utils.PublishMigratedZones(baseMainConfig.HTTPConfig.DNSZones)
+		}
+	}
 	config := utils.GetMainConfig()
 	HTTPConfig := config.HTTPConfig
 	serverPortHTTP = HTTPConfig.HTTPPort
@@ -498,10 +702,17 @@ func InitServer() *mux.Router {
 			}
 	}
 
+	// zones with a DNS provider have a certificate of their own, the node's one covers the rest
+	localDomains := domains
+	if config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] {
+		localDomains = utils.LetsEncryptValidOnly(utils.LocalCertHostnames(config, domains), false)
+	}
+	forceRenewal := baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal
+
 	// Check if Let's Encrypt certificate needs refresh
 	letsEncryptNeedsRefresh := baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal || 
 			(tlsCert == "" || tlsKey == "") || 
-			utils.HasAnyNewItem(domains, oldDomains) || 
+			utils.HasAnyNewItem(localDomains, oldDomains) || 
 			!CertificateIsExpiredSoon(baseMainConfig.HTTPConfig.TLSValidUntil)
 
 	// If we have a certificate, we can fallback to it if necessary
@@ -510,28 +721,45 @@ func InitServer() *mux.Router {
 		config.HTTPConfig.TLSKeyHostsCached[0] == config.HTTPConfig.Hostname  &&
 		CertificateIsExpired(baseMainConfig.HTTPConfig.TLSValidUntil)
 
-	dnsChallengeEnv := map[string]string{}
-	if config.HTTPConfig.DNSChallengeProvider != "" {
-		dnsChallengeEnv = config.HTTPConfig.DNSChallengeConfig
-	}
-	applyDNSChallengeEnv(dnsChallengeEnv)
+	// a server that just joined a cluster does not know its zones yet: asking Let's
+	// Encrypt now would order over HTTP a certificate the zone is about to provide
+	zonesPending := config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] && waitForZones()
 
-	if letsEncryptNeedsRefresh && config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] {
+	if letsEncryptNeedsRefresh && config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] && (len(localDomains) == 0 || zonesPending) {
+		// every hostname is served by a zone certificate: the node's own one only backs IPs and local names
+		baseMainConfig.HTTPConfig.TLSCert = selfTLSCert
+		baseMainConfig.HTTPConfig.TLSKey = selfTLSKey
+		baseMainConfig.HTTPConfig.TLSKeyHostsCached = []string{}
+		baseMainConfig.HTTPConfig.TLSValidUntil = baseMainConfig.HTTPConfig.SelfTLSValidUntil
+		utils.SetBaseMainConfig(baseMainConfig)
+
+		tlsCert = selfTLSCert
+		tlsKey = selfTLSKey
+	} else if letsEncryptNeedsRefresh && config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] {
 			// Get Certificates
-			pub, priv := utils.DoLetsEncrypt()
+			pub, priv := utils.DoLetsEncrypt(localDomains, nil)
 
 			if pub == "" || priv == "" {
 				if(!CanFallback) {
 					utils.MajorError("Couldn't get TLS certificate. Fallback to SELFSIGNED certificates since none exists", nil)
-					HTTPConfig.HTTPSCertificateMode = utils.HTTPSCertModeList["SELFSIGNED"]
-					// falledBack = true
+					// the self-signed certificate serves meanwhile. Nothing is cached
+					// for it, so the next start asks Let's Encrypt again.
+					baseMainConfig = utils.GetBaseMainConfig()
+					baseMainConfig.HTTPConfig.TLSCert = selfTLSCert
+					baseMainConfig.HTTPConfig.TLSKey = selfTLSKey
+					baseMainConfig.HTTPConfig.TLSKeyHostsCached = []string{}
+					baseMainConfig.HTTPConfig.TLSValidUntil = baseMainConfig.HTTPConfig.SelfTLSValidUntil
+					utils.SetBaseMainConfig(baseMainConfig)
+
+					tlsCert = selfTLSCert
+					tlsKey = selfTLSKey
 				} else {
 					utils.MajorError("Couldn't get TLS certificate. Fallback to previous certificate", nil)
 				}
 			} else {
 					baseMainConfig.HTTPConfig.TLSCert = pub
 					baseMainConfig.HTTPConfig.TLSKey = priv
-					baseMainConfig.HTTPConfig.TLSKeyHostsCached = domains
+					baseMainConfig.HTTPConfig.TLSKeyHostsCached = localDomains
 					baseMainConfig.HTTPConfig.TLSValidUntil = time.Now().AddDate(0, 0, 90)
 					baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal = false
 	
@@ -544,14 +772,14 @@ func InitServer() *mux.Router {
 							"important",
 							"",
 							map[string]interface{}{
-									"domains": domains,
+									"domains": localDomains,
 					})
 
 					utils.WriteNotification(utils.Notification{
 							Recipient: "admin",
 							Title: "header.notification.title.certificateRenewed",
 							Message: "header.notification.message.certificateRenewed",
-							Vars: strings.Join(domains, ", "),
+							Vars: strings.Join(localDomains, ", "),
 							Level: "info",
 					})
 
@@ -573,6 +801,14 @@ func InitServer() *mux.Router {
 			tlsCert = selfTLSCert
 			tlsKey = selfTLSKey
 	}
+
+	issueZoneCerts(forceRenewal)
+	loadZoneCertStore()
+
+	// hostnames or zones may have moved with this restart
+	dnsrecords.Start()
+	dnsrecords.Trigger()
+	baseMainConfig = utils.GetBaseMainConfig()
 
 	if baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal {
 		baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal = false
@@ -634,6 +870,7 @@ func InitServer() *mux.Router {
 	srapiStrict.HandleFunc("/api/register", user.UserRegister)
 	srapiStrict.HandleFunc("/api/newInstall", NewInstallRoute)
 	srapiStrict.HandleFunc("/api/setup", SetupRoute)
+	srapiStrict.HandleFunc("/api/setup-join", SetupJoinRoute)
 	srapi.HandleFunc("/api/status", StatusRoute)
 	srapi.HandleFunc("/api/can-send-email", CanSendEmail)
 	srapi.HandleFunc("/api/logout", user.UserLogout)
@@ -655,6 +892,9 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/force-server-update", ForceUpdateRoute)
 	srapiAdmin.HandleFunc("/api/config", configapi.ConfigRoute)
 	srapiAdmin.HandleFunc("/api/config/dns", configapi.ConfigApiDNS)
+	srapiAdmin.HandleFunc("/api/zones/{zone}", configapi.ZonesIdRoute)
+	srapiAdmin.HandleFunc("/api/zones", configapi.ZonesRoute)
+	srapiAdmin.HandleFunc("/api/zones-addresses", configapi.ZonesApiAddresses)
 	srapiAdmin.HandleFunc("/api/_memory", MemStatusRoute)
 	srapiAdmin.HandleFunc("/api/restart", configapi.ConfigApiRestart)
 	

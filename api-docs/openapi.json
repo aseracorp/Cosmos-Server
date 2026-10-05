@@ -4,7 +4,7 @@
     "description": "REST API for Cosmos Cloud server management",
     "title": "Cosmos Server API",
     "contact": {},
-    "version": "0.24.0-unstable012"
+    "version": "0.24.0-unstable021"
   },
   "paths": {
     "/_logs": {
@@ -8326,7 +8326,7 @@
             "BearerAuth": []
           }
         ],
-        "description": "Triggers a manual check for available server updates",
+        "description": "Checks container images and the server release feed now, regardless of the auto-update setting. Returns the server version comparison; when a newer server release exists it is downloaded and the server restarts to install it.",
         "tags": [
           "system"
         ],
@@ -8337,7 +8337,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/utils.APIResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/utils.APIResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/main.ServerUpdateCheck"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -8364,6 +8376,16 @@
           },
           "405": {
             "description": "Method Not Allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
             "content": {
               "application/json": {
                 "schema": {
@@ -12646,6 +12668,58 @@
         }
       }
     },
+    "/api/setup-join": {
+      "post": {
+        "description": "Replaces the whole setup for a server added to a cluster: the constellation file gives the server its identity and its hostname (<device>.<cluster domain>, or the one given), users, zones and certificates are then replicated from the cluster. The server restarts once done. Only available when the server is in NewInstall mode.",
+        "tags": [
+          "system"
+        ],
+        "summary": "Set a new server up by joining an existing Constellation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/main.SetupJoinJSON"
+              }
+            }
+          },
+          "description": "Constellation file and optional hostname",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/shield/bans": {
       "get": {
         "security": [
@@ -13985,6 +14059,261 @@
         }
       }
     },
+    "/api/zones": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Lists every zone: the explicit ones, and one derived zone per hostname no explicit zone covers. Each zone comes with its hostnames (cluster-wide) and the certificate each hostname is served with. DNS provider credentials are only included with the credentials permission.",
+        "tags": [
+          "zones"
+        ],
+        "summary": "List the DNS zones",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/configapi.ZonesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/zones-addresses": {
+      "get": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Lists the choices for HTTPConfig.AdvertisedAddress, the address the managed DNS records of this server point at: the detected public IP (empty value, the default), each network interface (iface:<name>, for a server published on its LAN), with the address each one currently resolves to.",
+        "tags": [
+          "zones"
+        ],
+        "summary": "List the addresses this server can advertise",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/configapi.AdvertisedAddressesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/zones/{zone}": {
+      "put": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Creates the explicit zone, or replaces it. A zone is a domain with its HTTPS setup (certificate mode, DNS challenge provider, wildcard) and its DynDNS setup. Every hostname under the domain uses it, unless a longer zone matches. The certificate mode is LETSENCRYPT, SELFSIGNED, PROVIDED (TLSCert and TLSKey in PEM format) or DISABLED (plain HTTP), and no server-wide mode overrides it. Replicated to the whole Constellation. Credentials sent empty by a client without the credentials permission keep their current value, and so does the private key of a provided certificate, which is never returned.",
+        "tags": [
+          "zones"
+        ],
+        "summary": "Create or replace a DNS zone",
+        "parameters": [
+          {
+            "description": "Zone name, e.g. example.com",
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/utils.DNSZoneConfig"
+              }
+            }
+          },
+          "description": "Zone configuration",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "description": "Deletes the explicit zone. Its hostnames fall back to the next matching zone, or to a derived zone each. Replicated to the whole Constellation.",
+        "tags": [
+          "zones"
+        ],
+        "summary": "Delete a DNS zone",
+        "parameters": [
+          {
+            "description": "Zone name",
+            "name": "zone",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.APIResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/utils.HTTPErrorResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/logo": {
       "get": {
         "description": "Returns the Cosmos server logo as a PNG image",
@@ -14590,6 +14919,31 @@
       }
     },
     "schemas": {
+      "configapi.AdvertisedAddressOption": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "configapi.AdvertisedAddressesResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/configapi.AdvertisedAddressOption"
+            }
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "configapi.CreateAPITokenRequest": {
         "type": "object",
         "required": [
@@ -14740,6 +15094,120 @@
             "type": "string"
           },
           "routeName": {
+            "type": "string"
+          }
+        }
+      },
+      "configapi.ZoneCertStatus": {
+        "type": "object",
+        "properties": {
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "issuedBy": {
+            "type": "string"
+          },
+          "validUntil": {
+            "type": "string"
+          }
+        }
+      },
+      "configapi.ZoneStatus": {
+        "type": "object",
+        "required": [
+          "zone"
+        ],
+        "properties": {
+          "DNSChallengeConfig": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "TLSCert": {
+            "type": "string"
+          },
+          "TLSKey": {
+            "type": "string"
+          },
+          "certificate": {
+            "$ref": "#/components/schemas/configapi.ZoneCertStatus"
+          },
+          "derived": {
+            "type": "boolean"
+          },
+          "disablePropagationChecks": {
+            "type": "boolean"
+          },
+          "dnschallengePropagationWait": {
+            "type": "integer"
+          },
+          "dnschallengeProvider": {
+            "type": "string"
+          },
+          "dnschallengeResolvers": {
+            "type": "string"
+          },
+          "hostCertificates": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/utils.HostCertificate"
+            }
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "httpscertificateMode": {
+            "description": "HTTPS setup. The mode is LETSENCRYPT, SELFSIGNED, PROVIDED (the\ncertificate below) or DISABLED (the hostnames are served over plain HTTP).\nThe zone decides alone: no server has an HTTPS mode of its own to\noverride it, only the choice of not serving HTTPS at all.",
+            "type": "string"
+          },
+          "issuesCertificate": {
+            "description": "IssuesCertificate is true when the zone gets a certificate of its own\nthrough its DNS provider; its hostnames use this node's one otherwise",
+            "type": "boolean"
+          },
+          "manageRecords": {
+            "description": "DynDNS setup, needs a DNSChallengeProvider",
+            "type": "boolean"
+          },
+          "records": {
+            "description": "Records is the DynDNS state of the zone, only known by the node writing\nthe records (this node when standalone, the cluster leader otherwise)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/dnsrecords.ZoneStatus"
+              }
+            ]
+          },
+          "recordsSupported": {
+            "description": "RecordsSupported is true when the DNS provider of the zone can manage records",
+            "type": "boolean"
+          },
+          "useWildcardCertificate": {
+            "type": "boolean"
+          },
+          "wildcardRecord": {
+            "type": "boolean"
+          },
+          "zone": {
+            "type": "string"
+          }
+        }
+      },
+      "configapi.ZonesResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/configapi.ZoneStatus"
+            }
+          },
+          "status": {
             "type": "string"
           }
         }
@@ -15056,6 +15524,29 @@
             "type": "string",
             "maxLength": 32,
             "minLength": 3
+          }
+        }
+      },
+      "dnsrecords.ZoneStatus": {
+        "type": "object",
+        "properties": {
+          "lastError": {
+            "type": "string"
+          },
+          "lastSync": {
+            "type": "string"
+          },
+          "records": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "supported": {
+            "type": "boolean"
           }
         }
       },
@@ -15722,6 +16213,23 @@
           }
         }
       },
+      "main.ServerUpdateCheck": {
+        "type": "object",
+        "properties": {
+          "containerized": {
+            "type": "boolean"
+          },
+          "currentVersion": {
+            "type": "string"
+          },
+          "latestVersion": {
+            "type": "string"
+          },
+          "updateAvailable": {
+            "type": "boolean"
+          }
+        }
+      },
       "main.SetupJSON": {
         "type": "object",
         "properties": {
@@ -15801,6 +16309,26 @@
             "type": "string"
           },
           "useWildcardCertificate": {
+            "type": "boolean"
+          }
+        }
+      },
+      "main.SetupJoinJSON": {
+        "type": "object",
+        "required": [
+          "constellationConfig"
+        ],
+        "properties": {
+          "constellationConfig": {
+            "description": "ConstellationConfig is the constellation file of this server, as created on the cluster",
+            "type": "string"
+          },
+          "hostname": {
+            "description": "Hostname overrides the one derived from the cluster domain (<device>.<cluster domain>)",
+            "type": "string"
+          },
+          "preview": {
+            "description": "Preview only returns the hostname the server would take, nothing is saved",
             "type": "boolean"
           }
         }
@@ -17776,6 +18304,10 @@
       "utils.ConstellationConfig": {
         "type": "object",
         "properties": {
+          "ClusterDomain": {
+            "description": "ClusterDomain is the domain servers joining with a constellation file get\ntheir hostname under (<device>.<domain>). Empty: the zone of this server's hostname.",
+            "type": "string"
+          },
           "FirewallBlockedClients": {
             "type": "array",
             "items": {
@@ -17848,6 +18380,55 @@
             "type": "string"
           },
           "value": {
+            "type": "string"
+          }
+        }
+      },
+      "utils.DNSZoneConfig": {
+        "type": "object",
+        "required": [
+          "zone"
+        ],
+        "properties": {
+          "DNSChallengeConfig": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "TLSCert": {
+            "type": "string"
+          },
+          "TLSKey": {
+            "type": "string"
+          },
+          "disablePropagationChecks": {
+            "type": "boolean"
+          },
+          "dnschallengePropagationWait": {
+            "type": "integer"
+          },
+          "dnschallengeProvider": {
+            "type": "string"
+          },
+          "dnschallengeResolvers": {
+            "type": "string"
+          },
+          "httpscertificateMode": {
+            "description": "HTTPS setup. The mode is LETSENCRYPT, SELFSIGNED, PROVIDED (the\ncertificate below) or DISABLED (the hostnames are served over plain HTTP).\nThe zone decides alone: no server has an HTTPS mode of its own to\noverride it, only the choice of not serving HTTPS at all.",
+            "type": "string"
+          },
+          "manageRecords": {
+            "description": "DynDNS setup, needs a DNSChallengeProvider",
+            "type": "boolean"
+          },
+          "useWildcardCertificate": {
+            "type": "boolean"
+          },
+          "wildcardRecord": {
+            "type": "boolean"
+          },
+          "zone": {
             "type": "string"
           }
         }
@@ -17928,10 +18509,29 @@
           "httpsport"
         ],
         "properties": {
+          "AdvertisedAddress": {
+            "description": "AdvertisedAddress is what the DNS records of this node point at: empty for\nthe detected public IP, \"iface:<name>\" for a network interface, or an IPv4",
+            "type": "string"
+          },
           "DNSChallengeConfig": {
             "type": "object",
             "additionalProperties": {
               "type": "string"
+            }
+          },
+          "DNSZones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/utils.DNSZoneConfig"
+            }
+          },
+          "SSLEmailShared": {
+            "type": "boolean"
+          },
+          "ZoneCerts": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/utils.ZoneCert"
             }
           },
           "acceptAllInsecureHostname": {
@@ -18014,6 +18614,7 @@
             "type": "string"
           },
           "sslemail": {
+            "description": "SSLEmail is the contact of the Let's Encrypt certificates. One for the\nwhole cluster, whichever server issues: SSLEmailShared is set once the\ncluster's value was received, a server's own one from before is offered\nto the cluster until then.",
             "type": "string"
           },
           "tlscert": {
@@ -18073,6 +18674,31 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "utils.HostCertificate": {
+        "type": "object",
+        "properties": {
+          "covered": {
+            "description": "Covered is false when the certificate served does not list the hostname",
+            "type": "boolean"
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "description": "Source is \"zone\", \"node\" (this node's own Let's Encrypt certificate),\n\"selfsigned\", \"provided\" or \"none\" (HTTPS disabled)",
+            "type": "string"
+          },
+          "validUntil": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
           }
         }
       },
@@ -18550,6 +19176,29 @@
           },
           "role": {
             "type": "integer"
+          }
+        }
+      },
+      "utils.ZoneCert": {
+        "type": "object",
+        "properties": {
+          "IssuedBy": {
+            "type": "string"
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tlscert": {
+            "type": "string"
+          },
+          "tlskey": {
+            "type": "string"
+          },
+          "validUntil": {
+            "type": "string"
           }
         }
       }

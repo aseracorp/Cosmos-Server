@@ -14,6 +14,7 @@ import MiniPlotComponent from '../../dashboard/components/mini-plot';
 import ImageWithPlaceholder from '../../../components/imageWithPlaceholder';
 import UploadButtons from '../../../components/fileUpload';
 import { useTranslation } from 'react-i18next';
+import { HostZoneInfo } from '../configZones';
 
 const info = {
   backgroundColor: 'rgba(0, 0, 0, 0.1)',
@@ -69,6 +70,10 @@ const RouteOverview = ({ routeConfig, refreshConfig, readOnly = false }) => {
             <div style={info}>{routeConfig.Description}</div>
             <strong><NodeExpandOutlined /> {t('mgmt.config.proxy.urlTitle')}</strong>
             <div><HostChip route={routeConfig} /></div>
+            {routeConfig.UseHost && <>
+              <strong><LockOutlined /> {t('mgmt.config.zones.zoneAndCertificate')}</strong>
+              <div><HostZoneInfo host={routeConfig.Host} /></div>
+            </>}
             <strong><InfoCircleOutlined /> {t('global.target')}</strong>
             <div><RouteMode route={routeConfig} /> <Chip label={routeConfig.Target} /></div>
             <strong><SafetyCertificateOutlined/> {t('global.securityTitle')}</strong>

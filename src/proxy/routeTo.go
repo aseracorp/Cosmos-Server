@@ -117,8 +117,9 @@ func NewProxy(targetHost string, AcceptInsecureHTTPSTarget bool, DisableHeaderHa
 		// never leak a node API key to a backend; the tunnel director re-adds it for constellation hops
 		req.Header.Del("x-cstln-auth")
 
+		// the scheme the hostname is served with, which its zone can make plain HTTP
 		originalScheme := "http"
-		if utils.IsHTTPS {
+		if utils.HostServedOverHTTPS(req.Host) {
 			originalScheme = "https"
 		}
 		

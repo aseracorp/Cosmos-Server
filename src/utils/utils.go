@@ -58,7 +58,11 @@ var ConfigLockInternal sync.Mutex
 // a plain global is a data race.
 var baseMainConfig atomic.Pointer[Config]
 var mainConfig atomic.Pointer[Config]
+// IsHTTPS: the server's own hostname is served over HTTPS. HTTPSListening: the
+// HTTPS listener is up, some hostnames may still be HTTP-only (see
+// HostServedOverHTTPS for the scheme of a given hostname).
 var IsHTTPS = false
+var HTTPSListening = false
 var NewVersionAvailable = false
 
 var NeedsRestart = false
@@ -1007,6 +1011,33 @@ func IsDomain(domain string) bool {
 		return true
 	}
 	return false
+}
+
+var hostnameLabelRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// IsValidHostnameSyntax checks a bare server hostname, "host" or "host:port":
+// an IP or dot-separated DNS labels, no scheme, path or trailing slash
+func IsValidHostnameSyntax(hostname string) bool {
+	host := hostname
+	if h, port, err := osnet.SplitHostPort(hostname); err == nil {
+		p, err := strconv.Atoi(port)
+		if err != nil || p < 1 || p > 65535 {
+			return false
+		}
+		host = h
+	}
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	if osnet.ParseIP(host) != nil {
+		return true
+	}
+	for _, label := range strings.Split(strings.ToLower(host), ".") {
+		if !hostnameLabelRe.MatchString(label) {
+			return false
+		}
+	}
+	return true
 }
 
 func IsLocalDomain(domain string) bool {

@@ -28,6 +28,17 @@ func publishReplicatedDomains(request utils.Config, current utils.Config) error 
 			return err
 		}
 	}
+	// caller restored the masked credentials; publishing earlier would replicate them empty
+	if !reflect.DeepEqual(zonesPayloadOf(request), zonesPayloadOf(current)) {
+		if err := constellation.PublishDomainOp(constellation.DomainDNSZones, zonesPayloadOf(request)); err != nil {
+			return err
+		}
+	}
+	if request.HTTPConfig.SSLEmail != current.HTTPConfig.SSLEmail {
+		if err := constellation.PublishDomainOp(constellation.DomainHTTPSSettings, constellation.HTTPSSettingsPayload{SSLEmail: request.HTTPConfig.SSLEmail}); err != nil {
+			return err
+		}
+	}
 	// caller restored the real password; publishing earlier would replicate "***"
 	newDB := dbPayloadOf(request)
 	if !reflect.DeepEqual(newDB, dbPayloadOf(current)) {
@@ -54,6 +65,13 @@ func dnsPayloadOf(c utils.Config) constellation.DNSPayload {
 		DNSAdditionalBlocklists: blocklists,
 		CustomDNSEntries:        entries,
 	}
+}
+
+func zonesPayloadOf(c utils.Config) []utils.DNSZoneConfig {
+	if len(c.HTTPConfig.DNSZones) == 0 {
+		return nil
+	}
+	return c.HTTPConfig.DNSZones
 }
 
 func dbPayloadOf(c utils.Config) constellation.DatabasePayload {
@@ -111,6 +129,8 @@ func restoreReplicatedDomains(request *utils.Config, config utils.Config) {
 	request.ConstellationConfig.CustomDNSEntries = config.ConstellationConfig.CustomDNSEntries
 	request.Roles = config.Roles
 	request.OpenIDClients = config.OpenIDClients
+	request.HTTPConfig.SSLEmail = config.HTTPConfig.SSLEmail
+	request.HTTPConfig.SSLEmailShared = config.HTTPConfig.SSLEmailShared
 	// Database.NodeName stays node-local from the request, like the ConstellationConfig fields above
 	request.Database.PostgresHost = config.Database.PostgresHost
 	request.Database.PostgresDatabase = config.Database.PostgresDatabase
@@ -170,6 +190,13 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 		request.HTTPConfig.AuthPublicKey = config.HTTPConfig.AuthPublicKey
 		request.HTTPConfig.TLSCert = config.HTTPConfig.TLSCert
 		request.HTTPConfig.TLSKey = config.HTTPConfig.TLSKey
+		// zone certificates are never sent to the client; the ones of deleted zones go with them
+		request.HTTPConfig.ZoneCerts = config.HTTPConfig.ZoneCerts
+		for name := range request.HTTPConfig.ZoneCerts {
+			if i := utils.FindZone(request.HTTPConfig.DNSZones, name); i == -1 || request.HTTPConfig.DNSZones[i].Zone != name {
+				delete(request.HTTPConfig.ZoneCerts, name)
+			}
+		}
 		request.NewInstall = config.NewInstall
 
 		// restore API token as we cannot edit it here
@@ -187,6 +214,21 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 		canReadCredentials := utils.HasPermission(req, utils.PERM_CREDENTIALS_READ)
 		if !canReadCredentials {
 			request.HTTPConfig.DNSChallengeConfig = config.HTTPConfig.DNSChallengeConfig
+			for i, zone := range request.HTTPConfig.DNSZones {
+				if j := utils.FindZone(config.HTTPConfig.DNSZones, zone.Zone); j != -1 && config.HTTPConfig.DNSZones[j].Zone == zone.Zone {
+					request.HTTPConfig.DNSZones[i].DNSChallengeConfig = config.HTTPConfig.DNSZones[j].DNSChallengeConfig
+				}
+			}
+		}
+
+		// the private key of a provided certificate is never sent to the client either
+		for i, zone := range request.HTTPConfig.DNSZones {
+			if zone.TLSKey != "" {
+				continue
+			}
+			if j := utils.FindZone(config.HTTPConfig.DNSZones, zone.Zone); j != -1 && config.HTTPConfig.DNSZones[j].Zone == zone.Zone {
+				request.HTTPConfig.DNSZones[i].TLSKey = config.HTTPConfig.DNSZones[j].TLSKey
+			}
 		}
 
 		// restore credential fields if they were masked (sent as "***")

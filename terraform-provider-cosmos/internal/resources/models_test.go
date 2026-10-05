@@ -25,6 +25,7 @@ func TestModelsMatchSchemas(t *testing.T) {
 		{NewObjectStorageResource(), &objectStorageModel{}},
 		{NewFunctionResource(), &functionModel{}},
 		{NewCIProjectResource(), &ciProjectModel{}},
+		{NewDomainResource(), &domainModel{}},
 	}
 	for _, c := range cases {
 		var resp resource.SchemaResponse

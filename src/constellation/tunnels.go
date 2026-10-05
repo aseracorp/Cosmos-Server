@@ -7,10 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/azukaar/cosmos-server/src/docker"
 	"github.com/azukaar/cosmos-server/src/pro"
+	"github.com/azukaar/cosmos-server/src/dnsrecords"
 	"github.com/azukaar/cosmos-server/src/utils"
 )
 
@@ -483,6 +485,7 @@ func ClientHeartbeatInit() {
 					CosmosNode:                device.CosmosNode,
 					Tunnels:                   GetAllTunneledRoutes(),
 					Hostnames:                 localHostnames(),
+					PublicAddr:                dnsrecords.CurrentAddress(),
 					RunningDeployments:        running,
 					RunningDeploymentVersions: runningVersions,
 					ManagedDBs:                managedDBs,
@@ -651,9 +654,18 @@ func checkNodesKVDivergence(kv nats.KeyValue, consecutive *int) {
 	utils.Log("[NATS] Divergence cure applied: 'constellation-nodes' recreated from a single seed; heartbeats repopulate it within ~2s")
 }
 
-var localTunnelCache []utils.ConstellationTunnel
-var localTunnelCacheMutex = &sync.RWMutex{}
-var lastCacheUpdate time.Time
+// The tunnel cache is read on every HTTP request (EnsureHostname ->
+// GetAllHostnames) and refreshed from NATS, which can take tens of seconds when
+// a peer is down. Readers therefore never lock: a refresh builds a new
+// snapshot and swaps it in. localTunnelRefresh only keeps refreshes from
+// piling up, nothing a reader touches ever waits on it.
+type tunnelCacheSnapshot struct {
+	tunnels []utils.ConstellationTunnel
+	updated time.Time
+}
+
+var localTunnelCache atomic.Pointer[tunnelCacheSnapshot]
+var localTunnelRefresh sync.Mutex
 var heartbeatStopChan chan struct{}
 var heartbeatTicker *time.Ticker
 var heartbeatLock sync.Mutex
@@ -755,8 +767,11 @@ func UpdateLocalTunnelCache() {
 		return
 	}
 
-	localTunnelCacheMutex.Lock()
-	defer localTunnelCacheMutex.Unlock()
+	// one refresh at a time; whoever comes second gets the result of the first
+	if !localTunnelRefresh.TryLock() {
+		return
+	}
+	defer localTunnelRefresh.Unlock()
 
 	currentDeviceName, err := GetCurrentDeviceName()
 	if err != nil {
@@ -793,11 +808,13 @@ func UpdateLocalTunnelCache() {
 	}
 
 	heartbeats := make([]NodeHeartbeat, 0, len(keys))
+	completeView := true
 
 	for _, key := range keys {
 		entry, err := kv.Get(key)
 		if err != nil {
 			utils.Error("[NATS] Error getting entry from Key-Value store during tunnel cache update", err)
+			completeView = false
 			continue
 		}
 
@@ -805,6 +822,7 @@ func UpdateLocalTunnelCache() {
 		err = json.Unmarshal(entry.Value(), &heartbeat)
 		if err != nil {
 			utils.Error("[NATS] Error unmarshalling heartbeat JSON during tunnel cache update", err)
+			completeView = false
 			continue
 		}
 
@@ -814,13 +832,18 @@ func UpdateLocalTunnelCache() {
 
 	// every node keeps the cluster DNS map, even non load balancers
 	setClusterDNS(buildClusterDNS(heartbeats, loadBalancerIPs()))
+	go checkZoneCerts()
+	updateRecordsView(heartbeats, completeView)
 
 	tunnels := tunnelsForNode(heartbeats, currentDeviceName)
 
-	changed := !utils.JSONEquals(sortTunnelsForComparison(localTunnelCache), sortTunnelsForComparison(tunnels))
+	previous := []utils.ConstellationTunnel{}
+	if snapshot := localTunnelCache.Load(); snapshot != nil {
+		previous = snapshot.tunnels
+	}
+	changed := !utils.JSONEquals(sortTunnelsForComparison(previous), sortTunnelsForComparison(tunnels))
 
-	localTunnelCache = tunnels
-	lastCacheUpdate = time.Now()
+	localTunnelCache.Store(&tunnelCacheSnapshot{tunnels: tunnels, updated: time.Now()})
 
 	if changed {
 		utils.Log("[constellation] Tunnel cache changed, restarting HTTP server...")
@@ -837,13 +860,15 @@ func GetLocalTunnelCache() []utils.ConstellationTunnel {
 		return []utils.ConstellationTunnel{}
 	}
 
-	localTunnelCacheMutex.RLock()
-	defer localTunnelCacheMutex.RUnlock()
+	snapshot := localTunnelCache.Load()
+	if snapshot == nil {
+		snapshot = &tunnelCacheSnapshot{}
+	}
 
-	result := make([]utils.ConstellationTunnel, len(localTunnelCache))
-	copy(result, localTunnelCache)
+	result := make([]utils.ConstellationTunnel, len(snapshot.tunnels))
+	copy(result, snapshot.tunnels)
 
-	if time.Since(lastCacheUpdate) > 5*time.Second {
+	if time.Since(snapshot.updated) > 5*time.Second {
 		go UpdateLocalTunnelCache()
 	}
 

@@ -610,6 +610,8 @@ func getYAMLClientConfig(name, configPath, capki, cert, key, APIKey string, devi
 	configMap["cstln_ip"] = device.IP
 	configMap["cstln_config_endpoint"] = utils.GetServerURL("")
 	configMap["cstln_ip_range"] = utils.GetMainConfig().ConstellationConfig.IPRange
+	// lets a server joining with this file name itself <device>.<domain> without any setup
+	configMap["cstln_cluster_domain"] = ClusterDomain()
 
 	// IsNATSHA (not NATSReplicas directly): only the creator's main config
 	// carries NATSReplicas, so a non-creator manager enrolling a device must

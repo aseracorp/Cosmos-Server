@@ -34,7 +34,17 @@ const (
 	DomainFileCAKey     = "file:ca.key"
 	DomainFileRclone    = "file:rclone.conf"
 	DomainDatabase      = "database"
+	DomainDNSZones      = "dns_zones"
+	DomainZoneCerts     = "zone_certs"
+	DomainHTTPSSettings = "https_settings"
 )
+
+// HTTPSSettingsPayload is what the servers of a cluster share about HTTPS
+// besides the zones: the contact their certificates are requested with.
+// Everything else about HTTPS belongs to a zone, or to one server (HTTP only).
+type HTTPSSettingsPayload struct {
+	SSLEmail string `json:"sslEmail"`
+}
 
 type AuthKeysPayload struct {
 	AuthPrivateKey string `json:"authPrivateKey"`
@@ -134,6 +144,83 @@ func init() {
 				DNSAdditionalBlocklists: c.DNSAdditionalBlocklists,
 				CustomDNSEntries:        c.CustomDNSEntries,
 			})
+		},
+	})
+
+	register(Domain{
+		Name: DomainDNSZones,
+		Apply: func(state json.RawMessage) error {
+			var zones []utils.DNSZoneConfig
+			if err := json.Unmarshal(state, &zones); err != nil {
+				return err
+			}
+			config := utils.ReadConfigFromFile()
+			config.HTTPConfig.DNSZones = zones
+			// the certificate of a deleted zone goes with it, on every node
+			for name := range config.HTTPConfig.ZoneCerts {
+				if i := utils.FindZone(zones, name); i == -1 || zones[i].Zone != name {
+					delete(config.HTTPConfig.ZoneCerts, name)
+				}
+			}
+			utils.SetBaseMainConfig(config)
+			return nil
+		},
+		// a zone decides which certificate every hostname is served with and who
+		// issues it, so the server re-evaluates all of it
+		React: func(old json.RawMessage, new json.RawMessage) {
+			if !bytes.Equal(old, new) {
+				go utils.RestartHTTPServer()
+			}
+		},
+		Snapshot: func() (json.RawMessage, error) {
+			return json.Marshal(utils.GetMainConfig().HTTPConfig.DNSZones)
+		},
+	})
+
+	// read when a certificate is requested, so there is nothing to react to
+	register(Domain{
+		Name: DomainHTTPSSettings,
+		Apply: func(state json.RawMessage) error {
+			var p HTTPSSettingsPayload
+			if err := json.Unmarshal(state, &p); err != nil {
+				return err
+			}
+			config := utils.ReadConfigFromFile()
+			config.HTTPConfig.SSLEmail = p.SSLEmail
+			config.HTTPConfig.SSLEmailShared = true
+			utils.SetBaseMainConfig(config)
+			return nil
+		},
+		Snapshot: func() (json.RawMessage, error) {
+			return json.Marshal(HTTPSSettingsPayload{SSLEmail: utils.GetMainConfig().HTTPConfig.SSLEmail})
+		},
+	})
+
+	// written by the zone issuer only. An empty state is never applied: a node
+	// that has no certificate yet can't wipe everyone's.
+	register(Domain{
+		Name: DomainZoneCerts,
+		Apply: func(state json.RawMessage) error {
+			var certs map[string]utils.ZoneCert
+			if err := json.Unmarshal(state, &certs); err != nil {
+				return err
+			}
+			if len(certs) == 0 {
+				return nil
+			}
+			config := utils.ReadConfigFromFile()
+			config.HTTPConfig.ZoneCerts = certs
+			utils.SetBaseMainConfig(config)
+			return nil
+		},
+		// served straight from the store, no restart
+		React: func(old json.RawMessage, new json.RawMessage) {
+			if !bytes.Equal(old, new) {
+				go utils.ReloadZoneCerts()
+			}
+		},
+		Snapshot: func() (json.RawMessage, error) {
+			return json.Marshal(utils.GetMainConfig().HTTPConfig.ZoneCerts)
 		},
 	})
 

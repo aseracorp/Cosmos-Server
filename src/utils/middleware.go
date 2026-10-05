@@ -150,7 +150,7 @@ func BandwithLimiterMiddleware(max int64) func(next http.Handler) http.Handler {
 
 func SetSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if(IsHTTPS) {
+		if(HostServedOverHTTPS(r.Host)) {
 			// TODO: Add preload if we have a valid certificate
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}

@@ -36,6 +36,9 @@ type NodeHeartbeat struct {
 	// Hostnames are the names this node serves itself (main hostname and
 	// non-tunneled routes) so every constellation DNS can answer for them.
 	Hostnames []string `json:"hostnames,omitempty"`
+	// PublicAddr is the address the public DNS records of this node point at
+	// (see HTTPConfig.AdvertisedAddress), empty when no zone manages records.
+	PublicAddr string `json:"publicAddr,omitempty"`
 	// RunningDeployments is the list of scheduler-managed deployment names
 	// currently running on this node, derived from docker containers carrying
 	// the `cosmos-deployment` label. Populated from docker at heartbeat time;

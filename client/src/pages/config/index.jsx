@@ -140,7 +140,8 @@ const ConfigManagement = () => {
           HTTPSPort: config.HTTPConfig.HTTPSPort,
           SSLEmail: config.HTTPConfig.SSLEmail,
           UseWildcardCertificate: config.HTTPConfig.UseWildcardCertificate,
-          HTTPSCertificateMode: config.HTTPConfig.HTTPSCertificateMode,
+          // a server only chooses between HTTPS and none: how is up to each domain
+          HTTPSCertificateMode: (!config.HTTPConfig.HTTPSCertificateMode || config.HTTPConfig.HTTPSCertificateMode === "DISABLED") ? "DISABLED" : "LETSENCRYPT",
           DNSChallengeProvider: config.HTTPConfig.DNSChallengeProvider,
           DNSChallengeConfig: config.HTTPConfig.DNSChallengeConfig,
           DisablePropagationChecks: config.HTTPConfig.DisablePropagationChecks,
@@ -148,6 +149,7 @@ const ConfigManagement = () => {
           DNSChallengeResolvers: config.HTTPConfig.DNSChallengeResolvers,
           ForceHTTPSCertificateRenewal: config.HTTPConfig.ForceHTTPSCertificateRenewal,
           OverrideWildcardDomains: config.HTTPConfig.OverrideWildcardDomains,
+          AdvertisedAddress: config.HTTPConfig.AdvertisedAddress || "",
           UseForwardedFor: config.HTTPConfig.UseForwardedFor,
           TrustedProxies: config.HTTPConfig.TrustedProxies && config.HTTPConfig.TrustedProxies.join(', '),
           AllowSearchEngine: config.HTTPConfig.AllowSearchEngine,
@@ -238,7 +240,8 @@ const ConfigManagement = () => {
               DNSChallengePropagationWait: parseInt(values.DNSChallengePropagationWait, 10) || 0,
               DNSChallengeResolvers: values.DNSChallengeResolvers,
               ForceHTTPSCertificateRenewal: values.ForceHTTPSCertificateRenewal,
-              OverrideWildcardDomains: values.OverrideWildcardDomains.replace(/\s/g, ''),
+              OverrideWildcardDomains: (values.OverrideWildcardDomains || "").replace(/\s/g, ''),
+              AdvertisedAddress: values.AdvertisedAddress,
               UseForwardedFor: values.UseForwardedFor,
               TrustedProxies: (values.TrustedProxies && values.TrustedProxies != "") ?
                 values.TrustedProxies.split(',').map((x) => x.trim()) : [],
@@ -323,7 +326,7 @@ const ConfigManagement = () => {
                   url: "/http-server",
                 },
                 {
-                  title: "HTTPS",
+                  title: t('mgmt.config.zones.title'),
                   children: wrapTab(formik, <ConfigHTTPS formik={formik} config={config} />),
                   url: "/https",
                 },

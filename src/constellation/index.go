@@ -178,6 +178,13 @@ func Init() {
 		utils.SetPublishOpHook(publishOp)
 	}
 	utils.GetConstellationTunnelRoutes = getConstellationTunnelRoutes
+	utils.IsZoneIssuer = isZoneIssuer
+	utils.ClusterHostnames = clusterHostnames
+	utils.PublishZoneCerts = publishZoneCerts
+	utils.PublishMigratedZones = publishMigratedZones
+	utils.ZonesPending = zonesPending
+	initRecords()
+	shareLetsEncryptEmail()
 	utils.PublishRolesOp = func(roles map[utils.Role]utils.RoleConfig) error {
 		return PublishDomainOp(DomainRoles, roles)
 	}

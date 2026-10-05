@@ -66,6 +66,7 @@ All attributes can be set via environment variables: `COSMOS_BASE_URL`, `COSMOS_
 | `cosmos_constellation_device` | VPN device (config YAML returned once on create) |
 | `cosmos_constellation_dns` | Constellation DNS entry |
 | `cosmos_snapraid` | SnapRAID array configuration |
+| `cosmos_domain` | Domain with its HTTPS mode, DNS provider and DynDNS setup |
 | `cosmos_storage_mount` | Storage mount (all fields require replacement) |
 | `cosmos_group` | User group with permissions (Pro) |
 | `cosmos_deployment` | Cluster deployment: fixed, autoscaled or one-per-node replicas, from a compose or a function spec (Pro) |

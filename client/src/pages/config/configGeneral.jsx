@@ -59,6 +59,7 @@ const ConfigGeneral = ({ formik, config, status, isAdmin }) => {
   const { hasPermission } = useClientInfos();
   const canReadCredentials = hasPermission(PERM_CREDENTIALS_READ);
   const [isCheckingUpdate, setIsCheckingUpdate] = React.useState(false);
+  const [updateCheck, setUpdateCheck] = React.useState(null);
   const [licenseValidation, setLicenseValidation] = React.useState({ checked: false, valid: null });
   const [showInternalBackupPwd, setShowInternalBackupPwd] = React.useState(false);
 
@@ -79,12 +80,25 @@ const ConfigGeneral = ({ formik, config, status, isAdmin }) => {
               <PermissionGuard permission={PERM_ADMIN}>
                 <LoadingButton loading={isCheckingUpdate} variant="outlined" color="primary" onClick={() => {
                   setIsCheckingUpdate(true);
-                  API.forceAutoUpdate().then(() => {
+                  setUpdateCheck(null);
+                  API.forceAutoUpdate().then((res) => {
+                    setUpdateCheck(res.data);
+                  }).finally(() => {
                     setIsCheckingUpdate(false);
-                  })
+                  });
                 }}>{t('mgmt.config.general.forceAutoUpdateButton')}</LoadingButton>
               </PermissionGuard>
             </Grid>
+
+            {updateCheck && <Grid item xs={12}>
+              {updateCheck.containerized ? (
+                <Alert severity="info">{t('mgmt.config.general.updateCheck.containerized')}</Alert>
+              ) : updateCheck.updateAvailable ? (
+                <Alert severity="info">{t('mgmt.config.general.updateCheck.updateFound', { version: updateCheck.latestVersion })}</Alert>
+              ) : (
+                <Alert severity="success">{t('mgmt.config.general.updateCheck.upToDate', { version: updateCheck.currentVersion })}</Alert>
+              )}
+            </Grid>}
 
             <CosmosCheckbox
               label={t('mgmt.config.general.autoupdates')}

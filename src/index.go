@@ -206,7 +206,7 @@ func main() {
 }
 
 // @title Cosmos Server API
-// @version 0.24.0-unstable012
+// @version 0.24.0-unstable021
 // @description REST API for Cosmos Cloud server management
 // @BasePath /cosmos
 // @securityDefinitions.apikey BearerAuth
@@ -344,6 +344,10 @@ func cosmos() {
 	if err := utils.InitStore(); err != nil {
 		utils.Fatal("Cannot open auth.db", err)
 	}
+
+	// a new server handed a constellation file needs no setup at all
+	JoinFromFile()
+	config = utils.GetMainConfig()
 
 	if !config.NewInstall {
 		MigratePre013()

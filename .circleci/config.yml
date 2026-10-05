@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 jobs:
   build:
     machine: # executor type
@@ -227,7 +227,6 @@ jobs:
             gh release upload "v${VERSION}" terraform-provider-cosmos_${VERSION}_*.zip terraform-provider-cosmos_${VERSION}_SHA256SUMS terraform-provider-cosmos_${VERSION}_SHA256SUMS.sig --clobber
 
 workflows:
-  version: 2
   build-all:
     jobs:
       - build:
