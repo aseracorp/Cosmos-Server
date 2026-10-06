@@ -170,6 +170,8 @@ func Init() {
 	InitHostname()
 
 	utils.IsConstellationIP = IsConstellationIP
+	utils.RevertHostDNS = revertHostDNS
+	hostDNSExitOnce.Do(func() { utils.OnExit(revertHostDNS) })
 
 	// every user/device write in the product goes through here from now on
 	if IsClientNode() {
@@ -178,6 +180,7 @@ func Init() {
 		utils.SetPublishOpHook(publishOp)
 	}
 	utils.GetConstellationTunnelRoutes = getConstellationTunnelRoutes
+	utils.ConstellationDNSAddress = constellationDNSAddress
 	utils.IsZoneIssuer = isZoneIssuer
 	utils.ClusterHostnames = clusterHostnames
 	utils.PublishZoneCerts = publishZoneCerts

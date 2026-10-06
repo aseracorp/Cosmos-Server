@@ -104,21 +104,18 @@ const ConfigGeneral = ({ formik, config, status, isAdmin }) => {
               label={t('mgmt.config.general.autoupdates')}
               name="AutoUpdate"
               formik={formik}
-              helperText={t('mgmt.config.general.autoupdates')}
             />
 
             <CosmosCheckbox
               label={t('mgmt.config.general.betaupdate')}
               name="BetaUpdates"
               formik={formik}
-              helperText={t('mgmt.config.general.betaupdate')}
             /></>}
 
           <CosmosCheckbox
             label={t('mgmt.config.general.forceMfaCheckbox.forceMfaLabel')}
             name="RequireMFA"
             formik={formik}
-            helperText={t('mgmt.config.general.forceMfaCheckbox.forceMfaHelperText')}
           />
 
           <Grid item xs={12}>
@@ -338,7 +335,6 @@ const ConfigGeneral = ({ formik, config, status, isAdmin }) => {
             label={t('mgmt.config.email.enableCheckbox.enableLabel')}
             name="Email_Enabled"
             formik={formik}
-            helperText={t('mgmt.config.email.enableCheckbox.enableHelperText')}
           />
 
           {formik.values.Email_Enabled && (<>
@@ -383,7 +379,6 @@ const ConfigGeneral = ({ formik, config, status, isAdmin }) => {
               label={t('mgmt.config.email.tlsCheckbox.tlsLabel')}
               name="Email_UseTLS"
               formik={formik}
-              helperText={t('mgmt.config.email.tlsCheckbox.tlsLabel')}
             />
 
             {formik.values.Email_UseTLS && (
@@ -391,7 +386,6 @@ const ConfigGeneral = ({ formik, config, status, isAdmin }) => {
                 label={t('mgmt.config.email.selfSignedCheckbox.SelfSignedLabel')}
                 name="Email_AllowInsecureTLS"
                 formik={formik}
-                helperText={t('mgmt.config.email.selfSignedCheckbox.SelfSignedHelperText')}
               />
             )}
 

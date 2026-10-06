@@ -199,6 +199,7 @@ func applyServerUpdate(updates *VersionInfo, useBeta bool) error {
 
 	utils.Log("Update downloaded, restarting server")
 	storage.StopAllRCloneProcess(true)
+	utils.RevertHostDNS()
 	os.Exit(0)
 	return nil
 }
@@ -240,6 +241,9 @@ func checkCerts() {
 		utils.Log("Checking certificates for renewal")
 		if !CertificateIsExpiredSoon(HTTPConfig.TLSValidUntil) {
 			utils.Log("Certificates are not valid anymore, renewing")
+			RestartHTTPServer()
+		} else if HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] && len(utils.LocalCertsToIssue(config, utils.LocalCertHostnamesNow(config), false)) > 0 {
+			utils.Log("Certificates need a refresh, renewing")
 			RestartHTTPServer()
 		} else if utils.IsZoneIssuer() && len(utils.ZoneCertsToIssue(config, false)) > 0 {
 			utils.Log("Zone certificates need a refresh, renewing")

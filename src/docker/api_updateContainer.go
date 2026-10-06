@@ -27,6 +27,8 @@ type ContainerForm struct {
 	// we make this a int so that we can ignore 0
 	Interactive    int               `json:"interactive"`
 	NetworkMode 	 string           `json:"networkMode"`
+	// DNS replaces the DNS servers of the container when sent, an empty list for the default of Docker
+	DNS            []string          `json:"dns"`
 	MemLimit       string            `json:"memLimit"`
 	CPUs           float64           `json:"cpus"`
 }
@@ -146,6 +148,9 @@ func UpdateContainerRoute(w http.ResponseWriter, req *http.Request) {
 				container.Config.Labels = make(map[string]string)
 			}
 			container.Config.Labels["cosmos-force-network-mode"] = form.NetworkMode
+		}
+		if form.DNS != nil {
+			container.HostConfig.DNS = form.DNS
 		}
 
 		// Resource constraints

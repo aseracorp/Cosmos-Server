@@ -403,6 +403,73 @@ func LocalCertHostnames(config Config, hosts []string) []string {
 	return local
 }
 
+// LocalCertZone names the certificate a hostname is served from among the
+// ones this server gets by itself: its explicit zone, or the hostname itself
+// for an automatic one.
+func LocalCertZone(config Config, host string) string {
+	host = zoneHost(host)
+	if i := FindZone(config.HTTPConfig.DNSZones, host); i != -1 {
+		return config.HTTPConfig.DNSZones[i].Zone
+	}
+	return host
+}
+
+// LocalCertGroups groups the hostnames of the server's own certificates by
+// domain: one order per domain, so a hostname that fails validation only
+// costs its own domain.
+func LocalCertGroups(config Config, hosts []string) map[string][]string {
+	groups := map[string][]string{}
+	for _, host := range hosts {
+		host = zoneHost(host)
+		if !zoneableHost(host) {
+			continue
+		}
+		zone := LocalCertZone(config, host)
+		groups[zone] = appendUnique(groups[zone], host)
+	}
+	return groups
+}
+
+// LocalCertsToIssue lists the domains whose certificate this server has to
+// order: none yet, a hostname it does not cover, or expiring within 45 days.
+// The single certificate of older versions keeps serving the domains it
+// covers until then.
+func LocalCertsToIssue(config Config, hosts []string, force bool) map[string][]string {
+	toIssue := map[string][]string{}
+	http := config.HTTPConfig
+	for zone, wanted := range LocalCertGroups(config, hosts) {
+		if !force {
+			if cert, ok := http.LocalCerts[zone]; ok && certServes(cert.Hosts, cert.ValidUntil, wanted) {
+				continue
+			}
+			if http.TLSCert != "" && certServes(http.TLSKeyHostsCached, http.TLSValidUntil, wanted) {
+				continue
+			}
+		}
+		toIssue[zone] = wanted
+	}
+	return toIssue
+}
+
+// LocalCertHostnamesNow is what this server has to certify by itself right now
+func LocalCertHostnamesNow(config Config) []string {
+	return LetsEncryptValidOnly(LocalCertHostnames(config, GetAllHostnames(true, true)), false)
+}
+
+// certServes reports whether a certificate covers every wanted hostname and
+// is good for 45 more days
+func certServes(certHosts []string, validUntil time.Time, wanted []string) bool {
+	if !time.Now().Add(45 * 24 * time.Hour).Before(validUntil) {
+		return false
+	}
+	for _, host := range wanted {
+		if !CertCovers(certHosts, host) {
+			return false
+		}
+	}
+	return true
+}
+
 // MigrateToZones moves the HTTPS setup a server used to hold for itself into
 // zones: its DNS challenge provider, then its self-signed or provided mode. The
 // install wizard and the older clients still fill those legacy fields, so this
@@ -625,6 +692,16 @@ func GetHostCertificate(config Config, host string) HostCertificate {
 				ValidUntil: cert.ValidUntil,
 				Covered:    true,
 			}
+		}
+	}
+
+	if cert, ok := http.LocalCerts[LocalCertZone(config, host)]; ok && CertCovers(cert.Hosts, host) {
+		return HostCertificate{
+			Source:     "node",
+			Zone:       zoneName,
+			Hosts:      cert.Hosts,
+			ValidUntil: cert.ValidUntil,
+			Covered:    true,
 		}
 	}
 

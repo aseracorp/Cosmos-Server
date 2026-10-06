@@ -170,6 +170,7 @@ func NewInstallRoute(w http.ResponseWriter, req *http.Request) {
 		} else if (request.Step == "5") {
 			newConfig.NewInstall = false
 			utils.SaveConfigTofile(newConfig)
+			utils.RevertHostDNS()
 			os.Exit(0)
 		}
 
@@ -429,6 +430,7 @@ func SetupRoute(w http.ResponseWriter, req *http.Request) {
 	}
 	go func() {
 		time.Sleep(1 * time.Second)
+		utils.RevertHostDNS()
 		os.Exit(0)
 	}()
 }
@@ -532,6 +534,7 @@ func SetupJoinRoute(w http.ResponseWriter, req *http.Request) {
 		// same as the last step of the wizard: come back up configured
 		go func() {
 			time.Sleep(time.Second)
+			utils.RevertHostDNS()
 			os.Exit(0)
 		}()
 	}

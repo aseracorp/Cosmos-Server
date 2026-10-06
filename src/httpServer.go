@@ -114,6 +114,9 @@ func GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) 
 	if cert := zoneCertFor(host); cert != nil {
 		return cert, nil
 	}
+	if cert := localCertFor(host); cert != nil {
+		return cert, nil
+	}
 
 	return primaryCert, nil
 }
@@ -129,6 +132,9 @@ var zoneCertStore atomic.Value
 // zone name -> the certificate provided for it, same swap
 var providedCertStore atomic.Value
 
+// domain -> the certificate this server got for it by itself, same swap
+var localCertStore atomic.Value
+
 // loadZoneCertStore rebuilds the serving store from the config. No restart
 // needed: a certificate received from the cluster is served right away.
 func loadZoneCertStore() {
@@ -142,6 +148,17 @@ func loadZoneCertStore() {
 		store[zone] = loadedZoneCert{cert: &cert, hosts: zoneCert.Hosts}
 	}
 	zoneCertStore.Store(store)
+
+	local := map[string]loadedZoneCert{}
+	for zone, localCert := range utils.GetMainConfig().HTTPConfig.LocalCerts {
+		cert, err := tls.X509KeyPair([]byte(localCert.TLSCert), []byte(localCert.TLSKey))
+		if err != nil {
+			utils.Error("Cannot load the certificate of "+zone, err)
+			continue
+		}
+		local[zone] = loadedZoneCert{cert: &cert, hosts: localCert.Hosts}
+	}
+	localCertStore.Store(local)
 
 	provided := map[string]*tls.Certificate{}
 	for _, zone := range utils.GetMainConfig().HTTPConfig.DNSZones {
@@ -181,6 +198,104 @@ func zoneCertFor(host string) *tls.Certificate {
 		return nil
 	}
 	return loaded.cert
+}
+
+// localCertFor returns the certificate this server got by itself for the
+// domain of the host, nil when there is none (yet) or it does not cover it
+func localCertFor(host string) *tls.Certificate {
+	store, _ := localCertStore.Load().(map[string]loadedZoneCert)
+	loaded, ok := store[utils.LocalCertZone(utils.GetMainConfig(), host)]
+	if !ok || !utils.CertCovers(loaded.hosts, strings.ToLower(host)) {
+		return nil
+	}
+	return loaded.cert
+}
+
+// issueLocalCerts orders the certificates this server gets by itself over
+// HTTP-01, one per domain: a hostname that fails validation only costs its
+// own domain. There is no backoff on purpose: every restart and save asks
+// again, as that is how the user fixes what made it fail.
+func issueLocalCerts(hosts []string, force bool) {
+	config := utils.GetMainConfig()
+	groups := utils.LocalCertGroups(config, hosts)
+	toIssue := utils.LocalCertsToIssue(config, hosts, force)
+
+	baseMainConfig := utils.GetBaseMainConfig()
+	changed := false
+	for zone := range baseMainConfig.HTTPConfig.LocalCerts {
+		if _, ok := groups[zone]; !ok {
+			// its hostnames are gone (or moved under a domain with a certificate of its own)
+			delete(baseMainConfig.HTTPConfig.LocalCerts, zone)
+			changed = true
+		}
+	}
+	if changed {
+		utils.SetBaseMainConfig(baseMainConfig)
+	}
+
+	for zone, wanted := range toIssue {
+		utils.Log("Getting a Let's Encrypt certificate for " + zone + ": " + strings.Join(wanted, ", "))
+		pub, priv := utils.DoLetsEncrypt(wanted, nil)
+		if pub == "" || priv == "" {
+			utils.MajorError("Couldn't get the TLS certificate of "+zone+". Keeping the previous one if any, the self-signed one otherwise", nil)
+			continue
+		}
+
+		baseMainConfig = utils.GetBaseMainConfig()
+		if baseMainConfig.HTTPConfig.LocalCerts == nil {
+			baseMainConfig.HTTPConfig.LocalCerts = map[string]utils.ZoneCert{}
+		}
+		baseMainConfig.HTTPConfig.LocalCerts[zone] = utils.ZoneCert{
+			TLSCert:    pub,
+			TLSKey:     priv,
+			Hosts:      wanted,
+			ValidUntil: time.Now().AddDate(0, 0, 90),
+		}
+		utils.SetBaseMainConfig(baseMainConfig)
+		utils.Log("Saved the Let's Encrypt certificate of " + zone)
+
+		utils.TriggerEvent(
+			"cosmos.proxy.certificate",
+			"Cosmos Certificate Renewed",
+			"important",
+			"",
+			map[string]interface{}{
+				"zone":    zone,
+				"domains": wanted,
+			})
+
+		utils.WriteNotification(utils.Notification{
+			Recipient: "admin",
+			Title:     "header.notification.title.certificateRenewed",
+			Message:   "header.notification.message.certificateRenewed",
+			Vars:      strings.Join(wanted, ", "),
+			Level:     "info",
+		})
+	}
+
+	// the single certificate of older versions is done once every domain has
+	// its own: the self-signed one then backs the hostnames no certificate covers
+	baseMainConfig = utils.GetBaseMainConfig()
+	legacy := baseMainConfig.HTTPConfig
+	if len(legacy.TLSKeyHostsCached) > 0 && len(utils.LocalCertsToIssue(baseMainConfig, hosts, false)) == 0 && localCertsCoverAll(baseMainConfig, groups) {
+		baseMainConfig.HTTPConfig.TLSCert = legacy.SelfTLSCert
+		baseMainConfig.HTTPConfig.TLSKey = legacy.SelfTLSKey
+		baseMainConfig.HTTPConfig.TLSKeyHostsCached = []string{}
+		baseMainConfig.HTTPConfig.TLSValidUntil = legacy.SelfTLSValidUntil
+		utils.SetBaseMainConfig(baseMainConfig)
+		utils.Log("Every domain has its own certificate now, the shared one is retired")
+	}
+}
+
+// localCertsCoverAll reports whether every group has a certificate of its own
+func localCertsCoverAll(config utils.Config, groups map[string][]string) bool {
+	for zone, wanted := range groups {
+		cert, ok := config.HTTPConfig.LocalCerts[zone]
+		if !ok || !utils.CertCovers(cert.Hosts, wanted[0]) {
+			return false
+		}
+	}
+	return true
 }
 
 // how long a server that joined a cluster waits for its zones before getting
@@ -715,77 +830,42 @@ func InitServer() *mux.Router {
 			utils.HasAnyNewItem(localDomains, oldDomains) || 
 			!CertificateIsExpiredSoon(baseMainConfig.HTTPConfig.TLSValidUntil)
 
-	// If we have a certificate, we can fallback to it if necessary
-	CanFallback := tlsCert != "" && tlsKey != "" && 
-		len(config.HTTPConfig.TLSKeyHostsCached) > 0 && 
-		config.HTTPConfig.TLSKeyHostsCached[0] == config.HTTPConfig.Hostname  &&
-		CertificateIsExpired(baseMainConfig.HTTPConfig.TLSValidUntil)
-
 	// a server that just joined a cluster does not know its zones yet: asking Let's
 	// Encrypt now would order over HTTP a certificate the zone is about to provide
 	zonesPending := config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] && waitForZones()
 
-	if letsEncryptNeedsRefresh && config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] && (len(localDomains) == 0 || zonesPending) {
-		// every hostname is served by a zone certificate: the node's own one only backs IPs and local names
-		baseMainConfig.HTTPConfig.TLSCert = selfTLSCert
-		baseMainConfig.HTTPConfig.TLSKey = selfTLSKey
-		baseMainConfig.HTTPConfig.TLSKeyHostsCached = []string{}
-		baseMainConfig.HTTPConfig.TLSValidUntil = baseMainConfig.HTTPConfig.SelfTLSValidUntil
-		utils.SetBaseMainConfig(baseMainConfig)
+	if config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] && (len(localDomains) == 0 || zonesPending) {
+		if letsEncryptNeedsRefresh {
+			// every hostname is served by a zone certificate: the node's own one only backs IPs and local names
+			baseMainConfig.HTTPConfig.TLSCert = selfTLSCert
+			baseMainConfig.HTTPConfig.TLSKey = selfTLSKey
+			baseMainConfig.HTTPConfig.TLSKeyHostsCached = []string{}
+			baseMainConfig.HTTPConfig.TLSValidUntil = baseMainConfig.HTTPConfig.SelfTLSValidUntil
+			utils.SetBaseMainConfig(baseMainConfig)
 
-		tlsCert = selfTLSCert
-		tlsKey = selfTLSKey
-	} else if letsEncryptNeedsRefresh && config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] {
-			// Get Certificates
-			pub, priv := utils.DoLetsEncrypt(localDomains, nil)
+			tlsCert = selfTLSCert
+			tlsKey = selfTLSKey
+		}
+	} else if config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"] {
+		if tlsCert == "" || tlsKey == "" || (len(baseMainConfig.HTTPConfig.TLSKeyHostsCached) == 0 && tlsCert != selfTLSCert) {
+			// the self-signed certificate backs the hostnames no certificate covers,
+			// and follows its own renewals
+			baseMainConfig = utils.GetBaseMainConfig()
+			baseMainConfig.HTTPConfig.TLSCert = selfTLSCert
+			baseMainConfig.HTTPConfig.TLSKey = selfTLSKey
+			baseMainConfig.HTTPConfig.TLSKeyHostsCached = []string{}
+			baseMainConfig.HTTPConfig.TLSValidUntil = baseMainConfig.HTTPConfig.SelfTLSValidUntil
+			utils.SetBaseMainConfig(baseMainConfig)
 
-			if pub == "" || priv == "" {
-				if(!CanFallback) {
-					utils.MajorError("Couldn't get TLS certificate. Fallback to SELFSIGNED certificates since none exists", nil)
-					// the self-signed certificate serves meanwhile. Nothing is cached
-					// for it, so the next start asks Let's Encrypt again.
-					baseMainConfig = utils.GetBaseMainConfig()
-					baseMainConfig.HTTPConfig.TLSCert = selfTLSCert
-					baseMainConfig.HTTPConfig.TLSKey = selfTLSKey
-					baseMainConfig.HTTPConfig.TLSKeyHostsCached = []string{}
-					baseMainConfig.HTTPConfig.TLSValidUntil = baseMainConfig.HTTPConfig.SelfTLSValidUntil
-					utils.SetBaseMainConfig(baseMainConfig)
+			tlsCert = selfTLSCert
+			tlsKey = selfTLSKey
+		}
 
-					tlsCert = selfTLSCert
-					tlsKey = selfTLSKey
-				} else {
-					utils.MajorError("Couldn't get TLS certificate. Fallback to previous certificate", nil)
-				}
-			} else {
-					baseMainConfig.HTTPConfig.TLSCert = pub
-					baseMainConfig.HTTPConfig.TLSKey = priv
-					baseMainConfig.HTTPConfig.TLSKeyHostsCached = localDomains
-					baseMainConfig.HTTPConfig.TLSValidUntil = time.Now().AddDate(0, 0, 90)
-					baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal = false
-	
-					utils.SetBaseMainConfig(baseMainConfig)
-					utils.Log("Saved new LETSENCRYPT TLS certificate")
-	
-					utils.TriggerEvent(
-							"cosmos.proxy.certificate",
-							"Cosmos Certificate Renewed",
-							"important",
-							"",
-							map[string]interface{}{
-									"domains": localDomains,
-					})
-
-					utils.WriteNotification(utils.Notification{
-							Recipient: "admin",
-							Title: "header.notification.title.certificateRenewed",
-							Message: "header.notification.message.certificateRenewed",
-							Vars: strings.Join(localDomains, ", "),
-							Level: "info",
-					})
-
-					tlsCert = pub
-					tlsKey = priv
-			}
+		// one certificate per domain, the shared one of older versions serves meanwhile
+		issueLocalCerts(localDomains, forceRenewal)
+		baseMainConfig = utils.GetBaseMainConfig()
+		tlsCert = baseMainConfig.HTTPConfig.TLSCert
+		tlsKey = baseMainConfig.HTTPConfig.TLSKey
 	} else if letsEncryptNeedsRefresh && config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"] {
 		baseMainConfig.HTTPConfig.TLSCert = HTTPConfig.SelfTLSCert
 		baseMainConfig.HTTPConfig.TLSKey = HTTPConfig.SelfTLSKey

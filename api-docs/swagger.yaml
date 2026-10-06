@@ -679,6 +679,12 @@ definitions:
         items:
           type: string
         type: array
+      dns:
+        description: DNS replaces the DNS servers of the container when sent, an empty
+          list for the default of Docker
+        items:
+          type: string
+        type: array
       envVars:
         items:
           type: string
@@ -2645,6 +2651,12 @@ definitions:
           ClusterDomain is the domain servers joining with a constellation file get
           their hostname under (<device>.<domain>). Empty: the zone of this server's hostname.
         type: string
+      DoNotUseConstellationDNSOnHost:
+        description: |-
+          DoNotUseConstellationDNSOnHost keeps the resolver of this server as it is.
+          Unset, the server uses the Constellation DNS on Pro and keeps its own
+          resolver on the community edition (see UseConstellationDNSOnHost).
+        type: boolean
       FirewallBlockedClients:
         items:
           type: string
@@ -2792,6 +2804,14 @@ definitions:
         items:
           $ref: '#/definitions/utils.DNSZoneConfig'
         type: array
+      LocalCerts:
+        additionalProperties:
+          $ref: '#/definitions/utils.ZoneCert'
+        description: |-
+          LocalCerts are the certificates this server gets by itself over HTTP-01,
+          one per domain, keyed by LocalCertZone. Never shared: each server
+          validates its own hostnames.
+        type: object
       SSLEmailShared:
         type: boolean
       ZoneCerts:
@@ -3271,7 +3291,7 @@ info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.24.0-unstable021
+  version: 0.24.0-unstable023
 paths:
   /_logs:
     get:

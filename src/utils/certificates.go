@@ -12,7 +12,6 @@ import (
 	"crypto/ed25519"
 	"crypto/x509/pkix"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"os"
 	"strings"
 	"net"
@@ -236,7 +235,22 @@ func DoLetsEncrypt(domains []string, zone *DNSZoneConfig) (string, string) {
 	config := GetMainConfig()
 	ctx := context.Background()
 
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	directory := "https://acme-v02.api.letsencrypt.org/directory"
+	if os.Getenv("ACME_STAGING") == "true" {
+		directory = "https://acme-staging-v02.api.letsencrypt.org/directory"
+	}
+
+	// the account of this server, registered once: Let's Encrypt refuses more
+	// than a few new accounts per IP, and a fresh one per order used to hit that
+	account := LoadACMEAccount(directory)
+	keyPEM := ""
+	var privateKey *ecdsa.PrivateKey
+	var err error
+	if account != nil {
+		privateKey, err = account.PrivateKey()
+	} else {
+		privateKey, keyPEM, err = NewACMEAccountKey()
+	}
 	if err != nil {
 		Error("LETSENCRYPT_ECDSA", err)
 		LetsEncryptErrors = append(LetsEncryptErrors, err.Error())
@@ -247,14 +261,12 @@ func DoLetsEncrypt(domains []string, zone *DNSZoneConfig) (string, string) {
 		Email: config.HTTPConfig.SSLEmail,
 		key:   privateKey,
 	}
+	if account != nil {
+		myUser.Registration = &acme.ExtendedAccount{Location: account.URL}
+	}
 
 	certConfig := lego.NewConfig(&myUser)
-
-	if os.Getenv("ACME_STAGING") == "true" {
-		certConfig.CADirURL = "https://acme-staging-v02.api.letsencrypt.org/directory"
-	} else {
-		certConfig.CADirURL = "https://acme-v02.api.letsencrypt.org/directory"
-	}
+	certConfig.CADirURL = directory
 
 	client, err := lego.NewClient(certConfig)
 	if err != nil {
@@ -337,14 +349,26 @@ func DoLetsEncrypt(domains []string, zone *DNSZoneConfig) (string, string) {
 		}
 	}
 
-	// New users will need to register
-	reg, err := client.Registration.Register(ctx, registration.RegisterOptions{TermsOfServiceAgreed: true})
-	if err != nil {
-		Error("LETSENCRYPT_REGISTER", err)
-		LetsEncryptErrors = append(LetsEncryptErrors, err.Error())
-		return "", ""
+	if account == nil {
+		reg, err := client.Registration.Register(ctx, registration.RegisterOptions{TermsOfServiceAgreed: true})
+		if err != nil {
+			Error("LETSENCRYPT_REGISTER", err)
+			LetsEncryptErrors = append(LetsEncryptErrors, err.Error())
+			return "", ""
+		}
+		myUser.Registration = reg
+
+		if err := SaveACMEAccount(ACMEAccount{
+			Directory: directory,
+			URL:       reg.Location,
+			Email:     myUser.Email,
+			Key:       keyPEM,
+		}); err != nil {
+			Warn("ACME: the account could not be saved, the next order will register a new one: " + err.Error())
+		} else {
+			Log("ACME: registered the Let's Encrypt account of this server")
+		}
 	}
-	myUser.Registration = reg
 
 	request := certificate.ObtainRequest{
 		Domains: LetsEncryptValidOnly(domains, zone != nil),

@@ -18,6 +18,8 @@ import (
 	"errors"
 	"path/filepath"
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"encoding/hex"
 	"crypto/sha256"
 	_url "net/url"
@@ -80,6 +82,69 @@ var RestartCRON func()
 
 var IsConstellationIP = func(string) bool { return false }
 
+// UseConstellationDNSOnHost reports whether this server resolves its own
+// lookups through the Constellation DNS, so that it reaches the registries
+// and services of the cluster by their names like any Constellation device.
+// Defaults to the edition: on for Pro, off for the community edition.
+// Never inside a container, which cannot reach the resolver of its host.
+func UseConstellationDNSOnHost() bool {
+	if IsInsideContainer {
+		return false
+	}
+	setting := GetMainConfig().ConstellationConfig.DoNotUseConstellationDNSOnHost
+	if setting == nil {
+		return IsPro()
+	}
+	return !*setting
+}
+
+// RevertHostDNS gives the server its own resolver back, called before the
+// process exits. Wired in constellation/index.go (utils cannot import constellation).
+var RevertHostDNS = func() {}
+
+// ValidateDNSFallback rejects the stub of systemd-resolved as a fallback: a
+// server that resolves through the Constellation DNS would send it its own
+// lookups back, in a loop.
+func ValidateDNSFallback(fallback string) error {
+	host := fallback
+	if h, _, err := osnet.SplitHostPort(fallback); err == nil {
+		host = h
+	}
+	if host == "127.0.0.53" || host == "127.0.0.54" {
+		return errors.New("the DNS fallback cannot be the local resolver of systemd (" + host + "), its lookups would loop back to the Constellation DNS")
+	}
+	return nil
+}
+
+var exitHooks []func()
+var exitHooksMux sync.Mutex
+var exitSignalOnce sync.Once
+
+// OnExit registers a cleanup to run when the process receives SIGTERM or
+// SIGINT. The hooks run in the order they were registered, then the process exits.
+func OnExit(hook func()) {
+	exitHooksMux.Lock()
+	exitHooks = append(exitHooks, hook)
+	exitHooksMux.Unlock()
+
+	exitSignalOnce.Do(func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+
+		go func() {
+			sig := <-sigChan
+			Log(fmt.Sprintf("Received signal %v, cleaning up before exiting...", sig))
+			exitHooksMux.Lock()
+			hooks := append([]func(){}, exitHooks...)
+			exitHooksMux.Unlock()
+			for _, hook := range hooks {
+				hook()
+			}
+			os.Exit(0)
+		}()
+	})
+}
+
 // Wired to docker.IsLocalDockerIP in src/index.go (utils cannot import docker); defaults to strict "no".
 var IsLocalDockerIP = func(string) bool { return false }
 
@@ -93,6 +158,11 @@ var IsPro func() bool = func() bool { return false }
 var InitPremiumFeatures func()
 
 var GetConstellationTunnelRoutes = func() []ProxyRouteConfig { return []ProxyRouteConfig{} }
+
+// ConstellationDNSAddress is the address this node serves the Constellation DNS
+// on, empty when it serves none. An error means it cannot tell right now.
+// Wired in constellation/index.go.
+var ConstellationDNSAddress = func() (string, error) { return "", nil }
 
 // PublishRolesOp publishes the roles config domain through the constellation
 // op-log. Wired in constellation/index.go: the pro package can't call
@@ -488,6 +558,7 @@ func RestartServer(code int) {
 	if StopAllRCloneProcess != nil {
 		StopAllRCloneProcess(false)
 	}
+	RevertHostDNS()
 	os.Exit(code)
 }
 
@@ -539,8 +610,10 @@ func filterHostnamesByWildcard(hostnames []string, wildcards []string) []string 
 
 	for _, wildcard := range wildcards {
 		for _, hostname := range hostnames {
-			if strings.HasSuffix(hostname, wildcard[1:]) && hostname != wildcard[2:] {
-				// remove hostname
+			// "*.example.com" covers exactly one label: "app.example.com", not
+			// "deep.app.example.com" nor "example.com" itself
+			label := strings.TrimSuffix(hostname, wildcard[1:])
+			if label != hostname && label != "" && !strings.Contains(label, ".") {
 				finalHostnames = RemoveStringFromSlice(finalHostnames, hostname)
 			}
 		}
@@ -607,7 +680,14 @@ func GetAllHostnames(applyWildCard bool, removePorts bool) []string {
 	for _, proxy := range proxies {
 		if proxy.UseHost && proxy.Host != "" && !strings.Contains(proxy.Host, ",") && !strings.Contains(proxy.Host, " ") {
 			if removePorts {
-				hostnames = append(hostnames, strings.Split(proxy.Host, ":")[0])
+				// a ":<port>" or "0.0.0.0:<port>" route answers any host: it has no
+				// hostname to certify or publish. Kept with ports, as EnsureHostname
+				// accepts any request Host on that port.
+				host := strings.Split(proxy.Host, ":")[0]
+				if host == "" || host == "0.0.0.0" {
+					continue
+				}
+				hostnames = append(hostnames, host)
 			} else {
 				hostnames = append(hostnames, proxy.Host)
 			}

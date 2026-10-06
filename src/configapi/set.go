@@ -184,6 +184,15 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
+		// an unchanged fallback is left alone so that an older config still saves
+		if request.ConstellationConfig.DNSFallback != utils.GetMainConfig().ConstellationConfig.DNSFallback {
+			if err := utils.ValidateDNSFallback(request.ConstellationConfig.DNSFallback); err != nil {
+				utils.Error("SettingsUpdate: Invalid DNS fallback", err)
+				utils.HTTPError(w, err.Error(), http.StatusBadRequest, "UC007")
+				return
+			}
+		}
+
 		// restore fields that are never sent to the client or are masked with ***
 		config := utils.ReadConfigFromFile()
 		request.HTTPConfig.AuthPrivateKey = config.HTTPConfig.AuthPrivateKey
@@ -197,6 +206,8 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 				delete(request.HTTPConfig.ZoneCerts, name)
 			}
 		}
+		// the server's own certificates are never sent to the client either
+		request.HTTPConfig.LocalCerts = config.HTTPConfig.LocalCerts
 		request.NewInstall = config.NewInstall
 
 		// restore API token as we cannot edit it here
@@ -287,6 +298,7 @@ func ConfigApiSet(w http.ResponseWriter, req *http.Request) {
 
 		// Storage shares carry their own route; derive the ProxyConfig.Routes copies server-side.
 		storage.ReconcileShareRoutes()
+		go constellation.ReapplyHostDNS()
 
 		utils.TriggerEvent(
 			"cosmos.settings",

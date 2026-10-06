@@ -38,6 +38,10 @@ func ConfigApiGet(w http.ResponseWriter, req *http.Request) {
 			cert.TLSKey = ""
 			config.HTTPConfig.ZoneCerts[zone] = cert
 		}
+		for zone, cert := range config.HTTPConfig.LocalCerts {
+			cert.TLSKey = ""
+			config.HTTPConfig.LocalCerts[zone] = cert
+		}
 		for i := range config.HTTPConfig.DNSZones {
 			config.HTTPConfig.DNSZones[i].TLSKey = ""
 		}

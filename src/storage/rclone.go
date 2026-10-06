@@ -7,11 +7,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/rclone/rclone/fs"
@@ -482,16 +480,11 @@ func setupSignalHandler() {
 	}
 	signalHandlerSetup = true
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
-
-	go func() {
-		sig := <-sigChan
-		utils.Log(fmt.Sprintf("[RemoteStorage] Received signal %v, unmounting all storages...", sig))
+	utils.OnExit(func() {
+		utils.Log("[RemoteStorage] Unmounting all storages...")
 		rcloneUnmountAll()
-		utils.Log("[RemoteStorage] All storages unmounted, exiting...")
-		os.Exit(0)
-	}()
+		utils.Log("[RemoteStorage] All storages unmounted")
+	})
 }
 
 func InitRemoteStorage() {
