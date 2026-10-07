@@ -97,6 +97,7 @@ func lazyMiddleware(route utils.ProxyRouteConfig) func(http.Handler) http.Handle
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
 					w.Header().Set("Access-Control-Expose-Headers", ProbeHeader)
+					w.Header().Add("Vary", "Origin")
 				}
 				w.Header().Set(ProbeHeader, "sleeping")
 				w.Header().Set("Cache-Control", "no-store")

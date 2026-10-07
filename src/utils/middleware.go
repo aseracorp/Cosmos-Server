@@ -171,14 +171,53 @@ func SetCosmosHeader(next http.Handler) http.Handler {
 	})
 }
 
+// SetCORSHeaders writes the CORS answer for a request, given the allowed
+// origins (comma or space separated). "*" allows every origin without
+// credentials: browsers refuse "*" together with Allow-Credentials, so the
+// two are never sent together. Any other list is matched against the
+// request's Origin: the matched origin is echoed with credentials allowed,
+// and Vary: Origin keeps caches from serving it to another origin. An entry
+// can be a full origin ("https://app.example.com") or a bare host
+// ("app.example.com", "app.example.com:8443"), which then matches any scheme.
+func SetCORSHeaders(w http.ResponseWriter, r *http.Request, allowed string) {
+	entries := strings.FieldsFunc(allowed, func(c rune) bool { return c == ',' || c == ' ' })
+	if len(entries) == 0 {
+		return
+	}
+
+	for _, entry := range entries {
+		if entry == "*" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Del("Access-Control-Allow-Credentials")
+			return
+		}
+	}
+
+	// the answer depends on the request's Origin from here on
+	w.Header().Add("Vary", "Origin")
+
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return
+	}
+	originHost := origin
+	if i := strings.Index(origin, "://"); i >= 0 {
+		originHost = origin[i+3:]
+	}
+
+	for _, entry := range entries {
+		if strings.EqualFold(entry, origin) || strings.EqualFold(entry, originHost) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			return
+		}
+	}
+}
+
 func CORSHeader(origin string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			if origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Access-Control-Allow-Credentials", "true")
-			}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			SetCORSHeaders(w, r, origin)
 
 			next.ServeHTTP(w, r)
 		})
@@ -187,8 +226,7 @@ func CORSHeader(origin string) func(next http.Handler) http.Handler {
 
 func PublicCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		SetCORSHeaders(w, r, "*")
 
 		next.ServeHTTP(w, r)
 	})
