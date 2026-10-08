@@ -6,10 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gorilla/mux"
 	"github.com/azukaar/cosmos-server/src/utils"
+	"github.com/gorilla/mux"
 
 	"github.com/docker/docker/api/types"
+	conttype "github.com/docker/docker/api/types/container"
 )
 
 // ContainerJSONWithState adds the Cosmos-level Dormant flag to the inspect
@@ -38,7 +39,6 @@ func GetContainerRoute(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	containerId := vars["containerId"]
 
-
 	if req.Method == "GET" {
 		errD := Connect()
 		if errD != nil {
@@ -46,12 +46,12 @@ func GetContainerRoute(w http.ResponseWriter, req *http.Request) {
 			utils.HTTPError(w, "Internal server error: "+errD.Error(), http.StatusInternalServerError, "LN001")
 			return
 		}
-		
+
 		// get Docker container
 		container, err := DockerClient.ContainerInspect(context.Background(), containerId)
 		if err != nil {
 			utils.Error("GetContainerRoute: Error while getting container", err)
-			utils.HTTPError(w, "Container Get Error: " + err.Error(), http.StatusInternalServerError, "LN002")
+			utils.HTTPError(w, "Container Get Error: "+err.Error(), http.StatusInternalServerError, "LN002")
 			return
 		}
 
@@ -72,6 +72,8 @@ func GetContainerRoute(w http.ResponseWriter, req *http.Request) {
 		// normalize container refs to stable container:<name> for the UI
 		if container.HostConfig != nil {
 			container.HostConfig.NetworkMode = conttype.NetworkMode(ContainerRefToName(string(container.HostConfig.NetworkMode)))
+		}
+
 		withState := ContainerJSONWithState{
 			ContainerJSON: container,
 			Dormant:       LazyIsDormant(strings.TrimPrefix(string(container.Name), "/")),
@@ -82,7 +84,7 @@ func GetContainerRoute(w http.ResponseWriter, req *http.Request) {
 			"data":   withState,
 		})
 	} else {
-		utils.Error("GetContainerRoute: Method not allowed " + req.Method, nil)
+		utils.Error("GetContainerRoute: Method not allowed "+req.Method, nil)
 		utils.HTTPError(w, "Method not allowed", http.StatusMethodNotAllowed, "HTTP001")
 		return
 	}
