@@ -2,6 +2,8 @@ package utils
 
 import (
 	"context"
+	"io"
+	"bufio"
 	"net/http"
 	"time"
 	"net"
@@ -103,9 +105,44 @@ func CleanBannedIPs() {
 	})
 }
 
+// IsStreamingEndpoint reports whether the request targets a long-running
+// streaming endpoint (install/service create, container update/recreate,
+// image pulls). These endpoints stream progress over minutes and must not be
+// cut off by the short MiddlewareTimeout.
+func IsStreamingEndpoint(r *http.Request) bool {
+	p := r.URL.Path
+	if strings.HasPrefix(p, "/cosmos/api/docker-service") {
+		return true
+	}
+	if strings.HasPrefix(p, "/cosmos/api/servapps/") {
+		// /api/servapps/{containerId}/manage/{action} and
+		// /api/servapps/{containerId}/update stream progress (image pull,
+		// recreate). Logs, terminal, and plain GETs are fast or WebSocket.
+		if strings.Contains(p, "/manage/") || strings.HasSuffix(p, "/update") {
+			return true
+		}
+	}
+	if strings.HasPrefix(p, "/cosmos/api/images/pull") {
+		// /api/images/pull and /api/images/pull-if-missing stream pull progress.
+		return true
+	}
+	return false
+}
+
 func MiddlewareTimeout(timeout time.Duration) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
+			if IsStreamingEndpoint(r) {
+				// Long-running streaming endpoints (install, container
+				// update/recreate, image pulls) can legitimately exceed the
+				// short API timeout. The operation itself runs against
+				// DockerContext (background), so skipping the deadline only
+				// stops us from killing the stream mid-progress and
+				// surfacing a bogus "Gateway Timeout" (HTTP002) to the UI.
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			ctx, cancel := context.WithTimeout(r.Context(), timeout)
 			defer func() {
 				cancel()
@@ -179,6 +216,24 @@ func SetCosmosHeader(next http.Handler) http.Handler {
 // and Vary: Origin keeps caches from serving it to another origin. An entry
 // can be a full origin ("https://app.example.com") or a bare host
 // ("app.example.com", "app.example.com:8443"), which then matches any scheme.
+func originUnderDomain(reqOrigin string, hostname string) bool {
+	if reqOrigin == "" || hostname == "" {
+		return false
+	}
+	h := strings.TrimPrefix(strings.TrimPrefix(reqOrigin, "https://"), "http://")
+	if i := strings.Index(h, "/"); i >= 0 {
+		h = h[:i]
+	}
+	if i := strings.Index(h, ":"); i >= 0 {
+		h = h[:i]
+	}
+	hostname = strings.TrimPrefix(strings.TrimPrefix(hostname, "https://"), "http://")
+	if i := strings.Index(hostname, ":"); i >= 0 {
+		hostname = hostname[:i]
+	}
+	return h == hostname || strings.HasSuffix(h, "."+hostname)
+}
+
 func SetCORSHeaders(w http.ResponseWriter, r *http.Request, allowed string) {
 	entries := strings.FieldsFunc(allowed, func(c rune) bool { return c == ',' || c == ' ' })
 	if len(entries) == 0 {
@@ -228,6 +283,112 @@ func PublicCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		SetCORSHeaders(w, r, "*")
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+type headProbeWriter struct {
+	http.ResponseWriter
+	origin     string
+	wrote      bool
+}
+
+func (h *headProbeWriter) WriteHeader(code int) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	h.ResponseWriter.WriteHeader(code)
+}
+
+func (h *headProbeWriter) Write(b []byte) (int, error) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	return h.ResponseWriter.Write(b)
+}
+
+// Flush forwards to the underlying ResponseWriter when it supports
+// http.Flusher. Streaming routes (create service, image pull, container
+// update) rely on w.(http.Flusher) succeeding; without this forwarding the
+// wrapper would hide Flusher and progress logs would stop streaming
+// line-by-line (buffered, arriving in chunks).
+func (h *headProbeWriter) Flush() {
+	if flusher, ok := h.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// ReadFrom forwards io.ReaderFrom to the underlying ResponseWriter when it
+// supports it. Without this method, wrappers that select their behaviour from
+// the writer's capability set degrade badly: chi's Logger middleware
+// (middleware.NewWrapResponseWriter) checks Flusher && Hijacker &&
+// io.ReaderFrom to decide between its httpFancyWriter (which forwards
+// Hijack) and its flushWriter (which does NOT implement http.Hijacker). A
+// headProbeWriter that only advertised Flusher+Hijacker made chi pick
+// flushWriter, and every WebSocket upgrade through the logger then failed
+// with "response does not implement http.Hijacker" / http.ErrNotSupported.
+func (h *headProbeWriter) ReadFrom(r io.Reader) (int64, error) {
+	if h.origin != "" && !h.wrote {
+		h.Header().Set("Access-Control-Allow-Origin", h.origin)
+		h.Header().Set("Vary", "Origin")
+		h.wrote = true
+	}
+	if rf, ok := h.ResponseWriter.(io.ReaderFrom); ok {
+		return rf.ReadFrom(r)
+	}
+	return io.Copy(struct{ io.Writer }{h}, r)
+}
+
+// Hijack forwards to the underlying ResponseWriter when it supports
+// http.Hijacker, so WebSocket/terminal upgrades keep working through the
+// wrapper. It first tries the direct writer, then falls back to walking the
+// Unwrap() chain so that a non-Hijacker wrapper (e.g. chi's flushWriter)
+// sitting between us and the real writer does not break upgrades.
+func (h *headProbeWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	w := h.ResponseWriter
+	for {
+		if hijacker, ok := w.(http.Hijacker); ok {
+			return hijacker.Hijack()
+		}
+		unwrapper, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return nil, nil, http.ErrNotSupported
+		}
+		w = unwrapper.Unwrap()
+	}
+}
+
+// Unwrap lets http.ResponseController and middleware down the chain reach
+// the underlying writer (e.g. for Flush, Hijack, and other optional
+// interfaces) instead of being cut off by this wrapper.
+func (h *headProbeWriter) Unwrap() http.ResponseWriter {
+	return h.ResponseWriter
+}
+
+// HeadProbeCORS lets the Cosmos UI read responses from host-based app routes
+// (app.*.com) that live on a different origin. It applies to any request that
+// carries a browser Origin under the Cosmos domain - including an auth-gate 302
+// to OpenID login, which is produced inside tokenMiddleware before the per-route
+// CORSHeader runs and would otherwise carry no Access-Control-Allow-Origin.
+//
+// Safe by construction: the origin is only echoed when it is the configured
+// Cosmos hostname or one of its subdomains (originUnderDomain). Third-party
+// origins are ignored. The wrapper re-asserts ACAO at write time so no inner
+// middleware can clobber it.
+func HeadProbeCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" {
+			hostname := GetMainConfig().HTTPConfig.Hostname
+			if originUnderDomain(origin, hostname) {
+				h := &headProbeWriter{ResponseWriter: w, origin: origin}
+				next.ServeHTTP(h, r)
+				return
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }
