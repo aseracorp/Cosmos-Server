@@ -316,13 +316,41 @@ let newInstall = (req, onProgress) => {
   }
 }
 
-let setupJoin = (req) => {
-  return wrap(defaultFetch('/cosmos/api/setup-join', {
+let desecSetup = (req) => {
+  return wrap(defaultFetch('/cosmos/api/setup/desec', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req)
+  }))
+}
+
+let desecSetupStatus = () => {
+  return wrap(defaultFetch('/cosmos/api/setup/desec/status', {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' }
+  }))
+}
+
+let ddns = (req) => {
+  return wrap(defaultFetch('/cosmos/api/ddns', {
+    method: req ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    body: req ? JSON.stringify(req) : undefined
+  }))
+}
+
+let networkDetect = () => {
+  return wrap(defaultFetch('/cosmos/api/network/detect', {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' }
+  }))
+}
+
+let upnp = (action) => {
+  return wrap(defaultFetch('/cosmos/api/network/upnp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action })
   }))
 }
 
@@ -436,6 +464,11 @@ if(isDemo) {
   market = marketDemo;
   getStatus = indexDemo.getStatus;
   newInstall = indexDemo.newInstall;
+  desecSetup = indexDemo.desecSetup;
+  desecSetupStatus = indexDemo.desecSetupStatus;
+  ddns = indexDemo.ddns;
+  networkDetect = indexDemo.networkDetect;
+  upnp = indexDemo.upnp;
   isOnline = indexDemo.isOnline;
   checkHost = indexDemo.checkHost;
   getDNS = indexDemo.getDNS;
@@ -458,7 +491,11 @@ export {
   constellation,
   getStatus,
   newInstall,
-  setupJoin,
+  desecSetup,
+  desecSetupStatus,
+  ddns,
+  networkDetect,
+  upnp,
   isOnline,
   checkHost,
   getDNS,

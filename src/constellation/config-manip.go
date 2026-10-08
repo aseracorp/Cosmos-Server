@@ -233,15 +233,16 @@ func getDNSRecord(domain string, logger *log.Logger) (string, error) {
 	return "", fmt.Errorf("DNS did not find IP addresses for domain: %s", domain)
 }
 
-func AdjustDNS(logBuffer *lumberjack.Logger) error {
+func AdjustDNS(logBuffer *lumberjack.Logger) (bool, error) {
 	logger := log.New(logBuffer, "", log.LstdFlags)
 	nebulaYmlPath := utils.CONFIGFOLDER + "nebula-temp.yml"
+	changed := false
 
 	// Read the existing nebula-temp.yml file
 	yamlData, err := ioutil.ReadFile(nebulaYmlPath)
 	if err != nil {
 		logger.Printf("level=error msg=failed to read nebula-temp.yml")
-		return fmt.Errorf("failed to read nebula-temp.yml: %w", err)
+		return false, fmt.Errorf("failed to read nebula-temp.yml: %w", err)
 	}
 
 	// Unmarshal the YAML data into a map
@@ -249,7 +250,7 @@ func AdjustDNS(logBuffer *lumberjack.Logger) error {
 	err = yaml.Unmarshal(yamlData, &configMap)
 	if err != nil {
 		logger.Printf("level=error msg=failed to read nebula-temp.yml")
-		return fmt.Errorf("failed to unmarshal nebula-temp.yml: %w", err)
+		return false, fmt.Errorf("failed to unmarshal nebula-temp.yml: %w", err)
 	}
 
 	// Process static_host_map
@@ -257,7 +258,8 @@ func AdjustDNS(logBuffer *lumberjack.Logger) error {
 		for nebulaIp, destinations := range staticHostMap {
 			nebulaIpStr := fmt.Sprintf("%v", nebulaIp)
 			newIP := []interface{}{}
-			
+			changedHost := false
+
 			// Handle the destinations which could be in different formats
 			var destList []interface{}
 			switch v := destinations.(type) {
@@ -279,10 +281,10 @@ func AdjustDNS(logBuffer *lumberjack.Logger) error {
 					logger.Printf("level=warning msg=Invalid destination format: %s", destStr)
 					continue
 				}
-				
+
 				originalDestination := parts[0]
 				originalPort := parts[1]
-				
+
 				// Check if the destination is an IP address
 				if !isIP(originalDestination) {
 					// get DNS record
@@ -292,30 +294,47 @@ func AdjustDNS(logBuffer *lumberjack.Logger) error {
 					} else {
 						newIP = append(newIP, dnsRecord+":"+originalPort)
 						logger.Printf("level=info msg=DNS Resolved %s to %s", originalDestination, dnsRecord)
+						// A rewrite counts as a change only if the resolved IP
+						// actually moved away from what is currently configured.
+						if current := extractEntryIP(destStr); current != "" && current != dnsRecord {
+							changedHost = true
+						}
 					}
 				} else {
 					newIP = append(newIP, destStr)
 				}
 			}
 			staticHostMap[nebulaIpStr] = newIP
+			if changedHost {
+				changed = true
+			}
 		}
 	}
 
 	// Marshal back to YAML
 	updatedYaml, err := yaml.Marshal(configMap)
 	if err != nil {
-		return fmt.Errorf("failed to marshal updated config: %w", err)
+		return false, fmt.Errorf("failed to marshal updated config: %w", err)
 	}
 
 	// Write back to nebula-temp.yml
 	err = ioutil.WriteFile(nebulaYmlPath, updatedYaml, 0600)
 	if err != nil {
 		logger.Printf("level=error msg=failed to write nebula-temp.yml")
-		return fmt.Errorf("failed to write nebula-temp.yml: %w", err)
+		return false, fmt.Errorf("failed to write nebula-temp.yml: %w", err)
 	}
 
 	logger.Printf("level=info msg=Updated DNS entries in nebula-temp.yml")
-	return nil
+	return changed, nil
+}
+
+// extractEntryIP returns the host/IP portion of a "host:port" destination.
+func extractEntryIP(dest string) string {
+	parts := strings.Split(dest, ":")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[0]
 }
 
 func ValidateStaticHosts(logBuffer *lumberjack.Logger) error {

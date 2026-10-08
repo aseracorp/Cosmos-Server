@@ -1,21 +1,5 @@
 basePath: /cosmos
 definitions:
-  configapi.AdvertisedAddressOption:
-    properties:
-      address:
-        type: string
-      value:
-        type: string
-    type: object
-  configapi.AdvertisedAddressesResponse:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/configapi.AdvertisedAddressOption'
-        type: array
-      status:
-        type: string
-    type: object
   configapi.CreateAPITokenRequest:
     properties:
       description:
@@ -116,90 +100,6 @@ definitions:
         type: string
     required:
     - operation
-    type: object
-  configapi.ZoneCertStatus:
-    properties:
-      hosts:
-        items:
-          type: string
-        type: array
-      issuedBy:
-        type: string
-      validUntil:
-        type: string
-    type: object
-  configapi.ZoneStatus:
-    properties:
-      DNSChallengeConfig:
-        additionalProperties:
-          type: string
-        type: object
-      TLSCert:
-        type: string
-      TLSKey:
-        type: string
-      certificate:
-        $ref: '#/definitions/configapi.ZoneCertStatus'
-      derived:
-        type: boolean
-      disablePropagationChecks:
-        type: boolean
-      dnschallengePropagationWait:
-        type: integer
-      dnschallengeProvider:
-        type: string
-      dnschallengeResolvers:
-        type: string
-      hostCertificates:
-        additionalProperties:
-          $ref: '#/definitions/utils.HostCertificate'
-        type: object
-      hosts:
-        items:
-          type: string
-        type: array
-      httpscertificateMode:
-        description: |-
-          HTTPS setup. The mode is LETSENCRYPT, SELFSIGNED, PROVIDED (the
-          certificate below) or DISABLED (the hostnames are served over plain HTTP).
-          The zone decides alone: no server has an HTTPS mode of its own to
-          override it, only the choice of not serving HTTPS at all.
-        type: string
-      issuesCertificate:
-        description: |-
-          IssuesCertificate is true when the zone gets a certificate of its own
-          through its DNS provider; its hostnames use this node's one otherwise
-        type: boolean
-      manageRecords:
-        description: DynDNS setup, needs a DNSChallengeProvider
-        type: boolean
-      records:
-        allOf:
-        - $ref: '#/definitions/dnsrecords.ZoneStatus'
-        description: |-
-          Records is the DynDNS state of the zone, only known by the node writing
-          the records (this node when standalone, the cluster leader otherwise)
-      recordsSupported:
-        description: RecordsSupported is true when the DNS provider of the zone can
-          manage records
-        type: boolean
-      useWildcardCertificate:
-        type: boolean
-      wildcardRecord:
-        type: boolean
-      zone:
-        type: string
-    required:
-    - zone
-    type: object
-  configapi.ZonesResponse:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/configapi.ZoneStatus'
-        type: array
-      status:
-        type: string
     type: object
   constellation.DeviceBlockRequestJSON:
     properties:
@@ -435,21 +335,6 @@ definitions:
     - name
     - scheduler
     type: object
-  dnsrecords.ZoneStatus:
-    properties:
-      lastError:
-        type: string
-      lastSync:
-        type: string
-      records:
-        additionalProperties:
-          items:
-            type: string
-          type: array
-        type: object
-      supported:
-        type: boolean
-    type: object
   docker.ContainerCreateRequestContainer:
     properties:
       cap_add:
@@ -679,12 +564,6 @@ definitions:
         items:
           type: string
         type: array
-      dns:
-        description: DNS replaces the DNS servers of the container when sent, an empty
-          list for the default of Docker
-        items:
-          type: string
-        type: array
       envVars:
         items:
           type: string
@@ -743,8 +622,6 @@ definitions:
         type: string
       parentInterface:
         type: string
-      relayBroadcast:
-        type: boolean
       subnet:
         type: string
     required:
@@ -759,13 +636,6 @@ definitions:
     required:
     - http
     - https
-    type: object
-  docker.setRelayPayload:
-    properties:
-      enabled:
-        type: boolean
-    required:
-    - enabled
     type: object
   github_com_azukaar_cosmos-server_src_utils.Config:
     properties:
@@ -905,17 +775,6 @@ definitions:
       useWildcardCertificate:
         type: boolean
     type: object
-  main.ServerUpdateCheck:
-    properties:
-      containerized:
-        type: boolean
-      currentVersion:
-        type: string
-      latestVersion:
-        type: string
-      updateAvailable:
-        type: boolean
-    type: object
   main.SetupJSON:
     properties:
       DNSChallengeConfig:
@@ -977,23 +836,6 @@ definitions:
         type: string
       useWildcardCertificate:
         type: boolean
-    type: object
-  main.SetupJoinJSON:
-    properties:
-      constellationConfig:
-        description: ConstellationConfig is the constellation file of this server,
-          as created on the cluster
-        type: string
-      hostname:
-        description: Hostname overrides the one derived from the cluster domain (<device>.<cluster
-          domain>)
-        type: string
-      preview:
-        description: Preview only returns the hostname the server would take, nothing
-          is saved
-        type: boolean
-    required:
-    - constellationConfig
     type: object
   mount.BindOptions:
     properties:
@@ -2655,17 +2497,6 @@ definitions:
     type: object
   utils.ConstellationConfig:
     properties:
-      ClusterDomain:
-        description: |-
-          ClusterDomain is the domain servers joining with a constellation file get
-          their hostname under (<device>.<domain>). Empty: the zone of this server's hostname.
-        type: string
-      DoNotUseConstellationDNSOnHost:
-        description: |-
-          DoNotUseConstellationDNSOnHost keeps the resolver of this server as it is.
-          Unset, the server uses the Constellation DNS on Pro and keeps its own
-          resolver on the community edition (see UseConstellationDNSOnHost).
-        type: boolean
       FirewallBlockedClients:
         items:
           type: string
@@ -2716,43 +2547,6 @@ definitions:
     required:
     - key
     type: object
-  utils.DNSZoneConfig:
-    properties:
-      DNSChallengeConfig:
-        additionalProperties:
-          type: string
-        type: object
-      TLSCert:
-        type: string
-      TLSKey:
-        type: string
-      disablePropagationChecks:
-        type: boolean
-      dnschallengePropagationWait:
-        type: integer
-      dnschallengeProvider:
-        type: string
-      dnschallengeResolvers:
-        type: string
-      httpscertificateMode:
-        description: |-
-          HTTPS setup. The mode is LETSENCRYPT, SELFSIGNED, PROVIDED (the
-          certificate below) or DISABLED (the hostnames are served over plain HTTP).
-          The zone decides alone: no server has an HTTPS mode of its own to
-          override it, only the choice of not serving HTTPS at all.
-        type: string
-      manageRecords:
-        description: DynDNS setup, needs a DNSChallengeProvider
-        type: boolean
-      useWildcardCertificate:
-        type: boolean
-      wildcardRecord:
-        type: boolean
-      zone:
-        type: string
-    required:
-    - zone
-    type: object
   utils.DatabaseConfig:
     properties:
       nodeName:
@@ -2772,16 +2566,6 @@ definitions:
     properties:
       defaultDataPath:
         type: string
-      relayNetworks:
-        description: |-
-          RelayNetworks lists Docker networks on which Cosmos relays IPv4
-          broadcast/multicast frames to other relay-enabled networks. Persisted in
-          the main config because Docker labels on existing networks cannot be
-          mutated in place; networks created via Cosmos also carry the
-          "cosmos.broadcastrelay" label as a machine-readable marker.
-        items:
-          type: string
-        type: array
       skipPruneImages:
         type: boolean
       skipPruneNetwork:
@@ -2810,32 +2594,9 @@ definitions:
     type: object
   utils.HTTPConfig:
     properties:
-      AdvertisedAddress:
-        description: |-
-          AdvertisedAddress is what the DNS records of this node point at: empty for
-          the detected public IP, "iface:<name>" for a network interface, or an IPv4
-        type: string
       DNSChallengeConfig:
         additionalProperties:
           type: string
-        type: object
-      DNSZones:
-        items:
-          $ref: '#/definitions/utils.DNSZoneConfig'
-        type: array
-      LocalCerts:
-        additionalProperties:
-          $ref: '#/definitions/utils.ZoneCert'
-        description: |-
-          LocalCerts are the certificates this server gets by itself over HTTP-01,
-          one per domain, keyed by LocalCertZone. Never shared: each server
-          validates its own hostnames.
-        type: object
-      SSLEmailShared:
-        type: boolean
-      ZoneCerts:
-        additionalProperties:
-          $ref: '#/definitions/utils.ZoneCert'
         type: object
       acceptAllInsecureHostname:
         type: boolean
@@ -2892,11 +2653,6 @@ definitions:
       selfTLSValidUntil:
         type: string
       sslemail:
-        description: |-
-          SSLEmail is the contact of the Let's Encrypt certificates. One for the
-          whole cluster, whichever server issues: SSLEmailShared is set once the
-          cluster's value was received, a server's own one from before is offered
-          to the cluster until then.
         type: string
       tlscert:
         type: string
@@ -2940,26 +2696,6 @@ definitions:
         items:
           type: string
         type: array
-    type: object
-  utils.HostCertificate:
-    properties:
-      covered:
-        description: Covered is false when the certificate served does not list the
-          hostname
-        type: boolean
-      hosts:
-        items:
-          type: string
-        type: array
-      source:
-        description: |-
-          Source is "zone", "node" (this node's own Let's Encrypt certificate),
-          "selfsigned", "provided" or "none" (HTTPS disabled)
-        type: string
-      validUntil:
-        type: string
-      zone:
-        type: string
     type: object
   utils.LocationRemoteStorageConfig:
     properties:
@@ -3291,26 +3027,11 @@ definitions:
     - nickname
     - role
     type: object
-  utils.ZoneCert:
-    properties:
-      IssuedBy:
-        type: string
-      hosts:
-        items:
-          type: string
-        type: array
-      tlscert:
-        type: string
-      tlskey:
-        type: string
-      validUntil:
-        type: string
-    type: object
 info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.24.0-unstable026
+  version: 0.24.0-unstable012
 paths:
   /_logs:
     get:
@@ -8030,22 +7751,14 @@ paths:
       - system
   /api/force-server-update:
     post:
-      description: Checks container images and the server release feed now, regardless
-        of the auto-update setting. Returns the server version comparison; when a
-        newer server release exists it is downloaded and the server restarts to install
-        it.
+      description: Triggers a manual check for available server updates
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/utils.APIResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/main.ServerUpdateCheck'
-              type: object
+            $ref: '#/definitions/utils.APIResponse'
         "401":
           description: Unauthorized
           schema:
@@ -8056,10 +7769,6 @@ paths:
             $ref: '#/definitions/utils.HTTPErrorResult'
         "405":
           description: Method Not Allowed
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "500":
-          description: Internal Server Error
           schema:
             $ref: '#/definitions/utils.HTTPErrorResult'
       security:
@@ -9027,46 +8736,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a Docker network by ID
-      tags:
-      - docker
-  /api/network/{networkID}/relay:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Network ID or name
-        in: path
-        name: networkID
-        required: true
-        type: string
-      - description: '{'
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/docker.setRelayPayload'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-      security:
-      - BearerAuth: []
-      summary: Enable or disable broadcast/multicast relaying on a Docker network
       tags:
       - docker
   /api/networks:
@@ -10310,40 +9979,6 @@ paths:
       summary: One-shot server provisioning
       tags:
       - system
-  /api/setup-join:
-    post:
-      consumes:
-      - application/json
-      description: 'Replaces the whole setup for a server added to a cluster: the
-        constellation file gives the server its identity and its hostname (<device>.<cluster
-        domain>, or the one given), users, zones and certificates are then replicated
-        from the cluster. The server restarts once done. Only available when the server
-        is in NewInstall mode.'
-      parameters:
-      - description: Constellation file and optional hostname
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/main.SetupJoinJSON'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-      summary: Set a new server up by joining an existing Constellation
-      tags:
-      - system
   /api/shield/bans:
     get:
       description: Returns every client with a strike or ban history on this node
@@ -11045,147 +10680,6 @@ paths:
       summary: Create a new Docker volume
       tags:
       - docker
-  /api/zones:
-    get:
-      description: 'Lists every zone: the explicit ones, and one derived zone per
-        hostname no explicit zone covers. Each zone comes with its hostnames (cluster-wide)
-        and the certificate each hostname is served with. DNS provider credentials
-        are only included with the credentials permission.'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/configapi.ZonesResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-      security:
-      - BearerAuth: []
-      summary: List the DNS zones
-      tags:
-      - zones
-  /api/zones-addresses:
-    get:
-      description: 'Lists the choices for HTTPConfig.AdvertisedAddress, the address
-        the managed DNS records of this server point at: the detected public IP (empty
-        value, the default), each network interface (iface:<name>, for a server published
-        on its LAN), with the address each one currently resolves to.'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/configapi.AdvertisedAddressesResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-      security:
-      - BearerAuth: []
-      summary: List the addresses this server can advertise
-      tags:
-      - zones
-  /api/zones/{zone}:
-    delete:
-      description: Deletes the explicit zone. Its hostnames fall back to the next
-        matching zone, or to a derived zone each. Replicated to the whole Constellation.
-      parameters:
-      - description: Zone name
-        in: path
-        name: zone
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-      security:
-      - BearerAuth: []
-      summary: Delete a DNS zone
-      tags:
-      - zones
-    put:
-      consumes:
-      - application/json
-      description: Creates the explicit zone, or replaces it. A zone is a domain with
-        its HTTPS setup (certificate mode, DNS challenge provider, wildcard) and its
-        DynDNS setup. Every hostname under the domain uses it, unless a longer zone
-        matches. The certificate mode is LETSENCRYPT, SELFSIGNED, PROVIDED (TLSCert
-        and TLSKey in PEM format) or DISABLED (plain HTTP), and no server-wide mode
-        overrides it. Replicated to the whole Constellation. Credentials sent empty
-        by a client without the credentials permission keep their current value, and
-        so does the private key of a provided certificate, which is never returned.
-      parameters:
-      - description: Zone name, e.g. example.com
-        in: path
-        name: zone
-        required: true
-        type: string
-      - description: Zone configuration
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/utils.DNSZoneConfig'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/utils.APIResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/utils.HTTPErrorResult'
-      security:
-      - BearerAuth: []
-      summary: Create or replace a DNS zone
-      tags:
-      - zones
   /logo:
     get:
       description: Returns the Cosmos server logo as a PNG image
