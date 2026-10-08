@@ -4,6 +4,8 @@ export default {
     GroupsTab: null,
     RouteLBSettings: null,
     ConstellationNATSReplicas: null,
+    ClusterStateTab: null,
+    ReformStateNotice: null,
     // Constellation feature pages, mounted by routes/MainRoutes.jsx via ProRoute.
     DeploymentsPage: null,
     DeploymentPage: null,

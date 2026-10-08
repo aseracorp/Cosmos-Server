@@ -195,6 +195,7 @@ func applyServerUpdate(updates *VersionInfo, useBeta bool) error {
 		}
 	}
 
+	utils.PlanRestart()
 	cron.WaitForAllJobs() // wait for all jobs to finish
 
 	utils.Log("Update downloaded, restarting server")

@@ -4,7 +4,7 @@
         "description": "REST API for Cosmos Cloud server management",
         "title": "Cosmos Server API",
         "contact": {},
-        "version": "0.24.0-unstable026"
+        "version": "0.24.0-unstable027"
     },
     "basePath": "/cosmos",
     "paths": {
@@ -6309,6 +6309,95 @@
                         }
                     }
                 ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/constellation/state": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns record counts per bucket as held by the on-disk state mirror (backup.cosmos-state.json),\nwhen it was written, whether a reform reseed is pending and whether an import is marked in\nprogress (which freezes the scheduler). Pro feature.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "state"
+                ],
+                "summary": "Get the Pro state mirror summary",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/constellation/state/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Body is a state file as produced by the export. Writes every record that does not already\nexist and leaves existing ones untouched; never creates containers or touches quarantine\nstate. Returns created/present counts per bucket. Pro feature.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "state"
+                ],
+                "summary": "Import a Pro state file",
+                "parameters": [
+                    {
+                        "description": "State file",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/pro.ProState"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/constellation/state/start-empty": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes the import-in-progress marker left by a failed import or reseed, accepting the\ndeployments bucket as it is and letting the scheduler reconcile again. Pro feature.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "state"
+                ],
+                "summary": "Clear a frozen state import",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -15086,6 +15175,33 @@
                             "$ref": "#/definitions/utils.ProxyRouteConfig"
                         }
                     ]
+                }
+            }
+        },
+        "pro.ProState": {
+            "type": "object",
+            "properties": {
+                "buckets": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "format": "int32"
+                            }
+                        }
+                    }
+                },
+                "exportedAt": {
+                    "type": "string"
+                },
+                "node": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },

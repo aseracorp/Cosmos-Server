@@ -20,6 +20,7 @@ import createRegistryAPI from './registry';
 import createFunctionsAPI from './functions';
 import createCIAPI from './ci';
 import createShieldAPI from './shield';
+import createStateAPI from './state';
 
 import * as authDemo from './authentication.demo';
 import * as usersDemo from './users.demo';
@@ -73,6 +74,7 @@ export function createClient({ baseUrl, token }) {
     functions: createFunctionsAPI(apiFetch),
     ci: createCIAPI(apiFetch),
     shield: createShieldAPI(apiFetch),
+    state: createStateAPI(apiFetch),
 
     getStatus: () => {
       return wrap(apiFetch('/cosmos/api/status', {
@@ -427,6 +429,7 @@ let registry = createRegistryAPI(defaultFetch);
 let functions = createFunctionsAPI(defaultFetch);
 let ci = createCIAPI(defaultFetch);
 let shield = createShieldAPI(defaultFetch);
+let state = createStateAPI(defaultFetch);
 
 if(isDemo) {
   auth = authDemo;
@@ -482,4 +485,5 @@ export {
   functions,
   ci,
   shield,
+  state,
 };

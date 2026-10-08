@@ -1,6 +1,7 @@
 package constellation
 
 import (
+	"github.com/azukaar/cosmos-server/src/pro"
 	"github.com/azukaar/cosmos-server/src/utils"
 	"os/exec"
 	"os"
@@ -386,6 +387,7 @@ func ResetNebula() error {
 	os.RemoveAll(utils.CONFIGFOLDER + "cosmos.crt")
 	os.RemoveAll(utils.CONFIGFOLDER + "cosmos.key")
 	os.RemoveAll(jetstreamDir())
+	pro.RemoveStateFiles()
 
 	// Wipe this node's devices LOCALLY. Deliberately not DeleteDevices: stop()
 	// above leaves the apply loop attached, so a published delete-all — empty

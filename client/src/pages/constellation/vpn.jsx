@@ -596,7 +596,10 @@ export const ConstellationVPN = ({ freeVersion }) => {
                     variant="outlined"
                     color="error"
                     label={t('mgmt.constellation.forceReformLabel')}
-                    content={t('mgmt.constellation.forceReformText')}
+                    content={<>
+                      {t('mgmt.constellation.forceReformText')}
+                      {proFeatures.ReformStateNotice && <proFeatures.ReformStateNotice />}
+                    </>}
                     callback={async () => {
                       await API.constellation.forceReform();
                       refreshConfig();

@@ -293,6 +293,11 @@ func ClientHeartbeatInit() {
 
 	pro.ClientHeartbeatInit(&clientConfigLock, js, getNATSReplicas())
 
+	// A force-reform leaves the Pro records it carried across in the reseed
+	// file; put them back before the scheduler can read the fresh buckets as
+	// "no deployments wanted". No-op when there is no such file.
+	pro.ApplyStateReseed(&clientConfigLock, js)
+
 	utils.Debug("[NATS] Key-Value store 'constellation-nodes' ready")
 
 	// Resource sampler: caches CPU/memory-pressure samples for the heartbeat builder, scheduler, and load-based LB.
@@ -495,6 +500,7 @@ func ClientHeartbeatInit() {
 					RAMPercent:                res.RAMPercent,
 					MonitoringOn:              res.MonitoringOn,
 					Tags:                      device.Tags,
+					Draining:                  utils.RestartPlanned(),
 				}
 
 				heartbeatData, err := json.Marshal(heartbeat)

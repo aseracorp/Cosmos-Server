@@ -70,6 +70,9 @@ type NodeHeartbeat struct {
 	// Tags mirror ConstellationDevice.Tags so the leader can filter eligible
 	// placement targets by deployment affinity without an extra DB round-trip.
 	Tags []string `json:"tags,omitempty"`
+	// Draining is set while a restart waits for this node's running jobs:
+	// the leader must not hand it new CI builds (see utils.PlanRestart).
+	Draining bool `json:"draining,omitempty"`
 }
 
 // atomic: written under natsStartMutex, but read lock-free by status/ping paths
@@ -1288,6 +1291,9 @@ func MasterNATSClientRouter() {
 
 		pro.SetRegistryClusterHandles(RegistryClusterHandles)
 		pro.SetRegistryNodeProvider(RegistryNodeInfo)
+
+		pro.SetStateClusterHandles(StateClusterHandles)
+		pro.StartStateMirror()
 		pro.StartRegistryServing()
 		// GC and cron triggers are leadership-bound so each runs once per cluster.
 		pro.StartRegistryGC()

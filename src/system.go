@@ -338,10 +338,12 @@ func restartHostMachineRoute(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		utils.PlanRestart()
 		utils.WaitForAllJobs()
 
 		err := restartHostMachine()
 		if err != nil {
+			utils.ClearPlannedRestart()
 			utils.Error("restartHostMachine: Error restarting host machine (This usually means Cosmos does not have the permissions to restart your host server)", err)
 			utils.HTTPError(w, "Error restarting host machine (This usually means Cosmos does not have the permissions to restart your host server) - " + err.Error(), http.StatusInternalServerError, "HTTP001")
 			return

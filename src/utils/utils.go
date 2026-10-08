@@ -554,6 +554,7 @@ func SaveConfigTofile(config Config) {
 
 func RestartServer(code int) {
 	Log("Restarting server...")
+	PlanRestart()
 	WaitForAllJobs()
 	if StopAllRCloneProcess != nil {
 		StopAllRCloneProcess(false)
@@ -568,6 +569,8 @@ func SoftRestartServer() {
 	RestartHTTPServer()
 
 	go func() {
+		PlanRestart()
+		defer ClearPlannedRestart()
 		WaitForAllJobs()
 		RestartConstellation() // Constellation
 		InitRemoteStorage() // rclone

@@ -1968,6 +1968,24 @@ definitions:
         description: Route replaces the user-facing half of the proxy route; its RestrictToConstellation
           wins when both are sent.
     type: object
+  pro.ProState:
+    properties:
+      buckets:
+        additionalProperties:
+          additionalProperties:
+            items:
+              format: int32
+              type: integer
+            type: array
+          type: object
+        type: object
+      exportedAt:
+        type: string
+      node:
+        type: string
+      version:
+        type: integer
+    type: object
   pro.RegistryCreateRequest:
     properties:
       allowAnonymousPull:
@@ -3291,7 +3309,7 @@ info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.24.0-unstable026
+  version: 0.24.0-unstable027
 paths:
   /_logs:
     get:
@@ -7483,6 +7501,68 @@ paths:
       summary: Upgrade a managed SeaweedFS instance
       tags:
       - seaweedfs
+  /api/constellation/state:
+    get:
+      description: |-
+        Returns record counts per bucket as held by the on-disk state mirror (backup.cosmos-state.json),
+        when it was written, whether a reform reseed is pending and whether an import is marked in
+        progress (which freezes the scheduler). Pro feature.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the Pro state mirror summary
+      tags:
+      - state
+  /api/constellation/state/import:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Body is a state file as produced by the export. Writes every record that does not already
+        exist and leaves existing ones untouched; never creates containers or touches quarantine
+        state. Returns created/present counts per bucket. Pro feature.
+      parameters:
+      - description: State file
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pro.ProState'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Import a Pro state file
+      tags:
+      - state
+  /api/constellation/state/start-empty:
+    post:
+      description: |-
+        Removes the import-in-progress marker left by a failed import or reseed, accepting the
+        deployments bucket as it is and letting the scheduler reconcile again. Pro feature.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Clear a frozen state import
+      tags:
+      - state
   /api/constellation/tag-nodes:
     get:
       description: |-
