@@ -1449,6 +1449,18 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 	// Start containers in dependency order, waiting for non-started
 	// conditions (service_healthy / service_completed_successfully).
 	for _, container := range startOrder {
+		// A container that was stopped (or dormant) before this update stays
+		// stopped: the recreate must not force-start it, otherwise it would
+		// wake a sleeping lazy container (upgrading its state from "dormant"
+		// to "running") or flip a stopped container to "created". Exception:
+		// when another service depends on this one with a start / health
+		// condition (mustStart), it has to come up regardless.
+		if !container.wasRunning && !mustStart {
+			utils.Log("CreateService: Previous container " + container.Name + " was stopped, leaving the new container stopped")
+			OnLog(fmt.Sprintf("Previous container %s was stopped, leaving the new container stopped\n", container.Name))
+			continue
+		}
+
 		if len(container.DependsOn) > 0 {
 			for depName, depCfg := range container.DependsOn {
 				cond := depCfg.Condition

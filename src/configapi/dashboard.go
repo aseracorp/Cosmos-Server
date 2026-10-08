@@ -21,7 +21,7 @@ type DashboardRoute struct {
 	Icon              string `json:"Icon,omitempty"`
 	HideFromDashboard bool   `json:"HideFromDashboard"`
 	// Container info (for SERVAPP routes)
-	ContainerRunning bool   `json:"ContainerRunning"`
+	ContainerRunning bool `json:"ContainerRunning"`
 	// ContainerDormant follows upstream semantics: true when the lazy container
 	// is not running. Such a route stays on the home page: the container is
 	// reachable and will be woken on demand. A non-lazy stopped container is
