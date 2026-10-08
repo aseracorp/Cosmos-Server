@@ -55,6 +55,7 @@ func ConfigApiGet(w http.ResponseWriter, req *http.Request) {
 			for i := range config.HTTPConfig.DNSZones {
 				config.HTTPConfig.DNSZones[i].DNSChallengeConfig = map[string]string{}
 			}
+			config.DDNS.Token = "***"
 			config.Licence = "***"
 			config.ServerToken = "***"
 
