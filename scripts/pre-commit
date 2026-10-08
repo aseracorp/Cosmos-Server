@@ -21,7 +21,7 @@ if ! grep -Pzo 'func IsPro\(\) bool \{\s*\n\s*return false\s*\n\}' src/pro/index
   errors=1
 fi
 
-if ! grep -Pq 'isPro\s*:\s*false' client/src/pro/index.js; then
+if ! grep -Pq 'isPro\s*:\s*(\(\)\s*=>\s*)?false' client/src/pro/index.js; then
   echo "ERROR: client/src/pro/index.js — isPro must be false"
   errors=1
 fi
