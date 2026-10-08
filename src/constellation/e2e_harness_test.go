@@ -362,13 +362,13 @@ func writeFakeNebulaWorkDir(t *testing.T, dir string) {
 		t.Fatal("e2e: mkdir work:", err)
 	}
 	script := "#!/bin/sh\ntrap 'exit 0' TERM INT\nwhile true; do sleep 3600; done\n"
-	for _, name := range []string{"nebula", "nebula-arm"} {
+	for _, name := range []string{"nebula"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
 			t.Fatal("e2e: write fake nebula:", err)
 		}
 	}
 	root := repoRootDir(t)
-	for _, bin := range []string{"nebula-cert", "nebula-arm-cert"} {
+	for _, bin := range []string{"nebula-cert"} {
 		src := filepath.Join(root, bin)
 		if _, err := os.Stat(src); err == nil {
 			os.Symlink(src, filepath.Join(dir, bin))

@@ -24,6 +24,7 @@ import { useEffect, useState } from 'react';
 import ResponsiveButton from '../../../components/responseiveButton';
 import UploadButtons from '../../../components/fileUpload';
 import NewDockerService from './newService';
+import { parseJsonOrHjson } from '../../../utils/hjson';
 import yaml from 'js-yaml';
 import { CosmosCollapse, CosmosFormDivider, CosmosInputPassword, CosmosInputText, CosmosSelect } from '../../config/users/formShortcuts';
 import VolumeContainerSetup from './volumes';
@@ -38,6 +39,7 @@ import { useTranslation } from 'react-i18next';
 import { FilePickerButton } from '../../../components/filePicker';
 import PermissionGuard from '../../../components/permissionGuard';
 import { PERM_RESOURCES } from '../../../utils/permissions';
+
 
 function checkIsOnline() {
   API.isOnline().then((res) => {
@@ -86,6 +88,24 @@ const cleanUpStore = (service) => {
   return newService;
 }
 
+// Escape a user-supplied string so it can be safely spliced into a
+// JSON/HJSON template by whiskers. Installer form fields ({Context.x}) end up
+// inside double-quoted strings of the rendered compose; a literal quote,
+// backslash or control character would break the document and the parse (and
+// therefore the whole installer view) crashes. Backslash MUST be escaped
+// first so the escape sequences we add are not re-escaped themselves.
+const escapeJsonString = (value) => {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+};
+
 const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) => {
       let doc;
 
@@ -111,11 +131,21 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
                     volumes.push(volume);
                   } else {
                     let volumeSplit = volume.split(':');
+                    // Compose short syntax: SOURCE:TARGET[:MODE...] where MODE
+                    // may include subpath (volume subpath) and ro (read-only).
                     let volumeObj = {
                       source: volumeSplit[0],
-                      target: volumeSplit[1],
+                      target: volumeSplit[1] || "",
                       type: (volume[0] === '/' || volume[0] === '.') ? 'bind' : 'volume',
                     };
+                    const modeSegments = (volumeSplit[2] || '').split(',').map((m) => m.trim()).filter(Boolean);
+                    const subpath = modeSegments.find((m) => m.indexOf('/') > -1 || (m !== 'ro' && m !== 'rw' && m !== 'z' && m !== 'Z' && m !== 'cached' && m !== 'delegated' && m !== 'consistent'));
+                    if (subpath) {
+                      volumeObj.subpath = subpath;
+                    }
+                    if (modeSegments.includes('ro')) {
+                      volumeObj.readOnly = true;
+                    }
                     volumes.push(volumeObj);
                   }
                 });
@@ -227,10 +257,64 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
               }
             }
 
-            // convert command 
-            if (doc.services[key].command) {
-              if (typeof doc.services[key].command !== 'string') {
-                doc.services[key].command = doc.services[key].command.join(' ');
+            // convert command: pass through docker-compose's native form. A string is
+            // shell-form (server tokenizes into args), an array is exec-form
+            // (server uses it verbatim). Previously arrays were force-joined into
+            // a single string, which both broke exec-form commands and mangled
+            // shell quoting. Normalize stray non-string/non-array scalar values to
+            // a string, but leave genuine arrays intact.
+            if (doc.services[key].command && typeof doc.services[key].command !== 'string' && !Array.isArray(doc.services[key].command)) {
+                doc.services[key].command = String(doc.services[key].command);
+            }
+
+            // entrypoint follows the same rules as command (docker-compose allows a
+            // string for shell-form or an array for exec-form).
+            if (doc.services[key].entrypoint && typeof doc.services[key].entrypoint !== 'string' && !Array.isArray(doc.services[key].entrypoint)) {
+                doc.services[key].entrypoint = String(doc.services[key].entrypoint);
+            }
+
+            // convert shm_size: docker-compose uses a byte-size string
+            // (e.g. "64mb", "1gb") — keep it as a string so the backend can
+            // parse it with the same semantics as docker-compose itself.
+            if (doc.services[key].shm_size) {
+              if (typeof doc.services[key].shm_size !== 'string') {
+                // Accept a bare number for backward compat with older compose
+                // files, but normalize it to a byte-size string (raw bytes).
+                doc.services[key].shm_size = String(doc.services[key].shm_size) + 'b';
+              }
+            }
+
+            // convert cpuset: docker-compose names the explicit CPU affinity
+            // field "cpuset" (e.g. cpuset: 0-3 or cpuset: 0,1). Older Cosmos
+            // backups used the legacy docker-engine key "cpuset_cpus"; map it
+            // to the canonical "cpuset" so imported compose behaves the same.
+            if (doc.services[key].cpuset_cpus && !doc.services[key].cpuset) {
+              doc.services[key].cpuset = doc.services[key].cpuset_cpus;
+              delete doc.services[key].cpuset_cpus;
+            }
+
+            // convert ulimits: docker-compose specifies ulimits as an object
+            // ({name: int} or {name: {soft, hard}}). The backend expects
+            // "name=soft[:hard]" strings (e.g. "nofile=2048",
+            // "nofile=1024:2048"), so normalize the object form.
+            if (doc.services[key].ulimits) {
+              if (typeof doc.services[key].ulimits === 'object' && !Array.isArray(doc.services[key].ulimits)) {
+                let uls = [];
+                Object.keys(doc.services[key].ulimits).forEach((n) => {
+                  const val = doc.services[key].ulimits[n];
+                  if (typeof val === 'object' && val !== null && (val.soft !== undefined || val.hard !== undefined)) {
+                    let s = val.soft !== undefined ? String(val.soft) : String(val.hard);
+                    let h = val.hard !== undefined ? String(val.hard) : String(val.soft || val.hard);
+                    uls.push(n + '=' + s + ':' + h);
+                  } else {
+                    uls.push(n + '=' + String(val));
+                  }
+                });
+                doc.services[key].ulimits = uls;
+              } else if (Array.isArray(doc.services[key].ulimits)) {
+                // Already in name=soft[:hard] form; pass through.
+              } else {
+                delete doc.services[key].ulimits;
               }
             }
 
@@ -249,23 +333,37 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
               }
             }
 
-            // convert healthcheck
+            // convert healthcheck: docker-compose uses duration strings
+            // (e.g. "15s", "1m30s", "5m") for interval/timeout/start_period —
+            // keep them as strings so the backend can parse them with the same
+            // semantics as docker-compose itself.
             if (doc.services[key].healthcheck) {
-              const toConvert = ["timeout", "interval", "start_period"];
-              toConvert.forEach((valT) => {
-                if(typeof doc.services[key].healthcheck[valT] === 'string') {
-                  let original = doc.services[key].healthcheck[valT];
-                  let value = parseInt(original);
-                  if (original.endsWith('m')) {
-                    value = value * 60;
-                  } else if (original.endsWith('h')) {
-                    value = value * 60 * 60;
-                  } else if (original.endsWith('d')) {
-                    value = value * 60 * 60 * 24;
-                  }
-                  doc.services[key].healthcheck[valT] = value;
+              const durationFields = ["timeout", "interval", "start_period"];
+              durationFields.forEach((valT) => {
+                const val = doc.services[key].healthcheck[valT];
+                if (typeof val === 'number' && !Number.isNaN(val)) {
+                  // Accept a bare number for backward compat with older compose
+                  // files, but normalize it to a duration string (seconds).
+                  doc.services[key].healthcheck[valT] = String(val) + 's';
                 }
               });
+
+              // docker-compose accepts the healthcheck test command in two
+              // forms: an array (exec form, e.g. ["CMD", "curl", "-f", "url"])
+              // or a plain string (shell form, e.g. "curl -f url || exit 1").
+              // A bare string is shell-form and docker-compose implicitly wraps
+              // it as ["CMD-SHELL", "<command>"]. Normalize here so the compose
+              // editor always shows the canonical array form and the backend
+              // (which stores an array) receives a well-formed value.
+              const hcTest = doc.services[key].healthcheck.test;
+              if (typeof hcTest === 'string' && hcTest.trim() !== '') {
+                doc.services[key].healthcheck.test = ["CMD-SHELL", hcTest];
+              } else if (hcTest === undefined || hcTest === null || (typeof hcTest === 'string' && hcTest.trim() === '')) {
+                // Remove empty/missing test values so the backend doesn't
+                // receive an empty CMD-SHELL. An omitted healthcheck test
+                // means "use the image default" in docker-compose.
+                delete doc.services[key].healthcheck.test;
+              }
             }
 
             // ensure hostname
@@ -460,7 +558,7 @@ const convertDockerCompose = (config, serviceName, dockerCompose, setYmlError) =
       }
 }
 
-const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaultName }) => {
+const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaultName, secrets }) => {
   const { t, i18n } = useTranslation();
   const cleanDefaultName = defaultName && defaultName.replace(/\s/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
   const [step, setStep] = useState(0);
@@ -473,10 +571,26 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
   const [hostnames, setHostnames] = useState({});
   const [overrides, setOverrides] = useState({});
   const [context, setContext] = useState({});
+
   const [installer, setInstaller] = useState(installerInit);
   const [config, setConfig] = useState({});
   const [envContent, setEnvContent] = useState('');
   const [detectedEnvVars, setDetectedEnvVars] = useState([]);
+
+  // Find the highest {token.N} index referenced in the compose template,
+  // or -1 if the template does not use that token at all. Used to generate
+  // {Passwords.N} / {Secrets.N} arrays lazily, only as many entries as the
+  // template actually needs.
+  const maxIndexForToken = (compose, token) => {
+    const re = new RegExp(`\\{${token}\\.([0-9]+)\\}`, 'g');
+    let max = -1;
+    let m;
+    while ((m = re.exec(compose)) !== null) {
+      const idx = parseInt(m[1], 10);
+      if (idx > max) max = idx;
+    }
+    return max;
+  };
 
   // Extract ${VAR} patterns from docker compose
   const extractEnvVars = (compose) => {
@@ -553,20 +667,18 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
     return broken;
   }
 
-  const [passwords, setPasswords] = useState([
-    randomString(24),
-    randomString(24),
-    randomString(24),
-    randomString(24)
-  ]);
+  // Passwords and Secrets are created lazily: we only generate as many
+  // entries as the compose template actually references ({Passwords.N} /
+  // {Secrets.N}), instead of pre-allocating a fixed amount. The values are
+  // stable for the install session once generated (re-renders reuse them);
+  // the count grows on demand when the template asks for a higher index.
+  const [passwords, setPasswords] = useState([]);
+  // Holds locally-generated secret keys when the server did not provide a
+  // batch (manual compose import). Server-provided `secrets` take priority.
+  const [localSecrets, setLocalSecrets] = useState([]);
 
   const resetPassword = () => {
-    setPasswords([
-      randomString(24),
-      randomString(24),
-      randomString(24),
-      randomString(24)
-    ]);
+    setPasswords(Array.from({ length: passwords.length }, () => randomString(24)));
   }
 
 
@@ -615,11 +727,52 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
 
       let isJson = envSubstitutedCompose && envSubstitutedCompose.trim().startsWith('{') && envSubstitutedCompose.trim().endsWith('}');
 
+      // Create Passwords / Secrets lazily based on what the template actually
+      // references: only as many entries as the max {Passwords.N} / {Secrets.N}
+      // index used. Values we already generated stay stable for the session;
+      // if the template asks for a higher index we append fresh entries and
+      // persist them back into state so re-renders reuse the same values.
+      // A missing higher index would render as an empty string in whiskers,
+      // so we always cover every referenced index (min 1 so the bare
+      // {Passwords} / {Secrets} forms are supported too).
+      const needsPasswords = maxIndexForToken(envSubstitutedCompose, 'Passwords') + 1;
+      const needsSecrets = maxIndexForToken(envSubstitutedCompose, 'Secrets') + 1;
+
+      let renderPasswords = passwords;
+      if (renderPasswords.length < needsPasswords) {
+        renderPasswords = Array.from({ length: Math.max(needsPasswords, 1) }, (_, i) => passwords[i] || randomString(24));
+        setPasswords(renderPasswords);
+      }
+      if (renderPasswords.length < 1) {
+        renderPasswords = [randomString(24)];
+        setPasswords(renderPasswords);
+      }
+
+      let renderSecrets = secrets && secrets.length > 0 ? secrets : localSecrets;
+      if (renderSecrets.length < needsSecrets) {
+        renderSecrets = Array.from({ length: Math.max(needsSecrets, 1) }, (_, i) => renderSecrets[i] || randomString(64));
+        if (!secrets || secrets.length === 0) {
+          setLocalSecrets(renderSecrets);
+        }
+      }
+
+      // User-supplied installer values ({Context.x}) must be pre-processed so
+      // they cannot break the JSON/HJSON document when whiskers splices them
+      // into the template: a literal ", \ or control character would make the
+      // rendered compose unparseable and crash the installer view. Escape
+      // string values (booleans/numbers are left intact so {if Context.x}
+      // conditionals keep evaluating with their real truthiness).
+      const escapedContext = {};
+      Object.keys(context).forEach((k) => {
+        escapedContext[k] = escapeJsonString(context[k]);
+      });
+
       const rendered = whiskers.render(envSubstitutedCompose.replace(/{StaticServiceName}/ig, serviceName), {
         ServiceName: serviceName,
         Hostnames: hostnames,
-        Context: context,
-        Passwords: passwords,
+        Context: escapedContext,
+        Passwords: renderPasswords,
+        Secrets: renderSecrets,
         CPU_ARCH: API.CPU_ARCH,
         CPU_AVX: API.CPU_AVX,
         DefaultDataPath: (config && config.DockerConfig && config.DockerConfig.DefaultDataPath) || "/cosmos-storage",
@@ -631,7 +784,7 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
 
       let jsoned;
       if(isJson) {
-        jsoned = JSON.parse(rendered);
+        jsoned = parseJsonOrHjson(rendered);
       } else {
         jsoned = convertDockerCompose(config, serviceName, rendered, setYmlError);
         console.log('jsoned', jsoned);
@@ -1027,9 +1180,13 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
                           Binds: [],
                           Mounts: value.volumes && Object.keys(value.volumes).map(k => {
                             return {
-                              Type: value.volumes[k].type || (k.startsWith('/') ? t('mgmt.servapps.newContainer.volumes.bindInput') : t('global.volume')),
-                              Source: value.volumes[k].source || "",
-                              Target: value.volumes[k].target || "",
+                              type: value.volumes[k].type || (k.startsWith('/') ? 'bind' : 'volume'),
+                              source: value.volumes[k].source || "",
+                              target: value.volumes[k].target || "",
+                              subpath: value.volumes[k].subpath || "",
+                              readOnly: !!value.volumes[k].readOnly || value.volumes[k].read_only || false,
+                              noCopy: !!value.volumes[k].noCopy || !!value.volumes[k].nocopy,
+                              VolumeOptions: value.volumes[k].subpath ? { Subpath: value.volumes[k].subpath, NoCopy: !!value.volumes[k].noCopy || !!value.volumes[k].nocopy } : undefined,
                             }
                           }) || [],
                         }
@@ -1041,10 +1198,13 @@ const DockerComposeImport = ({ refresh, dockerComposeInit, installerInit, defaul
                             ...overrides[value.container_name],
                             volumes: containerInfo.volumes.map((v, k) => {
                               return {
-                                type: v.Type,
-                                source: v.Source,
-                                target: v.Target,
-                                existing: v.Type == 'volume' && volumes.find(v2 => v2.Source === v.Name),
+                                type: v.type,
+                                source: v.source,
+                                target: v.target,
+                                subpath: v.subpath || "",
+                                readOnly: !!v.readOnly,
+                                noCopy: !!v.noCopy,
+                                existing: v.type == 'volume' && volumes.find(v2 => v2.source === v.name),
                               }
                             })
                           }

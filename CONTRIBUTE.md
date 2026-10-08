@@ -17,7 +17,7 @@ curl -fsSL https://get.docker.com | sudo sh
 
 Install Node **V16**: https://nodejs.org/en/download
 
-Install GOlang v1.21.6: https://go.dev/doc/install
+Install GOlang v1.25.0: https://go.dev/doc/install
 
 ### Required files
 

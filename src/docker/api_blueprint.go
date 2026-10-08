@@ -9,15 +9,17 @@ import (
 	"bufio"
 	"strconv"
 	"os"
+	"path/filepath"
 	"io/ioutil"
+	"io"
 	"os/user"
 	"errors"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
-	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	conttype "github.com/docker/docker/api/types/container"
 	doctype "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/blkiodev"
 	strslice "github.com/docker/docker/api/types/strslice"
 	volumetype "github.com/docker/docker/api/types/volume"
 
@@ -31,11 +33,64 @@ type ContainerCreateRequestServiceNetwork struct {
 }
 
 type ContainerCreateRequestContainerHealthcheck struct {
-	Test        []string `json:"test"`
-	Interval int `json:"interval"`
-	Timeout int `json:"timeout"`
-	Retries int `json:"retries"`
-	StartPeriod int `json:"start_period"`
+	Test        []string `json:"test,omitempty"`
+	Interval DurationStr `json:"interval,omitempty"`
+	Timeout DurationStr `json:"timeout,omitempty"`
+	Retries int `json:"retries,omitempty"`
+	StartPeriod DurationStr `json:"start_period,omitempty"`
+}
+
+// UnmarshalJSON accepts the docker-compose forms of the healthcheck test
+// command. docker-compose allows BOTH:
+//
+//	exec form (array):   test: ["CMD", "curl", "-f", "http://localhost"]
+//	shell form (string): test: curl -f http://localhost || exit 1
+//
+// The shell string form is implicitly wrapped by docker-compose as
+// ["CMD-SHELL", "<command>"] before being handed to the Docker daemon. Cosmos
+// stores the canonical array form, so a bare string is converted the same way
+// docker-compose would. This also fixes imports of compose files that use the
+// string form, which previously failed with
+// "cannot unmarshal string into Go struct field ...test of type []string".
+func (h *ContainerCreateRequestContainerHealthcheck) UnmarshalJSON(data []byte) error {
+	type shadow struct {
+		Test        json.RawMessage `json:"test"`
+		Interval    DurationStr     `json:"interval"`
+		Timeout     DurationStr     `json:"timeout"`
+		Retries     int             `json:"retries"`
+		StartPeriod DurationStr     `json:"start_period"`
+	}
+	var raw shadow
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	h.Interval = raw.Interval
+	h.Timeout = raw.Timeout
+	h.Retries = raw.Retries
+	h.StartPeriod = raw.StartPeriod
+
+	if len(raw.Test) == 0 || string(raw.Test) == "null" {
+		h.Test = nil
+		return nil
+	}
+
+	var asStr string
+	if err := json.Unmarshal(raw.Test, &asStr); err == nil {
+		// docker-compose shell-form string => CMD-SHELL array
+		if strings.TrimSpace(asStr) == "" {
+			h.Test = nil
+		} else {
+			h.Test = []string{"CMD-SHELL", asStr}
+		}
+		return nil
+	}
+
+	var asArr []string
+	if err := json.Unmarshal(raw.Test, &asArr); err != nil {
+		return fmt.Errorf("healthcheck test must be a string or an array of strings: %s", string(raw.Test))
+	}
+	h.Test = asArr
+	return nil
 }
 
 type ContainerCreateRequestContainerDependsOnCont struct {
@@ -43,26 +98,184 @@ type ContainerCreateRequestContainerDependsOnCont struct {
 	Restart string `json:"restart"`
 }
 
+// ByteSize is a byte-value field that accepts both a JSON string
+// ("1gb", "300m", "1073741824") and a JSON number (raw bytes, possibly -1
+// for unlimited). This mirrors docker-compose's byte-value handling and
+// keeps older Cosmos exports/backups (which stored raw byte numbers for
+// shm_size, and raw byte strings for mem_limit) backward compatible.
+// It always marshals back to a string.
+type ByteSize string
+
+// UnmarshalJSON accepts a string (byte-value or raw bytes) or a number
+// (raw bytes, -1 allowed for unlimited).
+func (b *ByteSize) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*b = ""
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*b = ByteSize(s)
+		return nil
+	}
+	// Number: raw bytes (e.g. 1073741824, or -1 for unlimited).
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	if _, err := strconv.ParseInt(n.String(), 10, 64); err != nil {
+		return fmt.Errorf("invalid byte size: %s", n.String())
+	}
+	*b = ByteSize(n.String())
+	return nil
+}
+
+// MarshalJSON always emits a string so old clients (which expect string
+// fields) keep working.
+func (b ByteSize) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(b))
+}
+
+// DurationStr is a time-duration field that accepts both a JSON string
+// ("15s", "1m30s", "2h") and a JSON number (raw seconds). This mirrors
+// docker-compose's duration handling for healthcheck fields and keeps
+// older Cosmos exports/backups (which stored raw second counts) backward
+// compatible. It always marshals back to a string.
+//
+// NB: named DurationStr (not Duration) to avoid swag grouping unrelated
+// *Duration* constants in the package into an enum for this schema.
+type DurationStr string
+
+// UnmarshalJSON accepts a string (compose duration) or a number (raw seconds).
+func (d *DurationStr) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*d = ""
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*d = DurationStr(s)
+		return nil
+	}
+	// Number: raw seconds.
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	if _, err := strconv.ParseFloat(n.String(), 64); err != nil {
+		return fmt.Errorf("invalid duration: %s", n.String())
+	}
+	*d = DurationStr(n.String() + "s")
+	return nil
+}
+
+// MarshalJSON always emits a string so old clients (which expect string
+// fields) keep working.
+func (d DurationStr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(d))
+}
+
+// ParseDuration converts a DurationStr back into a time.Duration. An empty
+// value yields 0 (no duration). Bare second counts (e.g. "15") are accepted
+// for backward compat with compose files that omit the unit.
+func (d DurationStr) ParseDuration() (time.Duration, error) {
+	s := strings.TrimSpace(string(d))
+	if s == "" {
+		return 0, nil
+	}
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return time.Duration(v * float64(time.Second)), nil
+	}
+	return time.ParseDuration(s)
+}
+
+// BlkioWeightDevice mirrors docker-compose's blkio_config.weight_device entry.
+type BlkioWeightDevice struct {
+	Path   string `json:"path"`
+	Weight uint16 `json:"weight"`
+}
+
+// BlkioThrottleDevice mirrors docker-compose's blkio_config device rate
+// entries (device_read_bps, device_write_bps, device_read_iops,
+// device_write_iops). Rate is a byte-size value for the *bps fields and a
+// plain integer (ops/sec) for the *iops fields; ByteSize accepts both
+// number and string so either compose form works.
+type BlkioThrottleDevice struct {
+	Path string   `json:"path"`
+	Rate ByteSize `json:"rate"`
+}
+
+// ContainerCreateRequestServiceBlkioConfig mirrors docker-compose's
+// blkio_config attribute.
+type ContainerCreateRequestServiceBlkioConfig struct {
+	Weight          uint16                `json:"weight,omitempty"`
+	WeightDevice    []BlkioWeightDevice   `json:"weight_device,omitempty"`
+	DeviceReadBps   []BlkioThrottleDevice `json:"device_read_bps,omitempty"`
+	DeviceWriteBps  []BlkioThrottleDevice `json:"device_write_bps,omitempty"`
+	DeviceReadIOps  []BlkioThrottleDevice `json:"device_read_iops,omitempty"`
+	DeviceWriteIOps []BlkioThrottleDevice `json:"device_write_iops,omitempty"`
+}
+
+// ContainerCreateRequestGPURequest mirrors docker-compose's gpus list entry
+// ({driver, count}); count -1 means all devices.
+type ContainerCreateRequestGPURequest struct {
+	Driver string `json:"driver,omitempty"`
+	Count  int    `json:"count,omitempty"`
+}
+
+// GPURequests accepts both docker-compose forms of gpus: the string "all"
+// and the list form ([{driver, count}]). It always marshals back to the
+// list form.
+type GPURequests []ContainerCreateRequestGPURequest
+
+// UnmarshalJSON accepts "all" or an array of {driver, count}.
+func (g *GPURequests) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == `"all"` {
+		*g = GPURequests{{Count: -1}}
+		return nil
+	}
+	var arr []ContainerCreateRequestGPURequest
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	*g = GPURequests(arr)
+	return nil
+}
+
+// MarshalJSON emits the array form.
+func (g GPURequests) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]ContainerCreateRequestGPURequest(g))
+}
+
 type ContainerCreateRequestContainer struct {
 	Name 			string            `json:"container_name"`
 	Image       string            `json:"image" validate:"required"`
-	Environment []string `json:"environment"`
-	Labels      map[string]string `json:"labels"`
-	Ports       []string          `json:"ports"`
-	Volumes     []mount.Mount          `json:"volumes"`
-	Networks    map[string]ContainerCreateRequestServiceNetwork `json:"networks"`
-	Routes 			[]utils.ProxyRouteConfig          `json:"routes"`
+	Environment []string `json:"environment,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Ports       []string          `json:"ports,omitempty"`
+	Volumes     []CosmosMount          `json:"volumes,omitempty"`
+	Networks    map[string]ContainerCreateRequestServiceNetwork `json:"networks,omitempty"`
+	Routes 			[]utils.ProxyRouteConfig          `json:"routes,omitempty"`
 	Links       []string  `json:"links,omitempty"`
 
 	RestartPolicy  string            `json:"restart,omitempty"`
-	Devices        []string          `json:"devices"`
-	Expose 		     []string          `json:"expose"`
+	Devices        []string          `json:"devices,omitempty"`
+	Expose 		     []string          `json:"expose,omitempty"`
 	DependsOn      map[string]ContainerCreateRequestContainerDependsOnCont `json:"depends_on,omitempty"`
 	Tty            bool              `json:"tty,omitempty"`
 	StdinOpen      bool              `json:"stdin_open,omitempty"`
 
-	Command string `json:"command,omitempty"`
-	Entrypoint string `json:"entrypoint,omitempty"`
+	Command strslice.StrSlice `json:"command,omitempty"`
+	Entrypoint strslice.StrSlice `json:"entrypoint,omitempty"`
 	Runtime string `json:"runtime,omitempty"`
 	WorkingDir string `json:"working_dir,omitempty"`
 	User string `json:"user,omitempty"`
@@ -75,7 +288,7 @@ type ContainerCreateRequestContainer struct {
 	NetworkMode string `json:"network_mode,omitempty"`
 	StopSignal string `json:"stop_signal,omitempty"`
 	StopGracePeriod int `json:"stop_grace_period,omitempty"`
-	HealthCheck ContainerCreateRequestContainerHealthcheck `json:"healthcheck,omitempty"`
+	HealthCheck *ContainerCreateRequestContainerHealthcheck `json:"healthcheck,omitempty"`
 	DNS []string `json:"dns,omitempty"`
 	DNSSearch []string `json:"dns_search,omitempty"`
 	ExtraHosts []string `json:"extra_hosts,omitempty"`
@@ -83,18 +296,45 @@ type ContainerCreateRequestContainer struct {
 	StorageOpt map[string]string `json:"storage_opt,omitempty"`
 	Sysctls map[string]string `json:"sysctls,omitempty"`
 	Isolation string `json:"isolation,omitempty"`
+	ShmSize ByteSize `json:"shm_size,omitempty"`
 
 	CapAdd []string `json:"cap_add,omitempty"`
 	CapDrop []string `json:"cap_drop,omitempty"`
 
 	// Resource constraints
-	MemLimit string `json:"mem_limit,omitempty"`
-	MemReservation string `json:"mem_reservation,omitempty"`
+	MemLimit ByteSize `json:"mem_limit,omitempty"`
+	MemReservation ByteSize `json:"mem_reservation,omitempty"`
 	CPUs float64 `json:"cpus,omitempty"`
 	CPUShares int64 `json:"cpu_shares,omitempty"`
+	Cpuset string `json:"cpuset,omitempty"`
+	// Legacy alias for cpuset (older Cosmos backups used cpuset_cpus). Kept for
+	// backward compatibility; Cpuset takes precedence when both are present.
 	CpusetCpus string `json:"cpuset_cpus,omitempty"`
 
+	// Additional resource constraints (docker-compose parity)
+	CPUPeriod int64 `json:"cpu_period,omitempty"`
+	CPUQuota int64 `json:"cpu_quota,omitempty"`
+	CPURealtimePeriod int64 `json:"cpu_rt_period,omitempty"`
+	CPURealtimeRuntime int64 `json:"cpu_rt_runtime,omitempty"`
+	MemSwappiness int `json:"mem_swappiness,omitempty"`
+	MemSwapLimit ByteSize `json:"memswap_limit,omitempty"`
+	OomKillDisable bool `json:"oom_kill_disable,omitempty"`
+	PidsLimit int64 `json:"pids_limit,omitempty"`
+	CpusetMems string `json:"cpuset_mems,omitempty"`
+	// ulimits as "name=soft[:hard]" strings (e.g. "nofile=2048" or
+	// "nofile=1024:2048"), matching docker-compose's ulimits object after
+	// normalization. Parsed with go-units at create time.
+	Ulimits []string `json:"ulimits,omitempty"`
+	BlkioConfig *ContainerCreateRequestServiceBlkioConfig `json:"blkio_config,omitempty"`
+	Gpus GPURequests `json:"gpus,omitempty"`
+
 	PostInstall []string `json:"post_install,omitempty"`
+
+	// wasRunning records whether the container was running BEFORE this
+	// create/update. json:"-" keeps it out of the API schema; it is only set
+	// server-side so a stopped (or dormant) container stays stopped after an
+	// update instead of being recreated and force-started.
+	wasRunning bool `json:"-"`
 }
 
 type ContainerCreateRequestVolume struct {
@@ -140,6 +380,94 @@ type DockerServiceCreateRollback struct {
 	Name string `json:"name"`
 	// was: container old settings
 	Was doctype.ContainerJSON `json:"was"`
+}
+
+// NormalizeCmdArgs converts a user-supplied command/entrypoint into the argv form
+// the Docker SDK expects (containerConfig.Cmd / containerConfig.Entrypoint, both
+// strslice.StrSlice). It accepts both upstream Docker forms:
+//
+//   - Exec form: an array of arguments, e.g. ["/bin/sh", "-c", "echo hi"]. Used verbatim.
+//   - Shell form: a single whitespace-separated string, e.g. "echo hi". Tokenized into
+//     arguments while respecting single/double quotes (consistent with docker-compose).
+//
+// A single-element array is treated as shell form so legacy Cosmos configs/backups that
+// stored a plain command string continue to work unchanged.
+func NormalizeCmdArgs(input strslice.StrSlice) strslice.StrSlice {
+	if input == nil || len(input) == 0 {
+		return strslice.StrSlice{}
+	}
+
+	// Exec form: multiple explicit arguments, pass through untouched.
+	if len(input) > 1 {
+		return input
+	}
+
+	// A single element could be a shell-form command line (e.g. "npm run dev")
+	// OR the JSON decoder wrapping a bare string/array-of-one. Tokenize it so a
+	// quoted argument ("echo 'hello world'") stays a single argv element.
+	cmdline := strings.TrimSpace(input[0])
+	if cmdline == "" {
+		// Empty input: keep Cmd/Entrypoint unset (nil) so the image's own
+		// CMD/ENTRYPOINT is used, exactly like the pre-StrsSlice behaviour.
+		return nil
+	}
+	args := strings.Fields(cmdline)
+	if strings.Contains(cmdline, "'") || strings.Contains(cmdline, "\"") || strings.Contains(cmdline, "\\") {
+		args = SplitCommandArgs(cmdline)
+	}
+	return strslice.StrSlice(args)
+}
+
+// SplitCommandArgs tokenizes a shell command string into individual arguments,
+// treating single ('...') and double ("...") quotes as grouping delimiters. This
+// mirrors how docker-compose parses shell-form CMD/ENTRYPOINT values.
+func SplitCommandArgs(cmdline string) []string {
+	var b strings.Builder
+	var args []string
+	inArg := false
+	quote := ""
+	i := 0
+	for i < len(cmdline) {
+		c := cmdline[i:i+1]
+		if quote != "" {
+			if c == quote {
+				quote = ""
+			} else {
+				b.WriteString(c)
+			}
+			i++
+			continue
+		}
+		if c == "'" || c == "\"" {
+			quote = c
+			inArg = true
+			i++
+			continue
+		}
+		if c == " " || c == "\t" || c == "\n" {
+			if inArg {
+				args = append(args, b.String())
+				b = strings.Builder{}
+				inArg = false
+			}
+			i++
+			continue
+		}
+		// backslash escape inside shell form
+		if c == "\\" && i + 1 < len(cmdline) {
+			b.WriteString(cmdline[i+1:i+2])
+			inArg = true
+			i += 2
+			continue
+		}
+		b.WriteString(c)
+		inArg = true
+		i++
+	}
+	if inArg {
+		args = append(args, b.String())
+	}
+	return args
 }
 
 func Rollback(actions []DockerServiceCreateRollback , OnLog func(string)) {
@@ -254,18 +582,26 @@ func CreateServiceRoute(w http.ResponseWriter, req *http.Request) {
 				return 
 		}
 
-		decoder := json.NewDecoder(req.Body)
+		// Read the raw body once: json.Decode consumes the stream, and we need
+		// the bytes both for Decode and to extract the optional "$$comments"
+		// member (HJSON comments keyed by node path from the compose editor).
+		rawBody, err := io.ReadAll(req.Body)
+		if err != nil {
+			utils.Error("CreateService - read body - ", err)
+			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
+			return
+		}
 		var serviceRequest DockerServiceCreateRequest
-		err := decoder.Decode(&serviceRequest)
+		err = json.Unmarshal(rawBody, &serviceRequest)
 		if err != nil {
 			utils.Error("CreateService - decode - ", err)
-			fmt.Fprintf(w, "[OPERATION FAILED] Bad request: "+err.Error(), http.StatusBadRequest, "DS003")
-			flusher.Flush()
 			utils.HTTPError(w, "Bad request: " + err.Error(), http.StatusBadRequest, "DS003")
 			return
 		}
 
-		CreateService(serviceRequest, 
+		comments := extractCommentsConfig(rawBody)
+
+		CreateService(serviceRequest, comments,
 			func (msg string) {
 				fmt.Fprintf(w, "%s", msg)
 				flusher.Flush()
@@ -297,7 +633,7 @@ func generatePorts(portRangeStr string) []string {
 	return ports
 }
 
-func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)) error {
+func CreateService(serviceRequest DockerServiceCreateRequest, comments map[string]string, OnLog func(string)) error {
 	utils.ConfigLock.Lock()
 	defer utils.ConfigLock.Unlock()
 	
@@ -525,6 +861,48 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			OpenStdin:    container.StdinOpen,
 		}
 
+		// Persist HJSON comments (cosmos.compose.<path> labels) so the compose
+		// editor can restore them on reload.
+		setComposeCommentsLabels(containerConfig, comments)
+
+		// Tag multi-service compose stacks with cosmos.stack (+ .main) so the
+		// UI groups them and the dependents cascade can scope by stack. Single
+		// services stay untagged.
+		if len(serviceRequest.Services) > 1 {
+			if containerConfig.Labels == nil {
+				containerConfig.Labels = make(map[string]string)
+			}
+			if containerConfig.Labels["cosmos.stack"] == "" && containerConfig.Labels["com.docker.compose.project"] == "" {
+				containerConfig.Labels["cosmos.stack"] = serviceName
+			}
+			// mark the first service as the stack main
+			first := ""
+			for k := range serviceRequest.Services {
+				first = k
+				break
+			}
+			if containerConfig.Labels["cosmos.stack.main"] == "" && serviceName == first {
+				containerConfig.Labels["cosmos.stack.main"] = "true"
+			}
+		}
+
+		// Persist depends_on in compose's com.docker.compose.depends_on label
+		// so runtime restart/recreate paths and compose-imported stacks work.
+		if len(container.DependsOn) > 0 {
+			deps := make(map[string]dependsOnEntry, len(container.DependsOn))
+			for depName, depCfg := range container.DependsOn {
+				cond := depCfg.Condition
+				if cond == "" {
+					cond = DepConditionStarted
+				}
+				deps[depName] = dependsOnEntry{
+					Condition: cond,
+					Restart:   depCfg.Restart == "true" || depCfg.Restart == "always",
+				}
+			}
+			SetDependsOnLabels(containerConfig, deps)
+		}
+
 		// check if there's an empty TZ env, if so, replace it with the host's TZ
 		if containerConfig.Env != nil {
 			for i, env := range containerConfig.Env {
@@ -540,12 +918,16 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 		
-		if container.Command != "" {
-			containerConfig.Cmd = strings.Fields(container.Command)
+		if container.Command != nil && len(container.Command) > 0 {
+			if cmdArgs := NormalizeCmdArgs(container.Command); cmdArgs != nil && len(cmdArgs) > 0 {
+				containerConfig.Cmd = cmdArgs
+			}
 		}
 
-		if container.Entrypoint != "" {
-			containerConfig.Entrypoint = strslice.StrSlice(strings.Fields(container.Entrypoint))
+		if container.Entrypoint != nil && len(container.Entrypoint) > 0 {
+			if entryArgs := NormalizeCmdArgs(container.Entrypoint); entryArgs != nil && len(entryArgs) > 0 {
+				containerConfig.Entrypoint = entryArgs
+			}
 		}
 
 		// For Expose / Ports
@@ -643,9 +1025,21 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			hostPortsBound[hostPort + "/" + protocol] = true
 		}
 
-		// Create missing folders for bind mounts
+		// Reject nested mount targets (a mount inside another mount's target
+		// directory) with a clear error instead of a cryptic runc ENOTDIR at
+		// container start.
+		if err := ValidateMountConflicts(container.Volumes); err != nil {
+			utils.Error("CreateService: Invalid volume configuration", err)
+			OnLog(utils.DoErr("%s", err.Error() + "\n"))
+			Rollback(rollbackActions, OnLog)
+			return err
+		}
+
+		// Create missing folders for bind mounts. A single-file bind (source
+		// is an existing file, or its parent is a directory and the basename
+		// looks like a file) must not be MkdirAll'd — only its parent dir.
 		for _, newmount := range container.Volumes {
-			if newmount.Type == mount.TypeBind {
+			if newmount.Type == "bind" {
 				newSource := newmount.Source
 
 				if utils.IsInsideContainer {
@@ -658,15 +1052,36 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 						newSource = "/mnt/host" + newSource
 					}
 				}
-						
-				utils.Log(fmt.Sprintf("Checking directory %s for bind mount", newSource))
-				OnLog(fmt.Sprintf("Checking directory %s for bind mount\n", newSource))
 
-				if _, err := os.Stat(newSource); os.IsNotExist(err) {
-					utils.Log(fmt.Sprintf("Not found. Creating directory %s for bind mount", newSource))
-					OnLog(fmt.Sprintf("Not found. Creating directory %s for bind mount\n", newSource))
+				// Distinguish a single-file bind from a directory bind:
+				//  - existing path that is a file   -> file (parent may need creating)
+				//  - existing path that is a dir    -> directory
+				//  - non-existing path: if the parent exists and the basename
+				//    has a dot (e.g. config.json) assume a file; otherwise a dir.
+				isFile := false
+				if fi, err := os.Stat(newSource); err == nil {
+					isFile = !fi.IsDir()
+				} else if os.IsNotExist(err) {
+					parent := filepath.Dir(newSource)
+					base := filepath.Base(newSource)
+					if pfi, perr := os.Stat(parent); perr == nil && pfi.IsDir() && strings.Contains(base, ".") {
+						isFile = true
+					}
+				}
+
+				createDir := newSource
+				if isFile {
+					createDir = filepath.Dir(newSource)
+				}
+						
+				utils.Log(fmt.Sprintf("Checking directory %s for bind mount", createDir))
+				OnLog(fmt.Sprintf("Checking directory %s for bind mount\n", createDir))
+
+				if _, err := os.Stat(createDir); os.IsNotExist(err) {
+					utils.Log(fmt.Sprintf("Not found. Creating directory %s for bind mount", createDir))
+					OnLog(fmt.Sprintf("Not found. Creating directory %s for bind mount\n", createDir))
 	
-					err := os.MkdirAll(newSource, 0750)
+					err := os.MkdirAll(createDir, 0750)
 
 					if err != nil {
 						utils.Error("CreateService: Unable to create directory for bind mount. Make sure parent directories exist, and that Cosmos has permissions to create directories in the host directory", err)
@@ -677,7 +1092,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 
 					if container.UID != 0 {
 						// Change the ownership of the directory to the container.UID
-						err = os.Chown(newSource, container.UID, container.GID)
+						err = os.Chown(createDir, container.UID, container.GID)
 						if err != nil {
 							utils.Error("CreateService: Unable to change ownership of directory", err)
 							OnLog(utils.DoErr("%s", "Unable to change ownership of directory: " + err.Error()))
@@ -711,10 +1126,96 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 
+		// Auto-create missing volume subpaths, mirroring the bind-mount folder
+		// creation above. Subpaths live inside the Docker volume's mountpoint
+		// (e.g. /var/lib/docker/volumes/<name>/_data/<subpath>); we resolve the
+		// real mountpoint via VolumeInspect so custom data-roots / rootless
+		// setups work too, then MkdirAll the subpath (and its parents).
+		for _, newmount := range container.Volumes {
+			if newmount.Type != "volume" || newmount.SubPath == "" {
+				continue
+			}
+
+			vol, err := DockerClient.VolumeInspect(DockerContext, newmount.Source)
+			if err != nil {
+				utils.Error("CreateService: Unable to inspect volume for subpath creation", err)
+				OnLog(utils.DoErr("Unable to inspect volume %s for subpath creation: %s\n", newmount.Source, err.Error()))
+				continue
+			}
+			if vol.Mountpoint == "" {
+				utils.Warn("CreateService: Volume " + newmount.Source + " has no mountpoint; cannot auto-create subpath")
+				OnLog(utils.DoWarn("Volume %s has no mountpoint; cannot auto-create subpath %s. Create the subpath manually.\n", newmount.Source, newmount.SubPath))
+				continue
+			}
+
+			mountRoot := vol.Mountpoint
+			if utils.IsInsideContainer {
+				// The /mnt/host mount exposes the host root when Cosmos itself
+				// runs in a container. Docker's volume mountpoint path is
+				// relative to the host root, so prefix it the same way the
+				// bind-mount branch does.
+				if _, err := os.Stat("/mnt/host"); os.IsNotExist(err) {
+					utils.Error("CreateService: Unable to create volume subpath. Please mount the host / in Cosmos with  -v /:/mnt/host to enable folder creations, or create the subpath folder yourself", err)
+					OnLog(utils.DoErr("Unable to create volume subpath in the host directory. Please mount the host / in Cosmos with  -v /:/mnt/host to enable folder creations, or create the subpath folder yourself: %s\n", err.Error()))
+					continue
+				}
+				mountRoot = "/mnt/host" + mountRoot
+			}
+
+			utils.Log(fmt.Sprintf("Checking subpath %s for volume %s", newmount.SubPath, newmount.Source))
+			OnLog(fmt.Sprintf("Checking subpath %s for volume %s\n", newmount.SubPath, newmount.Source))
+
+			created, err := EnsureSubpathExists(mountRoot, newmount.SubPath)
+			if err != nil {
+				utils.Error("CreateService: Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume", err)
+				OnLog(utils.DoErr("Unable to create volume subpath. Make sure parent directories exist, and that Cosmos has permissions to create directories in the volume: %s\n", err.Error()))
+				Rollback(rollbackActions, OnLog)
+				return err
+			}
+			for _, cp := range created {
+				utils.Log(fmt.Sprintf("Created subpath entry %s for volume %s", cp, newmount.Source))
+				OnLog(fmt.Sprintf("Created subpath entry %s for volume %s\n", cp, newmount.Source))
+
+				// Ownership: mirror the bind-mount handling so the container
+				// user can actually use the created directory / file.
+				chownPath := cp
+				if container.UID != 0 {
+					err = os.Chown(chownPath, container.UID, container.GID)
+					if err != nil {
+						utils.Error("CreateService: Unable to change ownership of subpath path", err)
+						OnLog(utils.DoErr("%s", "Unable to change ownership of subpath path: " + err.Error()))
+					}
+				} else if container.User != "" && strings.Contains(container.User, ":") {
+					uidgid := strings.Split(container.User, ":")
+					uid, _ := strconv.Atoi(uidgid[0])
+					gid, _ := strconv.Atoi(uidgid[1])
+					err = os.Chown(chownPath, uid, gid)
+					if err != nil {
+						utils.Error("CreateService: Unable to change ownership of subpath path", err)
+						OnLog(utils.DoErr("%s", "Unable to change ownership of subpath path: " + err.Error()))
+					}
+				} else if container.User != "" {
+					userInfo, err := user.Lookup(container.User)
+					if err != nil {
+						utils.Error("CreateService: Unable to lookup user", err)
+						OnLog(utils.DoErr("%s", "Unable to lookup user " + container.User + ". " + err.Error()))
+					} else {
+						uid, _ := strconv.Atoi(userInfo.Uid)
+						gid, _ := strconv.Atoi(userInfo.Gid)
+						err = os.Chown(chownPath, uid, gid)
+						if err != nil {
+							utils.Error("CreateService: Unable to change ownership of subpath path", err)
+							OnLog(utils.DoErr("%s", "Unable to change ownership of subpath path: " + err.Error()))
+						}
+					}
+				}
+			}
+		}
+
 		// Parse resource constraints
 		var memLimit, memReservation int64
 		if container.MemLimit != "" {
-			memLimit, err = units.RAMInBytes(container.MemLimit)
+			memLimit, err = units.RAMInBytes(string(container.MemLimit))
 			if err != nil {
 				utils.Error("CreateService: Invalid mem_limit", err)
 				OnLog(utils.DoErr("Invalid mem_limit value: %s\n", err.Error()))
@@ -723,7 +1224,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 		if container.MemReservation != "" {
-			memReservation, err = units.RAMInBytes(container.MemReservation)
+			memReservation, err = units.RAMInBytes(string(container.MemReservation))
 			if err != nil {
 				utils.Error("CreateService: Invalid mem_reservation", err)
 				OnLog(utils.DoErr("Invalid mem_reservation value: %s\n", err.Error()))
@@ -732,9 +1233,159 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			}
 		}
 
+		// shm_size is a docker-style byte-size string (e.g. "64mb", "1gb").
+		// Parse it into raw bytes for the docker daemon, mirroring mem_limit.
+		var shmSize int64
+		if container.ShmSize != "" {
+			shmSize, err = units.RAMInBytes(string(container.ShmSize))
+			if err != nil {
+				utils.Error("CreateService: Invalid shm_size", err)
+				OnLog(utils.DoErr("Invalid shm_size value: %s\n", err.Error()))
+				Rollback(rollbackActions, OnLog)
+				return err
+			}
+		}
+
+		// memswap_limit is a byte-size string (e.g. "1gb"); "-1" enables
+		// unlimited swap, mirroring docker-compose's memswap_limit.
+		var memSwap int64
+		if container.MemSwapLimit != "" {
+			if container.MemSwapLimit == "-1" {
+				memSwap = -1
+			} else {
+				memSwap, err = units.RAMInBytes(string(container.MemSwapLimit))
+				if err != nil {
+					utils.Error("CreateService: Invalid memswap_limit", err)
+					OnLog(utils.DoErr("Invalid memswap_limit value: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+			}
+		}
+
+		// ulimits: "name=soft[:hard]" strings, e.g. "nofile=2048" or
+		// "nofile=1024:2048". Parsed with go-units (same as docker-compose).
+		var ulimits []*units.Ulimit
+		for _, u := range container.Ulimits {
+			parsed, err := units.ParseUlimit(u)
+			if err != nil {
+				utils.Error("CreateService: Invalid ulimit: " + u, err)
+				OnLog(utils.DoErr("Invalid ulimit value: %s\n", err.Error()))
+				Rollback(rollbackActions, OnLog)
+				return err
+			}
+			ulimits = append(ulimits, parsed)
+		}
+
+		// cpuset: canonical "cpuset" wins over the legacy "cpuset_cpus" alias.
+		var cpusetValue string
+		if container.Cpuset != "" {
+			cpusetValue = container.Cpuset
+		} else {
+			cpusetValue = container.CpusetCpus
+		}
+
+		// Pointers for the daemon's optional resource fields. nil means the
+		// constraint was not set (leave the daemon default unchanged).
+		var memSwappinessPtr *int64
+		if container.MemSwappiness != 0 {
+			memSwappinessInt := int64(container.MemSwappiness)
+			memSwappinessPtr = &memSwappinessInt
+		}
+		var oomKillDisablePtr *bool
+		if container.OomKillDisable {
+			oomKillDisablePtr = &container.OomKillDisable
+		}
+		var pidsLimitPtr *int64
+		if container.PidsLimit != 0 {
+			pidsLimitPtr = &container.PidsLimit
+		}
+
+		// blkio_config: convert compose form into the daemon's blkiodev types.
+		var blkioWeight uint16
+		var blkioWeightDevice []*blkiodev.WeightDevice
+		var blkioDeviceReadBps, blkioDeviceWriteBps []*blkiodev.ThrottleDevice
+		var blkioDeviceReadIOps, blkioDeviceWriteIOps []*blkiodev.ThrottleDevice
+		if container.BlkioConfig != nil {
+			blkioWeight = container.BlkioConfig.Weight
+			for _, wd := range container.BlkioConfig.WeightDevice {
+				blkioWeightDevice = append(blkioWeightDevice, &blkiodev.WeightDevice{
+					Path:   wd.Path,
+					Weight: wd.Weight,
+				})
+			}
+			// bps rates are byte values; iops rates are plain integers.
+			parseRate := func(r ByteSize, isIOPS bool) (uint64, error) {
+				if r == "" {
+					return 0, nil
+				}
+				if isIOPS {
+					return strconv.ParseUint(string(r), 10, 64)
+				}
+				b, err := units.RAMInBytes(string(r))
+				if err != nil {
+					return 0, err
+				}
+				if b < 0 {
+					return 0, fmt.Errorf("negative rate not allowed")
+				}
+				return uint64(b), nil
+			}
+			for _, t := range container.BlkioConfig.DeviceReadBps {
+				rate, err := parseRate(t.Rate, false)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_read_bps rate: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_read_bps rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceReadBps = append(blkioDeviceReadBps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+			for _, t := range container.BlkioConfig.DeviceWriteBps {
+				rate, err := parseRate(t.Rate, false)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_write_bps: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_write_bps rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceWriteBps = append(blkioDeviceWriteBps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+			for _, t := range container.BlkioConfig.DeviceReadIOps {
+				rate, err := parseRate(t.Rate, true)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_read_iops: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_read_iops rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceReadIOps = append(blkioDeviceReadIOps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+			for _, t := range container.BlkioConfig.DeviceWriteIOps {
+				rate, err := parseRate(t.Rate, true)
+				if err != nil {
+					utils.Error("CreateService: Invalid device_write_iops: "+string(t.Rate), err)
+					OnLog(utils.DoErr("Invalid blkio_config device_write_iops rate: %s\n", err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+				blkioDeviceWriteIOps = append(blkioDeviceWriteIOps, &blkiodev.ThrottleDevice{Path: t.Path, Rate: rate})
+			}
+		}
+
+		// gpus: docker-compose gpus == device request with "gpu" capability.
+		var deviceRequests []conttype.DeviceRequest
+		for _, g := range container.Gpus {
+			deviceRequests = append(deviceRequests, conttype.DeviceRequest{
+				Driver:       g.Driver,
+				Count:        g.Count,
+				Capabilities: [][]string{{"gpu"}},
+			})
+		}
+
 		hostConfig := &conttype.HostConfig{
 			PortBindings: PortBindings,
-			Mounts:       container.Volumes,
+			Mounts:       ToDockerMountSlice(container.Volumes),
 			RestartPolicy: conttype.RestartPolicy{
 				Name: conttype.RestartPolicyMode(container.RestartPolicy),
 			},
@@ -747,25 +1398,48 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			StorageOpt:  container.StorageOpt,
 			Sysctls:     container.Sysctls,
 			Isolation:   conttype.Isolation(container.Isolation),
+			ShmSize:     shmSize,
 			CapAdd:      container.CapAdd,
 			CapDrop:     container.CapDrop,
 			Resources: conttype.Resources{
 				Memory:            memLimit,
 				MemoryReservation: memReservation,
+				MemorySwap:        memSwap,
 				NanoCPUs:          int64(container.CPUs * 1e9),
 				CPUShares:         container.CPUShares,
-				CpusetCpus:        container.CpusetCpus,
+				CpusetCpus:        cpusetValue,
+				CpusetMems:        container.CpusetMems,
+				CPUPeriod:         container.CPUPeriod,
+				CPUQuota:          container.CPUQuota,
+				CPURealtimePeriod: container.CPURealtimePeriod,
+				CPURealtimeRuntime: container.CPURealtimeRuntime,
+				MemorySwappiness:  memSwappinessPtr,
+				OomKillDisable:    oomKillDisablePtr,
+				PidsLimit:         pidsLimitPtr,
+				Ulimits:           ulimits,
+				BlkioWeight:       blkioWeight,
+				BlkioWeightDevice: blkioWeightDevice,
+				BlkioDeviceReadBps:   blkioDeviceReadBps,
+				BlkioDeviceWriteBps:  blkioDeviceWriteBps,
+				BlkioDeviceReadIOps:  blkioDeviceReadIOps,
+				BlkioDeviceWriteIOps: blkioDeviceWriteIOps,
+				DeviceRequests:       deviceRequests,
 			},
 		}
 
-		// cosmos-force-network-mode logic
+		// normalize container/service refs to stable container:<name>
 		if containerConfig.Labels["cosmos-force-network-mode"] == "" {
-			if (strings.HasPrefix(string(hostConfig.NetworkMode), "service:") ||
-				strings.HasPrefix(string(hostConfig.NetworkMode), "container:")) {
-					containerConfig.Labels["cosmos-force-network-mode"] = string(hostConfig.NetworkMode)
+			if NetworkModeContainerRef(string(hostConfig.NetworkMode)) || NetworkModeServiceRef(string(hostConfig.NetworkMode)) {
+				normalized := ContainerRefToName(string(hostConfig.NetworkMode))
+				containerConfig.Labels["cosmos-force-network-mode"] = normalized
+				if normalized != string(hostConfig.NetworkMode) {
+					hostConfig.NetworkMode = conttype.NetworkMode(normalized)
+				}
 			}
 		} else {
-			hostConfig.NetworkMode = conttype.NetworkMode(containerConfig.Labels["cosmos-force-network-mode"])
+			normalized := ContainerRefToName(containerConfig.Labels["cosmos-force-network-mode"])
+			hostConfig.NetworkMode = conttype.NetworkMode(normalized)
+			containerConfig.Labels["cosmos-force-network-mode"] = normalized
 			utils.Debug("Forcing network mode to " + string(hostConfig.NetworkMode))
 		}
 
@@ -779,14 +1453,36 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			hostConfig.Runtime = strings.Join(strings.Fields(container.Runtime), " ")
 		}		
 
-		// For Healthcheck
-		if len(container.HealthCheck.Test) > 0 {
+		// For Healthcheck (nil means the image's default was kept, nothing to set)
+		if container.HealthCheck != nil && len(container.HealthCheck.Test) > 0 {
+			hc := container.HealthCheck
+			interval, intervalErr := hc.Interval.ParseDuration()
+			if intervalErr != nil {
+				utils.Error("CreateService: Invalid healthcheck interval", intervalErr)
+				OnLog(utils.DoErr("Invalid healthcheck interval: %s\n", intervalErr.Error()))
+				Rollback(rollbackActions, OnLog)
+				return intervalErr
+			}
+			timeout, timeoutErr := hc.Timeout.ParseDuration()
+			if timeoutErr != nil {
+				utils.Error("CreateService: Invalid healthcheck timeout", timeoutErr)
+				OnLog(utils.DoErr("Invalid healthcheck timeout: %s\n", timeoutErr.Error()))
+				Rollback(rollbackActions, OnLog)
+				return timeoutErr
+			}
+			startPeriod, startPeriodErr := hc.StartPeriod.ParseDuration()
+			if startPeriodErr != nil {
+				utils.Error("CreateService: Invalid healthcheck start_period", startPeriodErr)
+				OnLog(utils.DoErr("Invalid healthcheck start_period: %s\n", startPeriodErr.Error()))
+				Rollback(rollbackActions, OnLog)
+				return startPeriodErr
+			}
 			containerConfig.Healthcheck = &conttype.HealthConfig{
-				Test: container.HealthCheck.Test,
-				Interval: time.Duration(container.HealthCheck.Interval) * time.Second,
-				Timeout: time.Duration(container.HealthCheck.Timeout) * time.Second,
-				StartPeriod: time.Duration(container.HealthCheck.StartPeriod) * time.Second,
-				Retries: container.HealthCheck.Retries,
+				Test: hc.Test,
+				Interval: interval,
+				Timeout: timeout,
+				StartPeriod: startPeriod,
+				Retries: hc.Retries,
 			}
 		}
 
@@ -809,9 +1505,18 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		}
 
 		// check if container exist
+		// Default: a brand-new container starts. When the container already
+		// exists we override wasRunning below with its real run state so a
+		// stopped / dormant container stays stopped after the recreate.
+		container.wasRunning = true
 		existingContainer, err := DockerClient.ContainerInspect(DockerContext, container.Name)
 		if err == nil {		
 			
+			// remember whether it was running so we can keep a stopped /
+			// dormant container stopped after the recreate instead of
+			// force-starting it.
+			container.wasRunning = existingContainer.State != nil && existingContainer.State.Running
+
 			// Edit Container
 			oldConfig := doctype.ContainerJSON{}
 			oldConfig.ContainerJSONBase = new(doctype.ContainerJSONBase)
@@ -957,6 +1662,7 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 			DependsOn:   container.DependsOn,
 			NetworkMode: string(hostConfig.NetworkMode),
 			PostInstall: container.PostInstall,
+			wasRunning:  container.wasRunning,
 		}
 	}
 
@@ -969,8 +1675,41 @@ func CreateService(serviceRequest DockerServiceCreateRequest, OnLog func(string)
 		return err
 	}
 
-	// Start all the newly created containers
+	// Start containers in dependency order, waiting for non-started
+	// conditions (service_healthy / service_completed_successfully).
+	// depends_on keys are already CONTAINER names: the compose editor rewrites
+	// service keys to container_name before sending (docker-compose.jsx), so
+	// WaitForDepCondition can inspect them directly.
 	for _, container := range startOrder {
+		// A container that was stopped (or dormant) before this update stays
+		// stopped: the recreate must not force-start it, otherwise it would
+		// wake a sleeping lazy container (upgrading its state from "dormant"
+		// to "running") or flip a stopped container to "created". Exception:
+		// when another service depends on this one with a start / health
+		// condition (mustStart), it has to come up regardless.
+		if !container.wasRunning && !mustStart {
+			utils.Log("CreateService: Previous container " + container.Name + " was stopped, leaving the new container stopped")
+			OnLog(fmt.Sprintf("Previous container %s was stopped, leaving the new container stopped\n", container.Name))
+			continue
+		}
+
+		if len(container.DependsOn) > 0 {
+			for depName, depCfg := range container.DependsOn {
+				cond := depCfg.Condition
+				if cond == "" {
+					cond = DepConditionStarted
+				}
+				utils.Log(fmt.Sprintf("Waiting for dependency %s (%s) before starting %s", depName, cond, container.Name))
+				OnLog(fmt.Sprintf("Waiting for dependency %s (%s) before starting %s\n", depName, cond, container.Name))
+				if err := WaitForDepCondition(DockerContext, depName, cond); err != nil {
+					utils.Error("CreateService: Start Container", err)
+					OnLog(utils.DoErr("%s", "Rolling back changes because of -- dependency wait error: "+err.Error()))
+					Rollback(rollbackActions, OnLog)
+					return err
+				}
+			}
+		}
+
 		err = DockerClient.ContainerStart(DockerContext, container.Name, conttype.StartOptions{})
 		if err != nil {
 			utils.Error("CreateService: Start Container", err)
@@ -1092,6 +1831,45 @@ func ReOrderServices(serviceMap map[string]ContainerCreateRequestContainer) ([]C
 	startOrder := []ContainerCreateRequestContainer{}
 	mustStart := false
 
+	// depends_on keys are compose service names; startOrder is keyed by
+	// container name. network_mode is NOT a depends_on edge in compose: it is
+	// resolved at create and Docker enforces the target exists, so we only add
+	// a soft in-batch ordering constraint (external targets never hard-error).
+	nameByService := map[string]string{}
+	for key, svc := range serviceMap {
+		// container.Name defaults to the service key when container_name is
+		// unset (see CreateService), so this mapping is usually identity.
+		nameByService[key] = svc.Name
+	}
+
+	// also allow matching by container name
+	serviceByName := map[string]string{}
+	for key, svc := range serviceMap {
+		serviceByName[svc.Name] = key
+	}
+
+	// Resolve a dependency reference to a container name. Dependencies are
+	// declared by service key (compose semantics); fall back to matching the
+	// container name directly for robustness.
+	resolveDep := func(dep string) string {
+		if name, ok := nameByService[dep]; ok && name != "" {
+			return name
+		}
+		return dep
+	}
+
+	// inBatch reports whether a service/container name is part of this compose
+	// creation batch (by service key OR by container name).
+	inBatch := func(name string) bool {
+		if _, ok := serviceMap[name]; ok {
+			return true
+		}
+		if _, ok := serviceByName[name]; ok {
+			return true
+		}
+		return false
+	}
+
 	for len(serviceMap) > 0 {
 		// Keep track of whether we've added any services in this iteration
 		changed := false
@@ -1101,12 +1879,20 @@ func ReOrderServices(serviceMap map[string]ContainerCreateRequestContainer) ([]C
 			if dependencies == nil {
 				dependencies = make(map[string]ContainerCreateRequestContainerDependsOnCont)
 			}
-			
-			// if network_mode is container: then we need to add a dependency
-			if strings.HasPrefix(string(service.NetworkMode), "container:") {
-				depService := strings.TrimPrefix(string(service.NetworkMode), "container:")
-				dependencies[depService] = ContainerCreateRequestContainerDependsOnCont{
-					Condition: "service_started",
+
+			// Soft ordering constraint: if network_mode references another
+			// service that is part of this batch, that service must start
+			// first. Unlike depends_on this never hard-fails for an external
+			// target: if the referenced container is not in the batch, Docker
+			// enforces it exists at create time (compose parity).
+			if nm := string(service.NetworkMode); strings.HasPrefix(nm, "container:") || strings.HasPrefix(nm, "service:") {
+				target := strings.TrimPrefix(strings.TrimPrefix(nm, "container:"), "service:")
+				if target != "" && inBatch(target) {
+					if _, ok := dependencies[target]; !ok {
+						dependencies[target] = ContainerCreateRequestContainerDependsOnCont{
+							Condition: "service_started",
+						}
+					}
 				}
 			}
 
@@ -1114,9 +1900,10 @@ func ReOrderServices(serviceMap map[string]ContainerCreateRequestContainer) ([]C
 			// Check if all dependencies are already in startOrder
 			allDependenciesStarted := true
 			for dependency, dependencyDetails := range dependencies {
+				depName := resolveDep(dependency)
 				dependencyStarted := false
 				for _, startedService := range startOrder {
-					if startedService.Name == dependency {
+					if startedService.Name == depName {
 						dependencyStarted = true
 
 						if dependencyDetails.Condition == "service_healthy" || dependencyDetails.Condition == "service_started" {
@@ -1124,6 +1911,14 @@ func ReOrderServices(serviceMap map[string]ContainerCreateRequestContainer) ([]C
 						}
 
 						break
+					}
+				}
+				// A dependency on a service not in this compose batch (e.g. an
+				// external/named container): the target must already exist; we
+				// treat it as satisfied (Docker will fail create if it doesn't).
+				if !dependencyStarted {
+					if !inBatch(dependency) {
+						dependencyStarted = true
 					}
 				}
 				if !dependencyStarted {
@@ -1154,15 +1949,8 @@ func ReOrderServices(serviceMap map[string]ContainerCreateRequestContainer) ([]C
 			errorMessage += "Could not start service: " + name + "\n"
 			errorMessage += "Unsatisfied dependencies:\n"
 
-			// if network_mode is container: then we need to add a dependency
-			if strings.HasPrefix(string(serviceMap[name].NetworkMode), "container:") {
-				depService := strings.TrimPrefix(string(serviceMap[name].NetworkMode), "container:")
-				errorMessage += depService + " (network_mode)\n"
-			}
-
 			for dependency, _ := range serviceMap[name].DependsOn {
-				_, ok := serviceMap[dependency]
-				if ok {
+				if inBatch(dependency) {
 					errorMessage += dependency + "\n"
 				}
 			}
