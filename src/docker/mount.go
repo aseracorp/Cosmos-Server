@@ -17,10 +17,6 @@ type CosmosMount struct {
 	Type   string `json:"type"`
 	Source string `json:"source"`
 	Target string `json:"target"`
-}
-
-// UnmarshalJSON implements a compatibility layer that accepts both lowercase
-// (new canonical) and uppercase (legacy Docker SDK) field names.
 	// SubPath mounts a subdirectory (or a single file) inside a named
 	// volume instead of the whole volume, like docker-compose's `subpath`.
 	// It is wired to mount.VolumeOptions.Subpath for volume mounts.
@@ -36,8 +32,8 @@ type CosmosMount struct {
 
 // UnmarshalJSON implements a compatibility layer that accepts both lowercase
 // (new canonical) and uppercase (legacy Docker SDK) field names, and matches
-// all keys case-insensitively so a readOnly/subpath is never silently dropped
-// due to casing (e.g. subPath vs subpath, readOnly vs read_only).
+// all keys case-insensitively so a subpath/noCopy/readOnly is never silently
+// dropped due to casing.
 func (c *CosmosMount) UnmarshalJSON(data []byte) error {
 	var raw map[string]interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -197,6 +193,7 @@ func EnsureSubpathExists(mountRoot, subpath string) ([]string, error) {
 	}
 
 	if looksLikeFile(clean) {
+		// Looks like a file (e.g. config.yaml, app.conf) → create it empty.
 		dir := filepath.Dir(full)
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return created, err
@@ -208,6 +205,7 @@ func EnsureSubpathExists(mountRoot, subpath string) ([]string, error) {
 		f.Close()
 		created = append(created, full)
 	} else {
+		// Looks like a directory → create it.
 		if err := os.MkdirAll(full, 0o750); err != nil {
 			return created, err
 		}
@@ -277,3 +275,4 @@ func isStrictPathInside(child, parent string) bool {
 	}
 	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
+
