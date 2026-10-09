@@ -581,6 +581,8 @@ func SoftRestartServer() {
 	}()
 }
 
+// LetsEncryptValidOnly keeps the hostnames a public CA can certify (see
+// letsEncryptable for the rule) and logs what it drops.
 func LetsEncryptValidOnly(hostnames []string, acceptWildcard bool) []string {
 	wrongPattern := `^(localhost(:\d+)?|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?|.*\.local(:\d+)?)$`
 	
@@ -588,7 +590,7 @@ func LetsEncryptValidOnly(hostnames []string, acceptWildcard bool) []string {
 
 	var validDomains []string
 	for _, domain := range hostnames {
-		if !re.MatchString(domain) && (acceptWildcard || !strings.Contains(domain, "*")) && !strings.Contains(domain, " ")  && !strings.Contains(domain, "::") && !strings.Contains(domain, ",") {
+		if !re.MatchString(domain) && (acceptWildcard || !strings.Contains(domain, "*")) && !strings.Contains(domain, " ")  && !strings.Contains(domain, "::") && !strings.Contains(domain, ",") && PublicTLD(domain) {
 			validDomains = append(validDomains, domain)
 		} else {
 			Warn("Invalid domain found in URLs: " + domain + " it was removed from the certificate to not break Let's Encrypt")

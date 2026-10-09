@@ -1241,6 +1241,23 @@ definitions:
         description: SHA pins the commit; empty builds the branch head.
         type: string
     type: object
+  pro.CICopyRequest:
+    properties:
+      buildEnv:
+        description: BuildEnv copies the build-time environment (build.env).
+        type: boolean
+      from:
+        description: From is the project to copy from.
+        type: string
+      runtimeEnv:
+        description: RuntimeEnv copies the runtime environment of the deploy template
+          (deploy.template.env).
+        type: boolean
+      secrets:
+        description: Secrets copies the project secrets, values and PR availability
+          included.
+        type: boolean
+    type: object
   pro.CIDeployRule:
     properties:
       enabled:
@@ -1308,8 +1325,9 @@ definitions:
       build:
         $ref: '#/definitions/pro.CIBuildSettings'
       project:
-        description: Project names an existing project whose stored git token is used
-          when Source.Token is empty.
+        description: |-
+          Project names an existing project whose stored git credentials are used when Source has
+          neither a connection nor a token.
         type: string
       source:
         $ref: '#/definitions/pro.CISource'
@@ -1322,11 +1340,55 @@ definitions:
         description: Deployment / Site is the target name; empty = the rule's default
           name.
         type: string
+      env:
+        additionalProperties:
+          type: string
+        description: |-
+          Env sets or overrides environment variables of the deployed
+          application for this environment only: the service the UI template
+          creates, or the cosmos.json services that take the artifact. Values
+          may use the build variables and the project secrets (${NAME}).
+        type: object
       host:
         description: Host is the route hostname the target gets when CI creates it.
         type: string
       name:
         description: Name is the environment label ("production", "staging").
+        type: string
+    type: object
+  pro.CIGitConnection:
+    properties:
+      apiUrl:
+        description: |-
+          APIURL overrides the provider API base for self-hosted instances;
+          empty derives it from the repository URL.
+        type: string
+      createdAt:
+        type: string
+      description:
+        type: string
+      host:
+        description: |-
+          Host is the git host the token is valid for (github.com,
+          git.example.com). The UI offers the connection for repositories on
+          that host; empty matches the provider's public host.
+        type: string
+      name:
+        type: string
+      provider:
+        description: Provider is one of github, gitlab, gitea, bitbucket or git.
+        type: string
+      token:
+        description: |-
+          Token authenticates clones and provider API calls. Write-only
+          through the API: reads answer "****" when set.
+        type: string
+      updatedAt:
+        type: string
+      username:
+        description: |-
+          Username pairs with Token for providers that need one (Bitbucket app
+          passwords, plain git basic auth). Defaults per provider.
         type: string
     type: object
   pro.CIPreview:
@@ -1408,6 +1470,10 @@ definitions:
     type: object
   pro.CIRegistryTarget:
     properties:
+      artifactQuotaBytes:
+        description: 'ArtifactQuotaBytes caps the project''s stored file artifacts
+          (0: the default of 4 GiB).'
+        type: integer
       image:
         type: string
       registry:
@@ -1449,6 +1515,12 @@ definitions:
         items:
           type: string
         type: array
+      connection:
+        description: |-
+          Connection names a CIGitConnection whose credentials this project
+          uses. When set, Token and Username below are ignored (and cleared on
+          save); APIURL still applies when given, else the connection's does.
+        type: string
       defaultBranch:
         description: DefaultBranch is what a manual run builds when no branch is given.
         type: string
@@ -1463,7 +1535,8 @@ definitions:
       token:
         description: |-
           Token authenticates clones and provider API calls (webhook creation,
-          commit statuses, collaborator checks). Write-only through the API.
+          commit statuses, collaborator checks) for a project without a
+          connection. Write-only through the API.
         type: string
       username:
         description: |-
@@ -3309,7 +3382,7 @@ info:
   contact: {}
   description: REST API for Cosmos Cloud server management
   title: Cosmos Server API
-  version: 0.24.0-unstable027
+  version: 0.24.0-unstable028
 paths:
   /_logs:
     get:
@@ -4394,6 +4467,146 @@ paths:
       summary: List recent builds across CI projects
       tags:
       - ci
+  /api/constellation/ci/connections:
+    get:
+      description: Returns every git connection (shared credentials) with its token
+        redacted and the projects using it (Pro feature)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: List git connections
+      tags:
+      - ci
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Stores a set of git credentials (provider, host, token) that projects can share
+        instead of carrying their own token (Pro feature).
+      parameters:
+      - description: Connection to create
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pro.CIGitConnection'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a git connection
+      tags:
+      - ci
+  /api/constellation/ci/connections/{name}:
+    delete:
+      description: Removes the connection. Refused while a project uses it (Pro feature)
+      parameters:
+      - description: Connection name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a git connection
+      tags:
+      - ci
+    get:
+      description: Returns the connection with its token redacted and the projects
+        using it (Pro feature)
+      parameters:
+      - description: Connection name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get one git connection
+      tags:
+      - ci
+    put:
+      consumes:
+      - application/json
+      description: |-
+        Replaces the connection. An empty token keeps the stored one (write-only).
+        Every project on the connection uses the new credentials from its next build (Pro feature).
+      parameters:
+      - description: Connection name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Connection to store
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pro.CIGitConnection'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a git connection
+      tags:
+      - ci
+  /api/constellation/ci/connections/{name}/repos:
+    get:
+      description: |-
+        Asks the provider which repositories the connection's token can access, most recently
+        updated first, and filters them by ?q=. Plain git connections cannot list (Pro feature).
+      parameters:
+      - description: Connection name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Filter on the repository name
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: List the repositories a git connection can reach
+      tags:
+      - ci
   /api/constellation/ci/detect:
     post:
       consumes:
@@ -4613,8 +4826,9 @@ paths:
       - ci
   /api/constellation/ci/projects/{name}/builds/{number}:
     delete:
-      description: 'Removes the build record and its logs. Refused while the build
-        is queued or running: cancel it first (Pro feature).'
+      description: |-
+        Removes the build record, its logs and its stored artifacts. Refused while the build is
+        queued or running: cancel it first (Pro feature).
       parameters:
       - description: CI project name
         in: path
@@ -4639,8 +4853,9 @@ paths:
       tags:
       - ci
     get:
-      description: Returns the build with its trigger, steps, artifacts and deploy
-        result (Pro feature)
+      description: |-
+        Returns the build with its trigger, its own steps (prepare, deploy), its jobs with their
+        steps and artifacts, and the deploy result (Pro feature)
       parameters:
       - description: CI project name
         in: path
@@ -4718,6 +4933,10 @@ paths:
         name: number
         required: true
         type: integer
+      - description: 'Job name (empty: the build''s own steps)'
+        in: query
+        name: job
+        type: string
       - description: Step index
         in: query
         name: step
@@ -4736,6 +4955,37 @@ paths:
       security:
       - BearerAuth: []
       summary: Read the logs of a build step
+      tags:
+      - ci
+  /api/constellation/ci/projects/{name}/copy:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Copies the chosen sets (secrets, build env, runtime env) of the source project onto this one.
+        Same-named entries are replaced, the others kept. Secret values never leave the server (Pro feature).
+      parameters:
+      - description: Project name (destination)
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: What to copy and from where
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/pro.CICopyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Copy secrets and environment variables from another CI project
       tags:
       - ci
   /api/constellation/ci/projects/{name}/webhook/{action}:
@@ -4770,8 +5020,9 @@ paths:
       - ci
   /api/constellation/ci/runners:
     get:
-      description: Returns every node with its running builds and buildkitd state
-        (Pro feature)
+      description: |-
+        Returns every node with its running jobs, buildkitd state, architecture and the
+        platforms it can build for (native and emulated) (Pro feature)
       produces:
       - application/json
       responses:

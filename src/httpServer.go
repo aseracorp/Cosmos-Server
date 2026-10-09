@@ -26,6 +26,7 @@ import (
 		"path"
 		"github.com/go-chi/httprate"
 		"crypto/tls"
+		"crypto/x509"
 		"github.com/foomo/tlsconfig"
 		"context"
     "net/http/pprof"
@@ -118,7 +119,29 @@ func GetCertificate(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) 
 		return cert, nil
 	}
 
+	// Nothing issued for the host: the node's own certificate — unless only
+	// the self-signed one names it, as for a hostname Let's Encrypt could not
+	// certify (an sslip.io name over a private address, a failed order).
+	if !certNames(primaryCert, host) && certNames(secondaryCert, host) {
+		return secondaryCert, nil
+	}
 	return primaryCert, nil
+}
+
+// certNames reports whether a loaded certificate names the host.
+func certNames(cert *tls.Certificate, host string) bool {
+	if cert == nil || len(cert.Certificate) == 0 {
+		return false
+	}
+	leaf := cert.Leaf
+	if leaf == nil {
+		parsed, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			return false
+		}
+		leaf = parsed
+	}
+	return leaf.VerifyHostname(host) == nil
 }
 
 type loadedZoneCert struct {
@@ -1067,9 +1090,13 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/builds/{number}", constellation.CIBuildIdRoute)
 	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/builds", constellation.CIBuildsRoute)
 	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/webhook/{action}", constellation.CIProjectWebhookRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}/copy", constellation.CIProjectCopyRoute)
 	srapiAdmin.HandleFunc("/api/constellation/ci/projects/{name}", constellation.CIProjectsIdRoute)
 	srapiAdmin.HandleFunc("/api/constellation/ci/projects", constellation.CIProjectsRoute)
 	srapiAdmin.HandleFunc("/api/constellation/ci/builds", constellation.CIAllBuildsRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/connections/{name}/repos", constellation.CIConnectionReposRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/connections/{name}", constellation.CIConnectionsIdRoute)
+	srapiAdmin.HandleFunc("/api/constellation/ci/connections", constellation.CIConnectionsRoute)
 	srapiAdmin.HandleFunc("/api/constellation/ci/detect", constellation.CIDetectRoute)
 	srapiAdmin.HandleFunc("/api/constellation/ci/runners", constellation.CIRunnersRoute)
 	srapiAdmin.HandleFunc("/api/constellation/databases", constellation.ManagedDBRoute)

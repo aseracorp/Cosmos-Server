@@ -134,9 +134,40 @@ func ServerHTTPSDisabled(http HTTPConfig) bool {
 
 var notLetsEncryptable = regexp.MustCompile(`^(localhost|(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})|.*\.local)$`)
 
-// letsEncryptable mirrors LetsEncryptValidOnly for one hostname, without its log
+// letsEncryptable reports whether a public CA can certify a hostname at all:
+// not an IP, not localhost, not .local, no wildcard or list — and under a
+// top-level domain that exists. A name under a made-up or special-use TLD
+// (.test, .lan, .internal, .home.arpa) is rejected by Let's Encrypt as an
+// invalid identifier, after a round trip, on every single order; it belongs
+// on the self-signed certificate like an IP does. Mirrors LetsEncryptValidOnly
+// for one hostname, without its log.
 func letsEncryptable(host string) bool {
-	return host != "" && !notLetsEncryptable.MatchString(host) && !strings.ContainsAny(host, "* ,") && !strings.Contains(host, "::")
+	return host != "" && !notLetsEncryptable.MatchString(host) && !strings.ContainsAny(host, "* ,") &&
+		!strings.Contains(host, "::") && PublicTLD(host)
+}
+
+// PublicTLD reports whether the last label of a hostname is a top-level domain
+// a public CA will issue under: one in the ICANN section of the public suffix
+// list. Ports are ignored; a trailing dot is tolerated.
+func PublicTLD(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if i := strings.LastIndex(host, ":"); i != -1 && !strings.Contains(host[i+1:], ".") {
+		host = host[:i]
+	}
+	tld := host
+	if i := strings.LastIndex(host, "."); i != -1 {
+		tld = host[i+1:]
+	}
+	if tld == "" || tld == host && !strings.Contains(host, ".") && len(host) > 0 {
+		// a bare label ("intranet") is a TLD by itself and never a public name
+		return false
+	}
+	// .arpa is ICANN's but infrastructure only (home.arpa, reverse DNS)
+	if tld == "arpa" {
+		return false
+	}
+	_, icann := publicsuffix.PublicSuffix(tld)
+	return icann
 }
 
 // automaticMode is the HTTPS mode of a hostname no explicit zone covers. It is

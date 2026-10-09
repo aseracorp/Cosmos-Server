@@ -67,7 +67,7 @@ func TestGetCertificatePerZone(t *testing.T) {
 		return &cert
 	}
 	primaryCert = load("node-bundle")
-	secondaryCert = load("self-signed")
+	secondaryCert = load("self-signed", "reg.10-0-0-1.sslip.io")
 	t.Cleanup(func() {
 		primaryCert, secondaryCert = nil, nil
 		zoneCertStore.Store(map[string]loadedZoneCert{})
@@ -90,14 +90,15 @@ func TestGetCertificatePerZone(t *testing.T) {
 	loadZoneCertStore()
 
 	cases := map[string]string{
-		"app.domain.com":     "zone-domain.com",
-		"domain.com":         "zone-domain.com",
-		"x.deep.domain.com":  "node-bundle", // not covered by the zone certificate yet
-		"nas.lan.domain.com": "self-signed",
-		"app.pending.org":    "node-bundle", // zone certificate not issued yet
-		"other.net":          "node-bundle",
-		"192.168.1.10":       "self-signed",
-		"cosmos.local":       "self-signed",
+		"app.domain.com":        "zone-domain.com",
+		"domain.com":            "zone-domain.com",
+		"x.deep.domain.com":     "node-bundle", // not covered by the zone certificate yet
+		"nas.lan.domain.com":    "self-signed",
+		"app.pending.org":       "node-bundle", // zone certificate not issued yet
+		"other.net":             "node-bundle",
+		"reg.10-0-0-1.sslip.io": "self-signed", // Let's Encrypt could not certify it, only the self-signed one names it
+		"192.168.1.10":          "self-signed",
+		"cosmos.local":          "self-signed",
 	}
 	for host, want := range cases {
 		if got := servedName(t, host); got != want {

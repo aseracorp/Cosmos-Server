@@ -73,6 +73,10 @@ type NodeHeartbeat struct {
 	// Draining is set while a restart waits for this node's running jobs:
 	// the leader must not hand it new CI builds (see utils.PlanRestart).
 	Draining bool `json:"draining,omitempty"`
+	// Arch is the CPU architecture; Platforms the container platforms the
+	// node can build for (native plus QEMU-emulated), for the CI runners page.
+	Arch      string   `json:"arch,omitempty"`
+	Platforms []string `json:"platforms,omitempty"`
 }
 
 // atomic: written under natsStartMutex, but read lock-free by status/ping paths
@@ -1291,6 +1295,7 @@ func MasterNATSClientRouter() {
 
 		pro.SetRegistryClusterHandles(RegistryClusterHandles)
 		pro.SetRegistryNodeProvider(RegistryNodeInfo)
+		pro.SetCIClusterDomainProvider(ClusterDomain)
 
 		pro.SetStateClusterHandles(StateClusterHandles)
 		pro.StartStateMirror()

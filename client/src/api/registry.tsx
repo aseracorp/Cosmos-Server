@@ -42,6 +42,9 @@ export interface RegistryStatus {
   type: RegistryType;
   storage: RegistryStorage;
   quotaBytes: number;
+  // Set on a registry a feature created for itself (kind "ci": the CI artifact store).
+  managedByKind?: string;
+  managedByName?: string;
   // The endpoint. Empty host for a static registry: its sites carry the URLs.
   host: string;
   internal: boolean;

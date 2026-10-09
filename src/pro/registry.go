@@ -73,6 +73,19 @@ type RegistryInstance struct {
 	// Route is the user-facing half of the serving route; identity fields are forced at render (BuildRegistryRoute).
 	Route utils.ProxyRouteConfig `json:"route" validate:"-"`
 
+	// IndexDB is the managed database instance holding this registry's package
+	// index, IndexDatabase the logical database on it. The SeaweedFS filer's
+	// instance for a managed-storage registry, a dedicated instance
+	// (RegistryIndexDBName) otherwise. Set at creation, never changed.
+	IndexDB       string `json:"indexDB,omitempty"`
+	IndexDatabase string `json:"indexDatabase,omitempty"`
+
+	// ManagedByKind / ManagedByName mark a registry a feature created for
+	// itself (kind "ci", name "artifacts": the CI artifact store). Such a
+	// registry cannot be deleted by hand.
+	ManagedByKind string `json:"managedByKind,omitempty"`
+	ManagedByName string `json:"managedByName,omitempty"`
+
 	// Status: provisioning -> ready; deleting during teardown.
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"createdAt"`

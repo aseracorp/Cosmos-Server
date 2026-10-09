@@ -3,6 +3,7 @@ package constellation
 import (
 	"encoding/json"
 	"github.com/nats-io/nats.go"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,9 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/azukaar/cosmos-server/src/dnsrecords"
 	"github.com/azukaar/cosmos-server/src/docker"
 	"github.com/azukaar/cosmos-server/src/pro"
-	"github.com/azukaar/cosmos-server/src/dnsrecords"
 	"github.com/azukaar/cosmos-server/src/utils"
 )
 
@@ -501,6 +502,8 @@ func ClientHeartbeatInit() {
 					MonitoringOn:              res.MonitoringOn,
 					Tags:                      device.Tags,
 					Draining:                  utils.RestartPlanned(),
+					Arch:                      runtime.GOARCH,
+					Platforms:                 utils.BuildPlatforms(),
 				}
 
 				heartbeatData, err := json.Marshal(heartbeat)

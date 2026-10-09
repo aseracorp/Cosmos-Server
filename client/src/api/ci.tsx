@@ -4,9 +4,37 @@ import wrap, { type ApiResponse, type ApiFetch } from './wrap';
 // push becomes a build run by a node; the artifact (image, static site, function
 // package) is deployed through the project's deploy rule or the repo's cosmos.json.
 
+// A git connection: credentials shared by projects (one token per provider or
+// self-hosted instance). The token is write-only.
+export interface CIGitConnection {
+  name: string;
+  description?: string;
+  provider: 'github' | 'gitlab' | 'gitea' | 'bitbucket' | 'git' | string;
+  host?: string;
+  apiUrl?: string;
+  // Write-only: the API answers "****" when set.
+  token?: string;
+  username?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  // Filled by the server: the projects using it.
+  projects?: string[];
+}
+
+// A repository a connection can reach.
+export interface CIRepository {
+  fullName: string;
+  url: string;
+  defaultBranch?: string;
+  private: boolean;
+  description?: string;
+}
+
 export interface CISource {
   provider: 'github' | 'gitlab' | 'gitea' | 'bitbucket' | 'git' | string;
   repoUrl: string;
+  // Name of a CIGitConnection; when set, token and username are ignored.
+  connection?: string;
   apiUrl?: string;
   // Write-only: the API answers "****" when set.
   token?: string;
@@ -26,6 +54,8 @@ export interface CIBuildSettings {
 }
 
 export interface CIRegistryTarget {
+  // Cap on the project's stored file artifacts, in bytes (0: the default of 4 GiB).
+  artifactQuotaBytes?: number;
   registry?: string;
   image?: string;
   staticRegistry?: string;
@@ -37,6 +67,8 @@ export interface CIEnvironment {
   deployment?: string;
   host?: string;
   autoDeploy: boolean;
+  // Variables set on the deployed application for this environment only.
+  env?: Record<string, string>;
 }
 
 export interface CIDeployTemplate {
@@ -175,6 +207,31 @@ export interface CIDeployResult {
   error?: string;
 }
 
+// One unit of work of a build: a cosmos.json `builds` entry, run on one
+// node. A build without a builds map has a single job named "build".
+export interface CIJob {
+  name: string;
+  status: 'queued' | 'running' | 'success' | 'failed' | 'canceled' | 'skipped' | string;
+  node?: string;
+  needs?: string[];
+  tags?: string[];
+  strategy?: string;
+  rootDir?: string;
+  platform?: string;
+  output?: 'image' | 'site' | 'package' | 'none' | string;
+  queuedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  heartbeatAt?: string;
+  durationMs?: number;
+  steps: CIBuildStep[];
+  // The job's declared output, and the files it declared.
+  artifact?: CIArtifact;
+  artifacts?: CIArtifactFile[];
+  error?: string;
+  warnings?: string[];
+}
+
 export interface CIBuild {
   project: string;
   number: number;
@@ -188,7 +245,10 @@ export interface CIBuild {
   finishedAt?: string;
   heartbeatAt?: string;
   durationMs?: number;
+  // The build's own steps (prepare, deploy); the work is in jobs.
   steps: CIBuildStep[];
+  jobs?: CIJob[];
+  // The artifact the deploy stage used (the one job that produced one).
   artifact?: CIArtifact;
   deployment?: CIDeployResult;
   environment?: string;
@@ -206,6 +266,8 @@ export interface CIDetection {
   woodpeckerFile?: string;
   cosmos?: any;
   cosmosRaw?: string;
+  // The jobs a cosmos.json `builds` map declares, dependencies first.
+  builds?: string[];
   railpackProviders?: string[];
   folders?: string[];
   files?: string[];
@@ -223,6 +285,31 @@ export interface CIRunner {
   max: number;
   buildkitd: string;
   reachable: boolean;
+  arch?: string;
+  // Container platforms the node can build for: its own, then the emulated ones.
+  platforms?: string[];
+}
+
+// One declared file artifact a job stored in the CI artifact registry.
+export interface CIArtifactFile {
+  name: string;
+  path: string;
+  file: string;
+  digest: string;
+  size: number;
+}
+
+export interface CICopyRequest {
+  from: string;
+  secrets?: boolean;
+  buildEnv?: boolean;
+  runtimeEnv?: boolean;
+}
+
+export interface CICopyResult {
+  secrets: number;
+  buildEnv: number;
+  runtimeEnv: number;
 }
 
 export interface CIStepLogs {
@@ -291,13 +378,47 @@ export default function createCIAPI(apiFetch: ApiFetch) {
     return wrap(apiFetch(build(name, number) + '/' + act, { method: 'POST', headers: json }));
   }
 
-  function logs(name: string, number: number, step: number, from: number): Promise<ApiResponse<CIStepLogs>> {
-    return wrap(apiFetch(build(name, number) + '/logs?step=' + step + '&from=' + from, { method: 'GET', headers: json }));
+  // job is the job the step belongs to; empty for the build's own steps.
+  function logs(name: string, number: number, step: number, from: number, job?: string): Promise<ApiResponse<CIStepLogs>> {
+    return wrap(apiFetch(build(name, number) + '/logs?step=' + step + '&from=' + from + (job ? '&job=' + encodeURIComponent(job) : ''), { method: 'GET', headers: json }));
   }
 
   function runners(): Promise<ApiResponse<CIRunner[]>> {
     return wrap(apiFetch(base + '/runners', { method: 'GET', headers: json }));
   }
 
-  return { list, get, create, update, remove, webhook, detect, builds, allBuilds, run, getBuild, removeBuild, action, logs, runners };
+  function copyFrom(name: string, req: CICopyRequest): Promise<ApiResponse<CICopyResult>> {
+    return wrap(apiFetch(project(name) + '/copy', { method: 'POST', headers: json, body: JSON.stringify(req) }));
+  }
+
+  const connection = (name: string) => base + '/connections/' + encodeURIComponent(name);
+
+  function connections(): Promise<ApiResponse<CIGitConnection[]>> {
+    return wrap(apiFetch(base + '/connections', { method: 'GET', headers: json }));
+  }
+
+  function getConnection(name: string): Promise<ApiResponse<CIGitConnection>> {
+    return wrap(apiFetch(connection(name), { method: 'GET', headers: json }));
+  }
+
+  function createConnection(values: Partial<CIGitConnection>): Promise<ApiResponse<CIGitConnection>> {
+    return wrap(apiFetch(base + '/connections', { method: 'POST', headers: json, body: JSON.stringify(values) }));
+  }
+
+  function updateConnection(name: string, values: Partial<CIGitConnection>): Promise<ApiResponse<CIGitConnection>> {
+    return wrap(apiFetch(connection(name), { method: 'PUT', headers: json, body: JSON.stringify(values) }));
+  }
+
+  function removeConnection(name: string): Promise<ApiResponse> {
+    return wrap(apiFetch(connection(name), { method: 'DELETE', headers: json }));
+  }
+
+  function connectionRepos(name: string, q?: string): Promise<ApiResponse<CIRepository[]>> {
+    return wrap(apiFetch(connection(name) + '/repos' + (q ? '?q=' + encodeURIComponent(q) : ''), { method: 'GET', headers: json }));
+  }
+
+  return {
+    list, get, create, update, remove, webhook, detect, builds, allBuilds, run, getBuild, removeBuild, action, logs, runners, copyFrom,
+    connections, getConnection, createConnection, updateConnection, removeConnection, connectionRepos,
+  };
 }

@@ -13,7 +13,8 @@ import (
 type CIDetectRequest struct {
 	Source CISource        `json:"source"`
 	Build  CIBuildSettings `json:"build"`
-	// Project names an existing project whose stored git token is used when Source.Token is empty.
+	// Project names an existing project whose stored git credentials are used when Source has
+	// neither a connection nor a token.
 	Project string `json:"project,omitempty"`
 }
 
@@ -227,6 +228,7 @@ func CIBuildActionRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWM
 // @Security BearerAuth
 // @Param name path string true "CI project name"
 // @Param number path int true "Build number"
+// @Param job query string false "Job name (empty: the build's own steps)"
 // @Param step query int false "Step index"
 // @Param from query int false "First chunk to return"
 // @Success 200 {object} utils.APIResponse
@@ -238,7 +240,8 @@ func CIBuildLogsRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMut
 
 // CIRunnersRoute godoc
 // @Summary List the CI build capacity of the cluster
-// @Description Returns every node with its running builds and buildkitd state (Pro feature)
+// @Description Returns every node with its running jobs, buildkitd state, architecture and the
+// @Description platforms it can build for (native and emulated) (Pro feature)
 // @Tags ci
 // @Produce json
 // @Security BearerAuth
@@ -265,7 +268,8 @@ func CIWebhookRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex
 
 // ciGetBuildRoute godoc
 // @Summary Get one build of a CI project
-// @Description Returns the build with its trigger, steps, artifacts and deploy result (Pro feature)
+// @Description Returns the build with its trigger, its own steps (prepare, deploy), its jobs with their
+// @Description steps and artifacts, and the deploy result (Pro feature)
 // @Tags ci
 // @Produce json
 // @Security BearerAuth
@@ -280,7 +284,8 @@ func ciGetBuildRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMute
 
 // ciDeleteBuildRoute godoc
 // @Summary Delete one build of a CI project
-// @Description Removes the build record and its logs. Refused while the build is queued or running: cancel it first (Pro feature).
+// @Description Removes the build record, its logs and its stored artifacts. Refused while the build is
+// @Description queued or running: cancel it first (Pro feature).
 // @Tags ci
 // @Produce json
 // @Security BearerAuth
@@ -289,6 +294,153 @@ func ciGetBuildRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMute
 // @Success 200 {object} utils.APIResponse
 // @Router /api/constellation/ci/projects/{name}/builds/{number} [delete]
 func ciDeleteBuildRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// CICopyRequest is the body of the copy endpoint: what to take from another
+// project. Copied entries replace same-named ones; the rest is kept.
+type CICopyRequest struct {
+	// From is the project to copy from.
+	From string `json:"from"`
+	// Secrets copies the project secrets, values and PR availability included.
+	Secrets bool `json:"secrets"`
+	// BuildEnv copies the build-time environment (build.env).
+	BuildEnv bool `json:"buildEnv"`
+	// RuntimeEnv copies the runtime environment of the deploy template (deploy.template.env).
+	RuntimeEnv bool `json:"runtimeEnv"`
+}
+
+// CICopyResult counts what was copied.
+type CICopyResult struct {
+	Secrets    int `json:"secrets"`
+	BuildEnv   int `json:"buildEnv"`
+	RuntimeEnv int `json:"runtimeEnv"`
+}
+
+// CIGitConnectionView is a connection as the API returns it: redacted, plus
+// the projects using it.
+type CIGitConnectionView struct {
+	CIGitConnection
+	Projects []string `json:"projects"`
+}
+
+// CIProjectCopyRoute godoc
+// @Summary Copy secrets and environment variables from another CI project
+// @Description Copies the chosen sets (secrets, build env, runtime env) of the source project onto this one.
+// @Description Same-named entries are replaced, the others kept. Secret values never leave the server (Pro feature).
+// @Tags ci
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Project name (destination)"
+// @Param body body CICopyRequest true "What to copy and from where"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/ci/projects/{name}/copy [post]
+func CIProjectCopyRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// CIConnectionsRoute lists (GET) or creates (POST) git connections.
+func CIConnectionsRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// ciListConnectionsRoute godoc
+// @Summary List git connections
+// @Description Returns every git connection (shared credentials) with its token redacted and the projects using it (Pro feature)
+// @Tags ci
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/ci/connections [get]
+func ciListConnectionsRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// ciCreateConnectionRoute godoc
+// @Summary Create a git connection
+// @Description Stores a set of git credentials (provider, host, token) that projects can share
+// @Description instead of carrying their own token (Pro feature).
+// @Tags ci
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body CIGitConnection true "Connection to create"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/ci/connections [post]
+func ciCreateConnectionRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// CIConnectionsIdRoute reads (GET), replaces (PUT) or deletes (DELETE) a
+// connection.
+func CIConnectionsIdRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// ciGetConnectionRoute godoc
+// @Summary Get one git connection
+// @Description Returns the connection with its token redacted and the projects using it (Pro feature)
+// @Tags ci
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Connection name"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/ci/connections/{name} [get]
+func ciGetConnectionRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// ciUpdateConnectionRoute godoc
+// @Summary Update a git connection
+// @Description Replaces the connection. An empty token keeps the stored one (write-only).
+// @Description Every project on the connection uses the new credentials from its next build (Pro feature).
+// @Tags ci
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Connection name"
+// @Param body body CIGitConnection true "Connection to store"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/ci/connections/{name} [put]
+func ciUpdateConnectionRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// ciDeleteConnectionRoute godoc
+// @Summary Delete a git connection
+// @Description Removes the connection. Refused while a project uses it (Pro feature)
+// @Tags ci
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Connection name"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/ci/connections/{name} [delete]
+func ciDeleteConnectionRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
+	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
+	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
+}
+
+// CIConnectionReposRoute godoc
+// @Summary List the repositories a git connection can reach
+// @Description Asks the provider which repositories the connection's token can access, most recently
+// @Description updated first, and filters them by ?q=. Plain git connections cannot list (Pro feature).
+// @Tags ci
+// @Produce json
+// @Security BearerAuth
+// @Param name path string true "Connection name"
+// @Param q query string false "Filter on the repository name"
+// @Success 200 {object} utils.APIResponse
+// @Router /api/constellation/ci/connections/{name}/repos [get]
+func CIConnectionReposRoute(w http.ResponseWriter, req *http.Request, lock *sync.RWMutex, js nats.JetStreamContext) {
 	utils.Error("This is a pro and is not currently available on your server. Please upgrade to Cosmos Pro to access this feature.", nil)
 	utils.HTTPError(w, "This feature is only available in Cosmos Pro", http.StatusForbidden, "PRO001")
 }

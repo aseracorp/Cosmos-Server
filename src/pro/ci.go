@@ -19,6 +19,12 @@ func StartCIScheduler() {
 	// Pro feature stub.
 }
 
+// SetCIClusterDomainProvider is the exported setter, same pattern as
+// SetRegistryNodeProvider.
+func SetCIClusterDomainProvider(f func() string) {
+	// Pro feature stub.
+}
+
 // SetCIMetricPusher wires the metrics sink for CI counters.
 func SetCIMetricPusher(f func(key string, value int, label, unit, object, setOperation, agglo string)) {
 	// Pro feature stub.
@@ -31,15 +37,57 @@ func CIImagePullAuth(host string) (string, string) {
 }
 
 // CISource is where the code comes from.
+// CIGitConnection is a set of git credentials shared by projects: one token
+// per provider (or per self-hosted instance) instead of one per repository.
+// A project names it in CISource.Connection; its token, username and API
+// URL then stand in for the project's own.
+type CIGitConnection struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// Provider is one of github, gitlab, gitea, bitbucket or git.
+	Provider string `json:"provider"`
+	// Host is the git host the token is valid for (github.com,
+	// git.example.com). The UI offers the connection for repositories on
+	// that host; empty matches the provider's public host.
+	Host string `json:"host,omitempty"`
+	// APIURL overrides the provider API base for self-hosted instances;
+	// empty derives it from the repository URL.
+	APIURL string `json:"apiUrl,omitempty"`
+	// Token authenticates clones and provider API calls. Write-only
+	// through the API: reads answer "****" when set.
+	Token string `json:"token,omitempty"`
+	// Username pairs with Token for providers that need one (Bitbucket app
+	// passwords, plain git basic auth). Defaults per provider.
+	Username  string    `json:"username,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// CIRepository is one repository a connection can reach.
+type CIRepository struct {
+	// FullName is owner/repo (groups included on GitLab).
+	FullName string `json:"fullName"`
+	// URL is the https clone URL.
+	URL           string `json:"url"`
+	DefaultBranch string `json:"defaultBranch,omitempty"`
+	Private       bool   `json:"private"`
+	Description   string `json:"description,omitempty"`
+}
+
 type CISource struct {
 	Provider string `json:"provider"`
 	// RepoURL is the https clone URL (https://github.com/owner/repo[.git]).
 	RepoURL string `json:"repoUrl"`
+	// Connection names a CIGitConnection whose credentials this project
+	// uses. When set, Token and Username below are ignored (and cleared on
+	// save); APIURL still applies when given, else the connection's does.
+	Connection string `json:"connection,omitempty"`
 	// APIURL overrides the provider API base for self-hosted GitLab / Gitea /
 	// GitHub Enterprise; empty derives it from RepoURL.
 	APIURL string `json:"apiUrl,omitempty"`
 	// Token authenticates clones and provider API calls (webhook creation,
-	// commit statuses, collaborator checks). Write-only through the API.
+	// commit statuses, collaborator checks) for a project without a
+	// connection. Write-only through the API.
 	Token string `json:"token,omitempty"`
 	// Username pairs with Token for providers that need one (Bitbucket app
 	// passwords, plain git basic auth). Defaults per provider.
@@ -67,6 +115,8 @@ type CIBuildSettings struct {
 
 // CIRegistryTarget is where artifacts go.
 type CIRegistryTarget struct {
+	// ArtifactQuotaBytes caps the project's stored file artifacts (0: the default of 4 GiB).
+	ArtifactQuotaBytes int64 `json:"artifactQuotaBytes,omitempty"`
 	// Registry: the docker registry to push to (its host prefixes the image); Image: repository name (default: project name).
 	Registry string `json:"registry,omitempty"`
 	Image    string `json:"image,omitempty"`
@@ -85,6 +135,11 @@ type CIEnvironment struct {
 	// Host is the route hostname the target gets when CI creates it.
 	Host       string `json:"host,omitempty"`
 	AutoDeploy bool   `json:"autoDeploy"`
+	// Env sets or overrides environment variables of the deployed
+	// application for this environment only: the service the UI template
+	// creates, or the cosmos.json services that take the artifact. Values
+	// may use the build variables and the project secrets (${NAME}).
+	Env map[string]string `json:"env,omitempty"`
 }
 
 // CIDeployTemplate is used when CI has to CREATE the deployment (first deploy).

@@ -106,15 +106,15 @@ func TestHostHTTPSMode(t *testing.T) {
 	}
 
 	cases := map[string]string{
-		"app.domain.com":     "LETSENCRYPT",
-		"nas.lan.domain.com": "SELFSIGNED",
-		"www.own.org":        "PROVIDED",
-		"app.plain.net:8080": "DISABLED",
-		"x.unset.io":         "LETSENCRYPT",
-		"automatic.example":  "LETSENCRYPT",
-		"nas.local":          "SELFSIGNED",
-		"192.168.1.10":       "SELFSIGNED",
-		"localhost":          "SELFSIGNED",
+		"app.domain.com":        "LETSENCRYPT",
+		"nas.lan.domain.com":    "SELFSIGNED",
+		"www.own.org":           "PROVIDED",
+		"app.plain.net:8080":    "DISABLED",
+		"x.unset.io":            "LETSENCRYPT",
+		"automatic.example.com": "LETSENCRYPT",
+		"nas.local":             "SELFSIGNED",
+		"192.168.1.10":          "SELFSIGNED",
+		"localhost":             "SELFSIGNED",
 	}
 	for host, want := range cases {
 		if got, _ := HostHTTPSMode(config, host); got != want {
@@ -132,7 +132,7 @@ func TestHostHTTPSMode(t *testing.T) {
 		if got, _ := HostHTTPSMode(config, "app.domain.com"); got != "LETSENCRYPT" {
 			t.Errorf("server %s: the zone must decide, got %s", legacy, got)
 		}
-		if got, _ := HostHTTPSMode(config, "automatic.example"); got != legacy {
+		if got, _ := HostHTTPSMode(config, "automatic.example.com"); got != legacy {
 			t.Errorf("server %s: a hostname without a zone keeps it until migrated, got %s", legacy, got)
 		}
 	}
@@ -513,5 +513,34 @@ func TestGetHostCertificate(t *testing.T) {
 	config.HTTPConfig.HTTPSCertificateMode = "DISABLED"
 	if got := GetHostCertificate(config, "app.domain.com"); got.Source != "none" {
 		t.Errorf("HTTP-only server: got %s, want none", got.Source)
+	}
+}
+
+// A name under a TLD that does not exist can never be certified by a public
+// CA; it is self-signed by rule, like .local, instead of being ordered and
+// refused on every restart.
+func TestPublicTLD(t *testing.T) {
+	for host, want := range map[string]bool{
+		"app.example.com":      true,
+		"node-1.cluster.io":    true,
+		"app.example.com:8443": true,
+		"app.example.com.":     true,
+		"registry.test":        false,
+		"node-1.constellation": false,
+		"nas.lan":              false,
+		"git.internal":         false,
+		"box.home.arpa":        false,
+		"intranet":             false,
+		"":                     false,
+	} {
+		if got := PublicTLD(host); got != want {
+			t.Errorf("PublicTLD(%q) = %v, want %v", host, got, want)
+		}
+	}
+	if letsEncryptable("registry.test") || !letsEncryptable("registry.example.com") {
+		t.Fatal("letsEncryptable must follow PublicTLD")
+	}
+	if got := LetsEncryptValidOnly([]string{"a.test", "b.example.org", "10.0.0.1"}, false); len(got) != 1 || got[0] != "b.example.org" {
+		t.Fatalf("LetsEncryptValidOnly = %v", got)
 	}
 }

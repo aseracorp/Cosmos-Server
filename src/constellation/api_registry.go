@@ -12,11 +12,11 @@ import (
 // Thin bridges keeping `pro` independent of `constellation`; js is read at call time so reconnects are picked up.
 
 func RegistryRoute(w http.ResponseWriter, req *http.Request) {
-	pro.RegistryRoute(w, req, &clientConfigLock, js)
+	pro.RegistryRoute(w, req, &clientConfigLock, js, nc)
 }
 
 func RegistryIdRoute(w http.ResponseWriter, req *http.Request) {
-	pro.RegistryIdRoute(w, req, &clientConfigLock, js)
+	pro.RegistryIdRoute(w, req, &clientConfigLock, js, nc)
 }
 
 func RegistrySettingsRoute(w http.ResponseWriter, req *http.Request) {

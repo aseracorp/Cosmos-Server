@@ -21,6 +21,22 @@ func CIProjectWebhookRoute(w http.ResponseWriter, req *http.Request) {
 	pro.CIProjectWebhookRoute(w, req, &clientConfigLock, js)
 }
 
+func CIProjectCopyRoute(w http.ResponseWriter, req *http.Request) {
+	pro.CIProjectCopyRoute(w, req, &clientConfigLock, js)
+}
+
+func CIConnectionsRoute(w http.ResponseWriter, req *http.Request) {
+	pro.CIConnectionsRoute(w, req, &clientConfigLock, js)
+}
+
+func CIConnectionsIdRoute(w http.ResponseWriter, req *http.Request) {
+	pro.CIConnectionsIdRoute(w, req, &clientConfigLock, js)
+}
+
+func CIConnectionReposRoute(w http.ResponseWriter, req *http.Request) {
+	pro.CIConnectionReposRoute(w, req, &clientConfigLock, js)
+}
+
 func CIDetectRoute(w http.ResponseWriter, req *http.Request) {
 	pro.CIDetectRoute(w, req, &clientConfigLock, js)
 }
