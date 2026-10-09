@@ -298,7 +298,7 @@ const MarketPage = () => {
           <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(openedApp?.translation?.[i18n?.resolvedLanguage]?.longDescription || openedApp?.translation?.[i18n?.resolvedLanguage.substr?.(0,2)]?.longDescription || openedApp.longDescription) }}></div>
 
           <DockerComposeImport installerInit defaultName={openedApp.name} dockerComposeInit={openedApp.compose} secrets={openedApp.secrets} />
-
+          </>}
         </Stack>
       </Stack>
     </Box>}
