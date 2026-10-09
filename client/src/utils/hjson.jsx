@@ -12,16 +12,73 @@ import Hjson from 'hjson';
 // separators, so the output is unambiguous and reads like JSON with unquoted
 // keys. Strings containing #, //, : or escaped quotes stay safely inside
 // quotes and are never misread as comments or structure.
+//
+// Multiline: strings containing real newlines (but no carriage returns) are
+// displayed as HJSON ''' block strings. HJSON's own multiline would strip \r
+// (corrupting CRLF data), so we only convert the safe subset ourselves and
+// leave \r-containing strings escaped on a single line.
+
+// Rewrite HJSON string values that contain real newlines (but no carriage
+// returns) into HJSON multiline ''' ... ''' blocks, preserving indentation.
+// Strings that contain \r are left as escaped single-line strings (HJSON
+// would lose the \r when parsing ''' blocks, so we never emit them).
+// indent = indent of the opening ''' token. contentIndent = indent of the
+// body lines. HJSON strips the body's common indent, so contentIndent must
+// make each body line exactly contentIndent wide for a clean round-trip.
+const toMultilineBlock = (indent, value, contentIndent) => {
+  const lines = value.split('\n');
+  const body = lines.map((l) => (contentIndent || indent) + (l || '')).join('\n');
+  return `${indent}'''\n${body}\n${indent}'''`;
+};
+
+// Rewrite values containing real newlines (but no carriage returns) into
+// HJSON multiline ''' ... ''' blocks. Handles both:
+//   key: "a\nb"            (object value)
+//   "a\nb"                 (array element, on its own line)
+// CRLF strings (\r) are left escaped, since HJSON strips \r in ''' blocks.
+// This pass expects the quotes:'always' + separator:true output of
+// Hjson.stringify, i.e. every string value is double-quoted and every
+// key/element line ends with an optional trailing comma.
+const postProcessMultiline = (hjson) => {
+  let out = hjson.replace(
+    /^(\s*)([^:\n]+):\s*("(?:(?:\\.)|[^"\\])*")(,?)$/gm,
+    (match, indent, key, quoted, comma) => {
+      let value;
+      try { value = JSON.parse(quoted); } catch (e) { return match; }
+      if (typeof value !== 'string' || !value.includes('\n') || value.includes('\r')) {
+        return match;
+      }
+      const block = toMultilineBlock(indent, value, indent + '  ');
+      return `${indent}${key}:${block}${comma}`;
+    }
+  );
+  // array element: a double-quoted string alone on its line.
+  out = out.replace(
+    /^(\s*)("(?:(?:\\.)|[^"\\])*")(,?)$/gm,
+    (match, indent, quoted, comma) => {
+      let value;
+      try { value = JSON.parse(quoted); } catch (e) { return match; }
+      if (typeof value !== 'string' || !value.includes('\n') || value.includes('\r')) {
+        return match;
+      }
+      return `${toMultilineBlock(indent, value, indent)}${comma}`;
+    }
+  );
+  return out;
+};
 
 // Render a JS object as pretty HJSON.
 export const toHjson = (obj) => {
   try {
-    return Hjson.stringify(obj, {
-      space: 2,
-      quotes: 'always',
-      separator: true,
-      bracesSameLine: true,
-    });
+    return postProcessMultiline(
+      Hjson.stringify(obj, {
+        space: 2,
+        quotes: 'always',
+        separator: true,
+        bracesSameLine: true,
+        multiline: 'off',
+      })
+    );
   } catch (e) {
     // Never break the UI on a malformed payload — fall back to JSON.
     return JSON.stringify(obj, null, 2);
