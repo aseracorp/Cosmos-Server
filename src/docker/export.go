@@ -277,25 +277,61 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 			}(),
 
 			// Volumes
+			//
+			// The volume list is intentionally merged from BOTH sources:
+			//
+			//  1. HostConfig.Mounts (mount.Mount) — the canonical set the user
+			//     (or Cosmos) explicitly defined. Mount.Mount is preferred for
+			//     its SubPath field, which the top-level MountPoint struct
+			//     lacks.
+			//  2. The top-level Mounts (MountPoint) — the daemon's resolved
+			//     mount list. This is the ONLY place anonymous volumes
+			//     declared by the image's Dockerfile VOLUME directive appear
+			//     when the container also has user-defined mounts: Docker does
+			//     not put image-declared anonymous volumes into
+			//     HostConfig.Mounts. Without the merge they would silently
+			//     vanish from the export (and thus from the compose editor),
+			//     making it impossible to see which images create anonymous
+			//     volumes.
+			//
+			// MountPoint.Name is the authoritative volume name for volume
+			// mounts (both named and anonymous), so it is used verbatim;
+			// Source path parsing is only a fallback for engines that leave
+			// Name empty. Entries are keyed by Target so a mount that appears
+			// in both lists is only exported once.
 			Volumes: func() []CosmosMount {
 					mounts := []CosmosMount{}
-					// Use HostConfig.Mounts (mount.Mount) rather than the
-					// top-level Mounts (MountPoint): the MountPoint struct has
-					// no SubPath field, so the daemon-reported volume subpath
-					// would be silently dropped from the export.
 					hostMounts := []mount.Mount{}
 					if detailedInfo.HostConfig != nil {
 						hostMounts = detailedInfo.HostConfig.Mounts
 					}
-					// Fall back to ContainerInspectWithRaw if HostConfig.Mounts
-					// wasn't populated (defensive; it normally is).
-					if len(hostMounts) == 0 && len(detailedInfo.Mounts) > 0 {
+
+					// Primary list: HostConfig.Mounts (keeps SubPath).
+					for _, m := range hostMounts {
+						cm := FromDockerMount(m)
+						mounts = append(mounts, cm)
+						utils.Debug(fmt.Sprintf("ExportContainer mount: type=%s source=%s target=%s subpath=%q readOnly=%v (raw VolumeOptions=%+v)",
+							cm.Type, cm.Source, cm.Target, cm.SubPath, cm.ReadOnly, m.VolumeOptions))
+					}
+
+					// Merge the daemon's resolved top-level Mounts so
+					// image-declared anonymous volumes (which never appear in
+					// HostConfig.Mounts) and any other mounts the daemon
+					// resolved that aren't listed there are not lost.
+					if len(detailedInfo.Mounts) > 0 {
+						byTarget := map[string]CosmosMount{}
+						for _, cm := range mounts {
+							byTarget[cm.Target] = cm
+						}
 						_, rawInspect, rawErr := DockerClient.ContainerInspectWithRaw(DockerContext, containerID, false)
 						subPaths := map[int]string{}
 						if rawErr == nil {
 							subPaths = mountSubPathFromRaw(rawInspect)
 						}
 						for i, m := range detailedInfo.Mounts {
+							if _, exists := byTarget[m.Destination]; exists {
+								continue
+							}
 							cm := CosmosMount{
 								Type:     string(m.Type),
 								Source:   m.Source,
@@ -304,22 +340,20 @@ func ExportContainer(containerID string) (ContainerCreateRequestContainer, error
 								ReadOnly: !m.RW,
 							}
 							if m.Type == mount.TypeVolume {
-								nodata := strings.Split(strings.TrimSuffix(m.Source, "/_data"), "/")
-								cm.Source = nodata[len(nodata)-1]
+								// Prefer the authoritative volume name.
+								if m.Name != "" {
+									cm.Source = m.Name
+								} else {
+									// Fallback: derive the name from the
+									// host path, tolerating either the
+									// "<name>/_data" or "<name>_data" layout.
+									cm.Source = VolumeNameFromSource(m.Source)
+								}
 							}
 							mounts = append(mounts, cm)
+							utils.Debug(fmt.Sprintf("ExportContainer mount (merged from top-level Mounts): type=%s name=%q source=%s target=%s subpath=%q readOnly=%v",
+								cm.Type, m.Name, cm.Source, cm.Target, cm.SubPath, cm.ReadOnly))
 						}
-						return mounts
-					}
-
-					for _, m := range hostMounts {
-						cm := FromDockerMount(m)
-						// For native volume mounts the daemon reports Source as
-						// the durable volume name, so source is already the
-						// compose volume name (no /_data munging).
-						mounts = append(mounts, cm)
-						utils.Debug(fmt.Sprintf("ExportContainer mount: type=%s source=%s target=%s subpath=%q readOnly=%v (raw VolumeOptions=%+v)",
-							cm.Type, cm.Source, cm.Target, cm.SubPath, cm.ReadOnly, m.VolumeOptions))
 					}
 					return mounts
 			}(),
