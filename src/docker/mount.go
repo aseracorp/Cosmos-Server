@@ -158,6 +158,19 @@ func FromDockerMountSlice(mounts []mount.Mount) []CosmosMount {
 	return c
 }
 
+// VolumeNameFromSource derives the volume name from a docker daemon-reported
+// volume source path. The daemon reports the durable data directory as either
+// "<name>/_data" or (older engines) "<name>_data"; the caller should prefer
+// the MountPoint.Name field when available — this is only a fallback.
+func VolumeNameFromSource(source string) string {
+	if source == "" {
+		return ""
+	}
+	clean := strings.TrimRight(strings.TrimSuffix(source, "/_data"), "/")
+	parts := strings.Split(clean, "/")
+	return parts[len(parts)-1]
+}
+
 // EnsureSubpathExists creates the missing parent directories and, when the
 // final subpath component looks like a file (basename contains a dot), the
 // file itself, inside the given mount root (a named volume's _data dir).
