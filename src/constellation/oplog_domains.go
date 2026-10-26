@@ -86,10 +86,14 @@ func init() {
 			if err := json.Unmarshal(state, &p); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.HTTPConfig.AuthPrivateKey = p.AuthPrivateKey
-			config.HTTPConfig.AuthPublicKey = p.AuthPublicKey
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.HTTPConfig.AuthPrivateKey = p.AuthPrivateKey
+				config.HTTPConfig.AuthPublicKey = p.AuthPublicKey
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		// rotating the JWT keypair invalidates live sessions, so only bounce
@@ -121,13 +125,17 @@ func init() {
 			if err := json.Unmarshal(state, &p); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.ConstellationConfig.DNSPort = p.DNSPort
-			config.ConstellationConfig.DNSFallback = p.DNSFallback
-			config.ConstellationConfig.DNSBlockBlacklist = p.DNSBlockBlacklist
-			config.ConstellationConfig.DNSAdditionalBlocklists = p.DNSAdditionalBlocklists
-			config.ConstellationConfig.CustomDNSEntries = p.CustomDNSEntries
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.ConstellationConfig.DNSPort = p.DNSPort
+				config.ConstellationConfig.DNSFallback = p.DNSFallback
+				config.ConstellationConfig.DNSBlockBlacklist = p.DNSBlockBlacklist
+				config.ConstellationConfig.DNSAdditionalBlocklists = p.DNSAdditionalBlocklists
+				config.ConstellationConfig.CustomDNSEntries = p.CustomDNSEntries
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		React: func(old json.RawMessage, new json.RawMessage) {
@@ -154,15 +162,19 @@ func init() {
 			if err := json.Unmarshal(state, &zones); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.HTTPConfig.DNSZones = zones
-			// the certificate of a deleted zone goes with it, on every node
-			for name := range config.HTTPConfig.ZoneCerts {
-				if i := utils.FindZone(zones, name); i == -1 || zones[i].Zone != name {
-					delete(config.HTTPConfig.ZoneCerts, name)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.HTTPConfig.DNSZones = zones
+				// the certificate of a deleted zone goes with it, on every node
+				for name := range config.HTTPConfig.ZoneCerts {
+					if i := utils.FindZone(zones, name); i == -1 || zones[i].Zone != name {
+						delete(config.HTTPConfig.ZoneCerts, name)
+					}
 				}
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
 			}
-			utils.SetBaseMainConfig(config)
 			return nil
 		},
 		// a zone decides which certificate every hostname is served with and who
@@ -185,10 +197,14 @@ func init() {
 			if err := json.Unmarshal(state, &p); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.HTTPConfig.SSLEmail = p.SSLEmail
-			config.HTTPConfig.SSLEmailShared = true
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.HTTPConfig.SSLEmail = p.SSLEmail
+				config.HTTPConfig.SSLEmailShared = true
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		Snapshot: func() (json.RawMessage, error) {
@@ -208,9 +224,13 @@ func init() {
 			if len(certs) == 0 {
 				return nil
 			}
-			config := utils.ReadConfigFromFile()
-			config.HTTPConfig.ZoneCerts = certs
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.HTTPConfig.ZoneCerts = certs
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		// served straight from the store, no restart
@@ -233,9 +253,13 @@ func init() {
 			if err := json.Unmarshal(state, &tokens); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.APITokens = tokens
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.APITokens = tokens
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		Snapshot: func() (json.RawMessage, error) {
@@ -250,9 +274,13 @@ func init() {
 			if err := json.Unmarshal(state, &roles); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.Roles = roles
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.Roles = roles
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		Snapshot: func() (json.RawMessage, error) {
@@ -267,9 +295,13 @@ func init() {
 			if err := json.Unmarshal(state, &clients); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.OpenIDClients = clients
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.OpenIDClients = clients
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		Snapshot: func() (json.RawMessage, error) {
@@ -285,12 +317,16 @@ func init() {
 			if err := json.Unmarshal(state, &p); err != nil {
 				return err
 			}
-			config := utils.ReadConfigFromFile()
-			config.Database.PostgresHost = p.PostgresHost
-			config.Database.PostgresDatabase = p.PostgresDatabase
-			config.Database.PostgresUsername = p.PostgresUsername
-			config.Database.PostgresPassword = p.PostgresPassword
-			utils.SetBaseMainConfig(config)
+			updErr := utils.UpdateConfig(func(config *utils.Config) error {
+				config.Database.PostgresHost = p.PostgresHost
+				config.Database.PostgresDatabase = p.PostgresDatabase
+				config.Database.PostgresUsername = p.PostgresUsername
+				config.Database.PostgresPassword = p.PostgresPassword
+				return nil
+			})
+			if updErr != nil {
+				utils.Error("config update failed", updErr)
+			}
 			return nil
 		},
 		// reconnect only when the connection actually moved
