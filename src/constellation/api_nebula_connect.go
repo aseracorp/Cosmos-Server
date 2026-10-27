@@ -126,15 +126,19 @@ func API_NewConstellation(w http.ResponseWriter, req *http.Request) {
 
 		deviceName := response.DeviceName
 
-		config := utils.ReadConfigFromFile()
-		config.ConstellationConfig.Enabled = true
-		config.ConstellationConfig.ThisDeviceName = deviceName
-		config.ConstellationConfig.ConstellationHostname = request.Hostname
-		config.ConstellationConfig.IPRange = request.IPRange
-		if request.NATSReplicas > 0 && utils.IsPro() {
-			config.ConstellationConfig.NATSReplicas = request.NATSReplicas
+		updErr := utils.UpdateConfig(func(config *utils.Config) error {
+			config.ConstellationConfig.Enabled = true
+			config.ConstellationConfig.ThisDeviceName = deviceName
+			config.ConstellationConfig.ConstellationHostname = request.Hostname
+			config.ConstellationConfig.IPRange = request.IPRange
+			if request.NATSReplicas > 0 && utils.IsPro() {
+				config.ConstellationConfig.NATSReplicas = request.NATSReplicas
+			}
+			return nil
+		})
+		if updErr != nil {
+			utils.Error("config update failed", updErr)
 		}
-		utils.SetBaseMainConfig(config)
 		utils.FBL.AgentMode = false
 
 		// The creator seeds the op-log. In HA there is no JetStream at all until a

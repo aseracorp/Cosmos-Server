@@ -639,9 +639,13 @@ func RunOneTimeJob(job ConfigJob) {
 func AddJobConfig(job utils.CRONConfig) {
 	utils.Log("Adding CRON job to config...")
 
-	config := utils.ReadConfigFromFile()
-	config.CRON[job.Name] = job
-	utils.SetBaseMainConfig(config)
+	updErr := utils.UpdateConfig(func(config *utils.Config) error {
+		config.CRON[job.Name] = job
+		return nil
+	})
+	if updErr != nil {
+		utils.Error("config update failed", updErr)
+	}
 	
 	utils.TriggerEvent(
 		"cosmos.settings",
@@ -659,9 +663,13 @@ func AddJobConfig(job utils.CRONConfig) {
 func RemoveJobConfig(name string) {
 	utils.Log("Removing CRON job from config...")
 
-	config := utils.ReadConfigFromFile()
-	delete(config.CRON, name)
-	utils.SetBaseMainConfig(config)
+	updErr := utils.UpdateConfig(func(config *utils.Config) error {
+		delete(config.CRON, name)
+		return nil
+	})
+	if updErr != nil {
+		utils.Error("config update failed", updErr)
+	}
 	
 	utils.TriggerEvent(
 		"cosmos.settings",

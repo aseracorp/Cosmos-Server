@@ -416,20 +416,24 @@ func ResetNebula() error {
 	// next constellation keeps the formation direct-write path.
 	oplogStreamSeen.Store(false)
 
-	config := utils.ReadConfigFromFile()
-	config.ConstellationConfig.Enabled = false
-	config.ConstellationConfig.DNSDisabled = false
-	config.ConstellationConfig.FirewallBlockedClients = []string{}
-	config.ConstellationConfig.ThisDeviceName = ""
-	config.ConstellationConfig.IPRange = ""
-	config.ConstellationConfig.ConstellationHostname = strings.Join(GetDefaultHostnames(), ",")
-	config.AgentMode = false
+	updErr := utils.UpdateConfig(func(config *utils.Config) error {
+		config.ConstellationConfig.Enabled = false
+		config.ConstellationConfig.DNSDisabled = false
+		config.ConstellationConfig.FirewallBlockedClients = []string{}
+		config.ConstellationConfig.ThisDeviceName = ""
+		config.ConstellationConfig.IPRange = ""
+		config.ConstellationConfig.ConstellationHostname = strings.Join(GetDefaultHostnames(), ",")
+		config.AgentMode = false
 
-	if config.Licence == "" {
-		config.ServerToken = ""
+		if config.Licence == "" {
+			config.ServerToken = ""
+		}
+
+		return nil
+	})
+	if updErr != nil {
+		utils.Error("config update failed", updErr)
 	}
-
-	utils.SetBaseMainConfig(config)
 
 	deviceCacheMux.Lock()
 	cachedCurrentDevice = nil

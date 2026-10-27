@@ -138,12 +138,16 @@ func DeleteJobRoute(w http.ResponseWriter, req *http.Request) {
 		}
 		job := request.Name
 		
-		config := utils.ReadConfigFromFile()
+		updErr := utils.UpdateConfig(func(config *utils.Config) error {
 		
-		// remove config.CRON[job]
-		delete(config.CRON, job)	
+			// remove config.CRON[job]
+			delete(config.CRON, job)	
 
-		utils.SetBaseMainConfig(config)
+			return nil
+		})
+		if updErr != nil {
+			utils.Error("config update failed", updErr)
+		}
 
 		go (func() {
 			InitJobs()
