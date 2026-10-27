@@ -529,27 +529,22 @@ func CreateDefaultConfigFileIfNecessary() bool {
 	return false
 }
 
+// SaveConfigTofile writes config to disk, keeping the Fatal-on-error contract
+// its callers rely on. The write itself is atomic (see WriteConfigFile): a kill
+// or a full disk mid-write used to leave a truncated config file behind, and
+// ReadConfigFromFile calls Fatal on the next start over such a file.
+//
+// ConfigLockInternal is held across CreateDefaultConfigFileIfNecessary and the
+// write so no reader can open a config that is being replaced.
 func SaveConfigTofile(config Config) {
 	ConfigLockInternal.Lock()
 	defer ConfigLockInternal.Unlock()
 
-	configFile := GetConfigFileName()
 	CreateDefaultConfigFileIfNecessary()
 
-	file, err := os.OpenFile(configFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		Fatal("Opening Config File", err)
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	err = encoder.Encode(config)
-	if err != nil {
+	if err := WriteConfigFile(config); err != nil {
 		Fatal("Writing Config File", err)
 	}
-
-	Log("Config file saved.")
 }
 
 func RestartServer(code int) {
