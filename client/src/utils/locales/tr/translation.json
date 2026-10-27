@@ -1114,5 +1114,13 @@
   "mgmt.backup.passwordTitle": "Şifre",
   "sudo.required": "Bu işlevi kullanmak için sağ üstteki düğmeyle Yönetici ayrıcalıklarını etkinleştirin",
   "mgmt.servapps.compose.credentialsRequired": "Compose düzenleyici, konteyner kimlik bilgilerine (çevresel değişkenler, gizli bilgiler) erişim gerektirir. Compose yapılandırmasını görüntülemek ve düzenlemek için sağ üstteki düğmeyle Yönetici ayrıcalıklarını etkinleştirin.",
-  "mgmt.servapps.compose.credentialsDenied": "Compose düzenleyici, konteyner kimlik bilgilerine (çevresel değişkenler, gizli bilgiler) erişim gerektirir. Mevcut rolünüz, kimlik bilgilerini görüntüleme iznine sahip değil."
+  "mgmt.servapps.compose.credentialsDenied": "Compose düzenleyici, konteyner kimlik bilgilerine (çevresel değişkenler, gizli bilgiler) erişim gerektirir. Mevcut rolünüz, kimlik bilgilerini görüntüleme iznine sahip değil.",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

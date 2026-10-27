@@ -1114,5 +1114,13 @@
   "mgmt.backup.passwordTitle": "Mot de passe",
   "sudo.required": "Activez les privilèges d'administrateur avec le bouton en haut à droite pour utiliser cette fonction",
   "mgmt.servapps.compose.credentialsRequired": "L'éditeur Compose nécessite un accès aux identifiants des conteneurs (variables d'environnement, secrets). Veuillez activer les privilèges d'administrateur en utilisant le bouton en haut à droite pour afficher et modifier la configuration Compose.",
-  "mgmt.servapps.compose.credentialsDenied": "L'éditeur Compose nécessite un accès aux identifiants des conteneurs (variables d'environnement, secrets). Votre rôle actuel n'a pas l'autorisation de voir les identifiants."
+  "mgmt.servapps.compose.credentialsDenied": "L'éditeur Compose nécessite un accès aux identifiants des conteneurs (variables d'environnement, secrets). Votre rôle actuel n'a pas l'autorisation de voir les identifiants.",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

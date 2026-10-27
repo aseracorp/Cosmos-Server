@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/azukaar/cosmos-server/src/user"
 	"github.com/azukaar/cosmos-server/src/constellation"
+	"github.com/azukaar/cosmos-server/src/user"
 	"github.com/azukaar/cosmos-server/src/utils"
 	"github.com/go-chi/httprate"
 	"github.com/gorilla/mux"
@@ -139,14 +139,14 @@ func RouterGen(route utils.ProxyRouteConfig, router *mux.Router, destination htt
 			}
 		}
 	}
-	
+
 	if route.UsePathPrefix {
 		if route.PathPrefix != "" && route.PathPrefix[0] != '/' {
 			utils.Error("PathPrefix must start with a /", nil)
 		}
 		origin = origin.PathPrefix(route.PathPrefix)
 	}
-	
+
 	if route.UsePathPrefix && route.StripPathPrefix {
 		if route.PathPrefix != "" && route.PathPrefix[0] != '/' {
 			utils.Error("PathPrefix must start with a /", nil)
@@ -165,14 +165,22 @@ func RouterGen(route utils.ProxyRouteConfig, router *mux.Router, destination htt
 			utils.Error("Unknown filter type: "+route.AddionalFilters[filter].Type, nil)
 		}
 	}
-	
+
 	// host-wildcard ":<port>" routes are restricted at the socket-proxy listener (see SocketProxy.go)
 	if route.UseHost && strings.HasPrefix(route.Host, ":") {
 		destination = utils.RestrictionsAllowLocalHop(route.RestrictToConstellation, route.WhitelistInboundIPs)(destination)
 	} else {
 		destination = utils.Restrictions(route.RestrictToConstellation, route.WhitelistInboundIPs)(destination)
 	}
-	
+
+	// Indexing policy: X-Robots-Tag on everything this route serves. Registered
+	// ahead of the auth gate, the bot filter, the throttles and SmartShield so
+	// the header lands on Cosmos's own 403/429/login responses too — a login
+	// page or an admin app behind a route is exactly what must never be indexed.
+	if IsHTTPRoute(route) {
+		destination = RobotsMiddleware(route)(destination)
+	}
+
 	if route.BlockCommonBots {
 		destination = BotDetectionMiddleware(destination)
 	}
@@ -199,8 +207,7 @@ func RouterGen(route utils.ProxyRouteConfig, router *mux.Router, destination htt
 
 	timeout := route.Timeout
 
-	
-	if(!utils.GetMainConfig().HTTPConfig.AcceptAllInsecureHostname && route.UseHost) {
+	if !utils.GetMainConfig().HTTPConfig.AcceptAllInsecureHostname && route.UseHost {
 		destination = utils.EnsureHostname(destination)
 	}
 

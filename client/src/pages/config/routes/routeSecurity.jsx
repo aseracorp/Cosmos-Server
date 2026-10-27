@@ -36,6 +36,7 @@ const RouteSecurity = ({ routeConfig, config, readOnly = false }) => {
           MaxBandwith: routeConfig.MaxBandwith,
           BlockAPIAbuse: routeConfig.BlockAPIAbuse,
           BlockCommonBots: routeConfig.BlockCommonBots,
+          RobotsPolicy: routeConfig.RobotsPolicy || "",
           AdminOnly: routeConfig.AdminOnly,
           SpoofHostname: routeConfig.SpoofHostname,
           DisableHeaderHardening: routeConfig.DisableHeaderHardening,
@@ -115,6 +116,22 @@ const RouteSecurity = ({ routeConfig, config, readOnly = false }) => {
                       <CosmosCheckbox
                         name="DisableHeaderHardening"
                         label={t('mgmt.urls.edit.basicSecurity.disableHeaderHardeningCheckbox.disableHeaderHardeningLabel')}
+                        formik={formik}
+                      />
+                    </>}
+
+                    {isNotSocketProxy && <>
+                      <CosmosFormDivider title={t('mgmt.urls.edit.basicSecurity.robotsPolicy.label')} />
+
+                      <CosmosSelect
+                        name="RobotsPolicy"
+                        label={t('mgmt.urls.edit.basicSecurity.robotsPolicy.label')}
+                        placeholder={t('mgmt.urls.edit.basicSecurity.robotsPolicy.label')}
+                        options={[
+                          ["", t('mgmt.urls.edit.basicSecurity.robotsPolicy.inherit')],
+                          ["allow", t('mgmt.urls.edit.basicSecurity.robotsPolicy.allow')],
+                          ["block", t('mgmt.urls.edit.basicSecurity.robotsPolicy.block')],
+                        ]}
                         formik={formik}
                       />
                     </>}
