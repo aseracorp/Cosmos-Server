@@ -2878,6 +2878,11 @@ definitions:
         $ref: '#/definitions/utils.ProxyConfig'
       publishMDNS:
         type: boolean
+      robotsPolicy:
+        description: |-
+          RobotsPolicy is the node-wide indexing default: "allow", "block" or
+          empty to inherit the legacy AllowSearchEngine flag.
+        type: string
       selfTLSCert:
         type: string
       selfTLSKey:
@@ -3129,6 +3134,11 @@ definitions:
         type: string
       restrictToConstellation:
         type: boolean
+      robotsPolicy:
+        description: |-
+          RobotsPolicy overrides the node-wide indexing default for this route:
+          "allow", "block" or empty to inherit it.
+        type: string
       skipURLClean:
         type: boolean
       smartShield:

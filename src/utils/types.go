@@ -305,6 +305,9 @@ type HTTPConfig struct {
 	AdvertisedAddress string `json:"AdvertisedAddress,omitempty"`
 	UseForwardedFor bool
 	AllowSearchEngine bool
+	// RobotsPolicy is the node-wide indexing default: "allow", "block" or
+	// empty to inherit the legacy AllowSearchEngine flag.
+	RobotsPolicy string `yaml:"robots_policy,omitempty"`
 	PublishMDNS bool
 	TrustedProxies []string
 } 
@@ -463,6 +466,9 @@ type ProxyRouteConfig struct {
 	SmartShield                SmartShieldPolicy           `yaml:"smart_shield"`
 	Mode                       ProxyMode                   `yaml:"mode"`
 	BlockCommonBots            bool                        `yaml:"block_common_bots"`
+	// RobotsPolicy overrides the node-wide indexing default for this route:
+	// "allow", "block" or empty to inherit it.
+	RobotsPolicy               string                      `yaml:"robots_policy,omitempty"`
 	BlockAPIAbuse              bool                        `yaml:"block_api_abuse"`
 	AcceptInsecureHTTPSTarget  bool                        `yaml:"accept_insecure_https_target"`
 	HideFromDashboard          bool                        `yaml:"hide_from_dashboard"`

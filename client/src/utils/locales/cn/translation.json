@@ -1114,5 +1114,13 @@
   "mgmt.backup.passwordTitle": "密码",
   "sudo.required": "使用右上角的按钮启用管理员权限以使用此功能",
   "mgmt.servapps.compose.credentialsRequired": "Compose 编辑器需要访问容器凭证（环境变量，秘密）。请使用右上角的按钮启用管理员权限以查看和编辑 Compose 配置。",
-  "mgmt.servapps.compose.credentialsDenied": "Compose 编辑器需要访问容器凭证（环境变量，秘密）。您当前的角色没有查看凭证的权限。"
+  "mgmt.servapps.compose.credentialsDenied": "Compose 编辑器需要访问容器凭证（环境变量，秘密）。您当前的角色没有查看凭证的权限。",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

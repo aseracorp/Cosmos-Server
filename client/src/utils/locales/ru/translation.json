@@ -1114,5 +1114,13 @@
   "mgmt.backup.passwordTitle": "Пароль",
   "sudo.required": "Включите привилегии администратора с помощью кнопки в правом верхнем углу, чтобы использовать эту функцию",
   "mgmt.servapps.compose.credentialsRequired": "Редактор Compose требует доступа к учетным данным контейнера (переменные окружения, секреты). Пожалуйста, включите привилегии администратора, используя кнопку в правом верхнем углу, чтобы просматривать и изменять конфигурацию Compose.",
-  "mgmt.servapps.compose.credentialsDenied": "Редактор Compose требует доступа к учетным данным контейнера (переменные окружения, секреты). Ваша текущая роль не имеет разрешения на просмотр учетных данных."
+  "mgmt.servapps.compose.credentialsDenied": "Редактор Compose требует доступа к учетным данным контейнера (переменные окружения, секреты). Ваша текущая роль не имеет разрешения на просмотр учетных данных.",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

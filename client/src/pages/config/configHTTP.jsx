@@ -11,7 +11,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { QuestionCircleOutlined } from '@ant-design/icons';
-import { CosmosCheckbox, CosmosFormDivider, CosmosInputText } from './users/formShortcuts';
+import { CosmosCheckbox, CosmosFormDivider, CosmosInputText, CosmosSelect } from './users/formShortcuts';
 import CountrySelect from '../../components/countrySelect';
 import { isDomain } from '../../utils/indexs';
 import { Trans, useTranslation } from 'react-i18next';
@@ -105,9 +105,15 @@ const ConfigHTTP = ({ formik }) => {
             <Alert severity="info">
               {t('mgmt.config.http.allowSearchIndexCheckbox')}<br />
             </Alert>
-            <CosmosCheckbox
-              label={t('mgmt.config.http.allowSearchIndexCheckbox.allowSearchIndexLabel')}
-              name="AllowSearchEngine"
+            <CosmosSelect
+              name="RobotsPolicy"
+              label={t('mgmt.config.http.robotsPolicySelect.label')}
+              placeholder={t('mgmt.config.http.robotsPolicySelect.label')}
+              options={[
+                ["", t('mgmt.config.http.robotsPolicySelect.inherit')],
+                ["allow", t('mgmt.config.http.robotsPolicySelect.allow')],
+                ["block", t('mgmt.config.http.robotsPolicySelect.block')],
+              ]}
               formik={formik}
             />
           </Grid>

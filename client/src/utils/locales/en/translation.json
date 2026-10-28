@@ -2366,5 +2366,13 @@
     "Restart your browser"
   ],
   "trust.selfSignedInfo": "This is only needed if you use a self-signed certificate, or if you have .local / IP based routes. Otherwise, you can ignore this!",
-  "trust.title": "Understanding Self-Signed Certificates"
+  "trust.title": "Understanding Self-Signed Certificates",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

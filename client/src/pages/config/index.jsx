@@ -153,6 +153,7 @@ const ConfigManagement = () => {
           UseForwardedFor: config.HTTPConfig.UseForwardedFor,
           TrustedProxies: config.HTTPConfig.TrustedProxies && config.HTTPConfig.TrustedProxies.join(', '),
           AllowSearchEngine: config.HTTPConfig.AllowSearchEngine,
+          RobotsPolicy: config.HTTPConfig.RobotsPolicy || "",
           AllowHTTPLocalIPAccess: config.HTTPConfig.AllowHTTPLocalIPAccess,
           PublishMDNS: config.HTTPConfig.PublishMDNS,
 

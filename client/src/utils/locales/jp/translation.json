@@ -703,5 +703,13 @@
   "mgmt.urls.edit.tunneledHostInput.tunneledHostLabel": "トンネルするためのホスト名（ユーザーが直面するトンネルのホスト名は何ですか）",
   "mgmt.config.general.licenceInput.licenceLabel": "ライセンスキー",
   "mgmt.config.general.licenceInput.manageLicenceButton": "ライセンスを管理",
-  "language.selectLanguage": "言語を選択"
+  "language.selectLanguage": "言語を選択",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

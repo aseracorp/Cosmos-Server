@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/azukaar/cosmos-server/src/constellation"
+	"github.com/azukaar/cosmos-server/src/proxy"
 	"github.com/azukaar/cosmos-server/src/utils"
 	"github.com/gorilla/mux"
 )
@@ -28,6 +29,10 @@ func validateRoute(route utils.ProxyRouteConfig) string {
 	if !utils.IsValidLBMode(route.LBMode) {
 		return "Unsupported load balancing mode \"" + route.LBMode + "\" on route \"" + route.Name +
 			"\". Supported modes are \"round_robin\", \"load_based\" and \"first\" (an empty value means \"first\": always send traffic to the first/local target)"
+	}
+	if !proxy.IsValidRobotsPolicy(route.RobotsPolicy) {
+		return "Unsupported search engine indexing policy \"" + route.RobotsPolicy + "\" on route \"" + route.Name +
+			"\". Supported values are \"allow\", \"block\" and \"\" (empty: inherit the server-wide setting)"
 	}
 	return ""
 }

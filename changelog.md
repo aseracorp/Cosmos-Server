@@ -1,4 +1,6 @@
 ## Version 0.24.0
+ - Per-route search engine indexing policy (robots.txt + X-Robots-Tag), overriding the server-wide setting
+ - Server-wide indexing setting is now tri-state (allow / block / inherit the legacy flag)
  - Lazy loading
  - Improve TCP proxy support
  - Fix issue with the port allocation when load balancing TCP
