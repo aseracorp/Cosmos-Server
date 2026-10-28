@@ -2326,5 +2326,13 @@
   "mgmt.shield.whitelist.bypassGeo": "Обходить географические ограничения",
   "mgmt.shield.whitelist.bypassIP": "Обходить ограничения по IP-адресам для URL",
   "mgmt.shield.whitelist.deleteConfirm": "Удалить {{ip}} из белого списка?",
-  "mgmt.shield.whitelist.invalidIP": "Введите корректный IP-адрес или диапазон CIDR"
+  "mgmt.shield.whitelist.invalidIP": "Введите корректный IP-адрес или диапазон CIDR",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

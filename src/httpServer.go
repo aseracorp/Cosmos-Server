@@ -1,35 +1,35 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"github.com/azukaar/cosmos-server/src/authorizationserver"
+	"github.com/azukaar/cosmos-server/src/backups"
+	"github.com/azukaar/cosmos-server/src/configapi"
+	"github.com/azukaar/cosmos-server/src/constellation"
+	"github.com/azukaar/cosmos-server/src/cron"
+	"github.com/azukaar/cosmos-server/src/dnsrecords"
+	"github.com/azukaar/cosmos-server/src/docker"
+	"github.com/azukaar/cosmos-server/src/market"
+	"github.com/azukaar/cosmos-server/src/metrics"
+	"github.com/azukaar/cosmos-server/src/pro"
+	"github.com/azukaar/cosmos-server/src/proxy"
+	"github.com/azukaar/cosmos-server/src/storage"
+	"github.com/azukaar/cosmos-server/src/user"
+	"github.com/azukaar/cosmos-server/src/utils"
+	"github.com/foomo/tlsconfig"
+	"github.com/go-chi/httprate"
+	"github.com/gorilla/mux"
+	"net"
+	"net/http"
+	"net/http/pprof"
+	"os"
+	"path"
+	"strings"
 	"sync"
 	"sync/atomic"
-    "net/http"
-		"github.com/azukaar/cosmos-server/src/dnsrecords"
-	"github.com/azukaar/cosmos-server/src/utils"
-		"github.com/azukaar/cosmos-server/src/user"
-		"github.com/azukaar/cosmos-server/src/configapi"
-		"github.com/azukaar/cosmos-server/src/proxy"
-		"github.com/azukaar/cosmos-server/src/docker"
-		"github.com/azukaar/cosmos-server/src/authorizationserver"
-		"github.com/azukaar/cosmos-server/src/market"
-		"github.com/azukaar/cosmos-server/src/constellation"
-		"github.com/azukaar/cosmos-server/src/metrics"
-		"github.com/azukaar/cosmos-server/src/cron"
-		"github.com/azukaar/cosmos-server/src/storage"
-		"github.com/azukaar/cosmos-server/src/backups"
-		"github.com/azukaar/cosmos-server/src/pro"
-		"github.com/gorilla/mux"
-		"time"
-		"os"
-		"net"
-		"strings"
-		"path"
-		"github.com/go-chi/httprate"
-		"crypto/tls"
-		"crypto/x509"
-		"github.com/foomo/tlsconfig"
-		"context"
-    "net/http/pprof"
+	"time"
 )
 
 var serverPortHTTP = ""
@@ -43,22 +43,22 @@ func startHTTPServer(router *mux.Router) error {
 
 	HTTPServer2 = nil
 	HTTPServer = &http.Server{
-		Addr: "0.0.0.0:" + serverPortHTTP,
-		ReadTimeout: 0,
-		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout: 0,
-		IdleTimeout: 30 * time.Second,
-		Handler: router,
+		Addr:                         "0.0.0.0:" + serverPortHTTP,
+		ReadTimeout:                  0,
+		ReadHeaderTimeout:            10 * time.Second,
+		WriteTimeout:                 0,
+		IdleTimeout:                  30 * time.Second,
+		Handler:                      router,
 		DisableGeneralOptionsHandler: true,
 	}
-	
+
 	if utils.IsInsideContainer && !utils.IsHostNetwork {
 		docker.CheckPorts()
 	} else {
 		proxy.InitInternalSocketProxy()
 	}
-	
-	// Publish mDNS 
+
+	// Publish mDNS
 	if utils.GetMainConfig().HTTPConfig.PublishMDNS {
 		proxy.PublishAllMDNSFromConfig()
 	}
@@ -424,14 +424,14 @@ func issueZoneCerts(force bool) {
 			map[string]interface{}{
 				"zone":    name,
 				"domains": wanted,
-		})
+			})
 
 		utils.WriteNotification(utils.Notification{
 			Recipient: "admin",
-			Title: "header.notification.title.certificateRenewed",
-			Message: "header.notification.message.certificateRenewed",
-			Vars: strings.Join(wanted, ", "),
-			Level: "info",
+			Title:     "header.notification.title.certificateRenewed",
+			Message:   "header.notification.message.certificateRenewed",
+			Vars:      strings.Join(wanted, ", "),
+			Level:     "info",
 		})
 	}
 
@@ -482,21 +482,21 @@ func startHTTPSServer(router *mux.Router) error {
 	utils.HTTPSListening = true
 	utils.IsHTTPS = !utils.HostIsHTTPOnly(utils.GetMainConfig(), utils.GetMainConfig().HTTPConfig.Hostname)
 
-	go (func () {
+	go (func() {
 		httpRouter := plainHTTPHandler(router)
 
 		HTTPServer2 = &http.Server{
-			Addr: "0.0.0.0:" + serverPortHTTP,
-			ReadTimeout: 0,
-			ReadHeaderTimeout: 10 * time.Second,
-			WriteTimeout: 0,
-			IdleTimeout: 30 * time.Second,
-			Handler: httpRouter,
+			Addr:                         "0.0.0.0:" + serverPortHTTP,
+			ReadTimeout:                  0,
+			ReadHeaderTimeout:            10 * time.Second,
+			WriteTimeout:                 0,
+			IdleTimeout:                  30 * time.Second,
+			Handler:                      httpRouter,
 			DisableGeneralOptionsHandler: true,
 		}
 
 		err := HTTPServer2.ListenAndServe()
-		
+
 		if err != nil && err != http.ErrServerClosed {
 			utils.Fatal("Listening to HTTP (Redirecting to HTTPS)", err)
 		}
@@ -509,13 +509,13 @@ func startHTTPSServer(router *mux.Router) error {
 	HTTPConfig := config.HTTPConfig
 
 	var tlsCert = HTTPConfig.TLSCert
-	var tlsKey= HTTPConfig.TLSKey
-	
-	if (HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"]) {
+	var tlsKey = HTTPConfig.TLSKey
+
+	if HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"] {
 		tlsCert = HTTPConfig.SelfTLSCert
 		tlsKey = HTTPConfig.SelfTLSKey
 	}
-	
+
 	tlsConf := tlsconfig.NewServerTLSConfig(tlsconfig.TLSModeServerStrict)
 
 	cert, errCert := tls.X509KeyPair(([]byte)(tlsCert), ([]byte)(tlsKey))
@@ -553,26 +553,26 @@ func startHTTPSServer(router *mux.Router) error {
 	secondaryCert = &_secondaryCert
 
 	HTTPServer = &http.Server{
-    TLSConfig: &tls.Config{
+		TLSConfig: &tls.Config{
 			GetCertificate: GetCertificate,
 		},
-		Addr: "0.0.0.0:" + serverPortHTTPS,
-		ReadTimeout: 0,
-		ReadHeaderTimeout: 10 * time.Second,
-		WriteTimeout: 0,
-		IdleTimeout: 30 * time.Second,
-		Handler: router,
+		Addr:                         "0.0.0.0:" + serverPortHTTPS,
+		ReadTimeout:                  0,
+		ReadHeaderTimeout:            10 * time.Second,
+		WriteTimeout:                 0,
+		IdleTimeout:                  30 * time.Second,
+		Handler:                      router,
 		DisableGeneralOptionsHandler: true,
 	}
 
-	// Redirect ports 
+	// Redirect ports
 	if utils.IsInsideContainer && !utils.IsHostNetwork {
 		docker.CheckPorts()
 	} else {
 		proxy.InitInternalSocketProxy()
 	}
 
-	// Publish mDNS 
+	// Publish mDNS
 	if config.HTTPConfig.PublishMDNS {
 		proxy.PublishAllMDNSFromConfig()
 	}
@@ -639,7 +639,7 @@ func tokenMiddleware(next http.Handler) http.Handler {
 			remoteAddr, _, _ := net.SplitHostPort(r.RemoteAddr)
 
 			if !utils.CheckIPAccess(clientIP, remoteAddr, matchedToken.RestrictToConstellation, matchedToken.IPWhitelist) {
-				utils.Error("API Token: IP not allowed for token " + matchedName, nil)
+				utils.Error("API Token: IP not allowed for token "+matchedName, nil)
 				utils.TriggerEvent(
 					"cosmos.api.token.ip_blocked",
 					"API Token IP blocked",
@@ -713,11 +713,11 @@ func tokenMiddleware(next http.Handler) http.Handler {
 }
 
 func SecureAPI(userRouter *mux.Router, public bool, publicCors bool, strict bool) {
-	if(!public) {
+	if !public {
 		userRouter.Use(tokenMiddleware)
 	}
 
-	if(strict) {
+	if strict {
 		// Login, sudo, MFA, password reset, register and setup. Every field is
 		// explicit on purpose: this policy must never inherit the deployment
 		// profile, whose Pro values are sized for serving traffic, not for the
@@ -746,25 +746,25 @@ func SecureAPI(userRouter *mux.Router, public bool, publicCors bool, strict bool
 			utils.ProxyRouteConfig{
 				Name: "Cosmos-Internal",
 				SmartShield: utils.SmartShieldPolicy{
-					Enabled: true,
+					Enabled:          true,
 					PolicyStrictness: 2,
 				},
 			},
 		))
 	}
 
-	if(publicCors || public) {
+	if publicCors || public {
 		userRouter.Use(utils.PublicCORS)
 	}
 
 	userRouter.Use(utils.MiddlewareTimeout(45 * time.Second))
-	userRouter.Use(httprate.Limit(500, 1*time.Minute, 
+	userRouter.Use(httprate.Limit(500, 1*time.Minute,
 		httprate.WithKeyFuncs(httprate.KeyByIP),
-    	httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 			utils.Error("Too many requests. Throttling", nil)
-			utils.HTTPError(w, "Too many requests", 
+			utils.HTTPError(w, "Too many requests",
 				http.StatusTooManyRequests, "HTTP003")
-			return 
+			return
 		}),
 	))
 }
@@ -778,8 +778,7 @@ func CertificateIsExpiredSoon(validUntil time.Time) bool {
 			"Cosmos Certificate Expire Soon",
 			"warning",
 			"",
-			map[string]interface{}{
-		})
+			map[string]interface{}{})
 
 		utils.Log("Certificate is not valid anymore. Needs refresh")
 	}
@@ -821,10 +820,10 @@ func InitServer() *mux.Router {
 	var selfTLSCert = HTTPConfig.SelfTLSCert
 	var selfTLSKey = HTTPConfig.SelfTLSKey
 
-	if ((HTTPConfig.AuthPublicKey == "" || HTTPConfig.AuthPrivateKey == "") && HTTPConfig.GenerateMissingAuthCert) {
+	if (HTTPConfig.AuthPublicKey == "" || HTTPConfig.AuthPrivateKey == "") && HTTPConfig.GenerateMissingAuthCert {
 		utils.Log("Generating new Auth ED25519 certificate")
 		pub, priv := utils.GenerateEd25519Certificates()
-		
+
 		baseMainConfig.HTTPConfig.AuthPublicKey = pub
 		baseMainConfig.HTTPConfig.AuthPrivateKey = priv
 		utils.SetBaseMainConfig(baseMainConfig)
@@ -838,29 +837,29 @@ func InitServer() *mux.Router {
 
 	// Check if self-signed certificate needs refresh
 	selfSignedNeedsRefresh := baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal ||
-			(selfTLSCert == "" || selfTLSKey == "") ||
-			utils.HasAnyNewItem(domains, baseMainConfig.HTTPConfig.SelfTLSKeyHostsCached) ||
-			!CertificateIsExpiredSoon(baseMainConfig.HTTPConfig.SelfTLSValidUntil)
-	
+		(selfTLSCert == "" || selfTLSKey == "") ||
+		utils.HasAnyNewItem(domains, baseMainConfig.HTTPConfig.SelfTLSKeyHostsCached) ||
+		!CertificateIsExpiredSoon(baseMainConfig.HTTPConfig.SelfTLSValidUntil)
+
 	// Always ensure we have a valid self-signed certificate
 	if selfSignedNeedsRefresh {
-			utils.Log("Generating new self-signed TLS certificate for domains: " + strings.Join(domains, ", "))
-			pub, priv, err := utils.GenerateRSAWebCertificates(domains)
-			baseMainConfig = utils.GetBaseMainConfig()
+		utils.Log("Generating new self-signed TLS certificate for domains: " + strings.Join(domains, ", "))
+		pub, priv, err := utils.GenerateRSAWebCertificates(domains)
+		baseMainConfig = utils.GetBaseMainConfig()
 
-			if err != nil {
-					utils.Error("Generating self-signed TLS certificate", err)
-			} else {
-					baseMainConfig.HTTPConfig.SelfTLSCert = pub
-					baseMainConfig.HTTPConfig.SelfTLSKey = priv
-					baseMainConfig.HTTPConfig.SelfTLSKeyHostsCached = domains
-					baseMainConfig.HTTPConfig.SelfTLSValidUntil = time.Now().AddDate(0, 0, 364)
-					utils.SetBaseMainConfig(baseMainConfig)
-					utils.Log("Saved new self-signed TLS certificate")
-					
-					selfTLSCert = pub
-					selfTLSKey = priv
-			}
+		if err != nil {
+			utils.Error("Generating self-signed TLS certificate", err)
+		} else {
+			baseMainConfig.HTTPConfig.SelfTLSCert = pub
+			baseMainConfig.HTTPConfig.SelfTLSKey = priv
+			baseMainConfig.HTTPConfig.SelfTLSKeyHostsCached = domains
+			baseMainConfig.HTTPConfig.SelfTLSValidUntil = time.Now().AddDate(0, 0, 364)
+			utils.SetBaseMainConfig(baseMainConfig)
+			utils.Log("Saved new self-signed TLS certificate")
+
+			selfTLSCert = pub
+			selfTLSKey = priv
+		}
 	}
 
 	// zones with a DNS provider have a certificate of their own, the node's one covers the rest
@@ -871,10 +870,10 @@ func InitServer() *mux.Router {
 	forceRenewal := baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal
 
 	// Check if Let's Encrypt certificate needs refresh
-	letsEncryptNeedsRefresh := baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal || 
-			(tlsCert == "" || tlsKey == "") || 
-			utils.HasAnyNewItem(localDomains, oldDomains) || 
-			!CertificateIsExpiredSoon(baseMainConfig.HTTPConfig.TLSValidUntil)
+	letsEncryptNeedsRefresh := baseMainConfig.HTTPConfig.ForceHTTPSCertificateRenewal ||
+		(tlsCert == "" || tlsKey == "") ||
+		utils.HasAnyNewItem(localDomains, oldDomains) ||
+		!CertificateIsExpiredSoon(baseMainConfig.HTTPConfig.TLSValidUntil)
 
 	// a server that just joined a cluster does not know its zones yet: asking Let's
 	// Encrypt now would order over HTTP a certificate the zone is about to provide
@@ -920,12 +919,12 @@ func InitServer() *mux.Router {
 		utils.SetBaseMainConfig(baseMainConfig)
 		utils.Log("Saved new self-signed TLS certificate")
 	}
-	
+
 	// Only update serving certificates when in SELFSIGNED mode
 	if config.HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"] {
-			// Use the self-signed certificates for serving
-			tlsCert = selfTLSCert
-			tlsKey = selfTLSKey
+		// Use the self-signed certificates for serving
+		tlsCert = selfTLSCert
+		tlsKey = selfTLSKey
 	}
 
 	issueZoneCerts(forceRenewal)
@@ -954,11 +953,19 @@ func InitServer() *mux.Router {
 				return
 			}
 		}
-		
+
 		utils.Warn("[NotFound] No route matched: Host=" + r.Host + " Path=" + r.URL.Path + " Method=" + r.Method)
 
 		http.NotFound(w, r)
 	})
+
+	// gorilla runs NotFound/MethodNotAllowed WITHOUT the router.Use chain, so
+	// the "Cosmos surface is never indexable" guarantee has to be re-applied
+	// to the fallback handlers explicitly.
+	router.NotFoundHandler = proxy.NoIndexSurfaceUnmatched(router.NotFoundHandler)
+	router.MethodNotAllowedHandler = proxy.NoIndexSurfaceUnmatched(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "405 method not allowed", http.StatusMethodNotAllowed)
+	}))
 
 	router.Use(utils.ClientRealIP)
 
@@ -977,25 +984,27 @@ func InitServer() *mux.Router {
 		router.Use(utils.BlockByCountryMiddleware(config.BlockedCountries, config.CountryBlacklistIsWhitelist))
 	}
 
-	// robots.txt
-	if !config.HTTPConfig.AllowSearchEngine {
-		router.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/plain")
-			w.Write([]byte("User-agent: *\nDisallow: /"))
-		})
-	}
-	
+	// robots.txt: answered per hostname, from the routes' own indexing policies
+	// (see proxy.RobotsTxtMiddleware). Middleware rather than a route: it runs
+	// before route matching, so a hostname's single robots.txt reflects every
+	// route served on it, and it cannot shadow an app's own robots.txt when
+	// indexing is allowed.
+	router.Use(proxy.RobotsTxtMiddleware)
+
+	// Cosmos's own surface (admin UI, API, login, OAuth) is never indexable,
+	// independently of the indexing policies routes declare.
+	router.Use(proxy.NoIndexCosmosSurface)
+
 	logoAPI := router.PathPrefix("/logo").Subrouter()
 	SecureAPI(logoAPI, true, true, false)
 	logoAPI.HandleFunc("/", SendLogo)
-	
-	
+
 	srapi := router.PathPrefix("/cosmos").Subrouter()
 	srapi.Use(utils.ContentTypeMiddleware("application/json"))
 
 	srapiStrict := router.PathPrefix("/cosmos").Subrouter()
 	srapiStrict.Use(utils.ContentTypeMiddleware("application/json"))
-	
+
 	srapiStrict.HandleFunc("/api/login", user.UserLogin)
 	srapiStrict.HandleFunc("/api/sudo", user.UserSudo)
 	srapiStrict.HandleFunc("/api/password-reset", user.ResetPassword)
@@ -1016,7 +1025,7 @@ func InitServer() *mux.Router {
 	srapi.HandleFunc("/api/terminal/{route}", HostTerminalRoute)
 	// CI webhooks: signed by the provider, verified in the handler.
 	srapi.HandleFunc("/api/constellation/ci/hooks/{name}", constellation.CIWebhookRoute)
-	
+
 	srapiAdmin := router.PathPrefix("/cosmos").Subrouter()
 	srapiAdmin.Use(utils.ContentTypeMiddleware("application/json"))
 
@@ -1030,7 +1039,7 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/zones-addresses", configapi.ZonesApiAddresses)
 	srapiAdmin.HandleFunc("/api/_memory", MemStatusRoute)
 	srapiAdmin.HandleFunc("/api/restart", configapi.ConfigApiRestart)
-	
+
 	srapiAdmin.HandleFunc("/api/invite", user.UserResendInviteLink)
 	srapiAdmin.HandleFunc("/api/users/{nickname}", user.UsersIdRoute)
 	srapiAdmin.HandleFunc("/api/users", user.UsersRoute)
@@ -1046,7 +1055,7 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/networks", docker.NetworkRoutes)
 
 	srapiAdmin.HandleFunc("/api/migrate-host", docker.MigrateToHostModeRoute)
-	
+
 	srapiAdmin.HandleFunc("/api/servapps/{containerId}/manage/{action}", docker.ManageContainerRoute)
 	srapiAdmin.HandleFunc("/api/servapps/{containerId}/secure/{status}", docker.SecureContainerRoute)
 	srapiAdmin.HandleFunc("/api/servapps/{containerId}/auto-update/{status}", docker.AutoUpdateContainerRoute)
@@ -1061,7 +1070,7 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/servapps/{containerId}/check-update", docker.CanUpdateImageRoute)
 	srapiAdmin.HandleFunc("/api/servapps", docker.ContainersRoute)
 	srapiAdmin.HandleFunc("/api/docker-service", docker.CreateServiceRoute)
-	
+
 	srapiAdmin.HandleFunc("/api/markets", market.MarketGet)
 
 	srapiAdmin.HandleFunc("/api/upload/{name}", UploadImage)
@@ -1231,7 +1240,7 @@ func InitServer() *mux.Router {
 	srapiAdmin.HandleFunc("/api/backups-repository", backups.ListRepos)
 	srapiAdmin.HandleFunc("/api/backups-repository/{name}/snapshots", backups.ListSnapshotsRouteFromRepo)
 	srapiAdmin.HandleFunc("/api/backups/{name}/snapshots", backups.ListSnapshotsRoute)
-	srapiAdmin.HandleFunc("/api/backups/{name}/{snapshot}/folders", backups.ListFoldersRoute) 
+	srapiAdmin.HandleFunc("/api/backups/{name}/{snapshot}/folders", backups.ListFoldersRoute)
 	srapiAdmin.HandleFunc("/api/backups/{name}/restore", backups.RestoreBackupRoute)
 	srapiAdmin.HandleFunc("/api/backups", backups.AddBackupRoute)
 	srapiAdmin.HandleFunc("/api/backups/edit", backups.EditBackupRoute)
@@ -1267,7 +1276,7 @@ func InitServer() *mux.Router {
 	}
 
 	srapiAdmin.Use(utils.Restrictions(config.AdminConstellationOnly, config.AdminWhitelistIPs))
-	
+
 	srapi.Use(proxy.CleanPathMiddleware)
 	srapiStrict.Use(proxy.CleanPathMiddleware)
 	srapiAdmin.Use(proxy.CleanPathMiddleware)
@@ -1276,11 +1285,11 @@ func InitServer() *mux.Router {
 	srapiStrict.Use(utils.SetSecurityHeaders)
 	srapiAdmin.Use(utils.SetSecurityHeaders)
 
-	if(!config.HTTPConfig.AcceptAllInsecureHostname) {
+	if !config.HTTPConfig.AcceptAllInsecureHostname {
 		srapi.Use(utils.EnsureHostname)
 		srapiStrict.Use(utils.EnsureHostname)
 		srapiAdmin.Use(utils.EnsureHostname)
-	
+
 		srapi.Use(utils.EnsureHostnameCosmosAPI)
 		srapiStrict.Use(utils.EnsureHostnameCosmosAPI)
 		srapiAdmin.Use(utils.EnsureHostnameCosmosAPI)
@@ -1289,24 +1298,24 @@ func InitServer() *mux.Router {
 	SecureAPI(srapiStrict, false, false, true)
 	SecureAPI(srapi, false, false, false)
 	SecureAPI(srapiAdmin, false, false, false)
-	
+
 	pwd, err := os.Getwd()
 	if err != nil {
 		utils.Fatal("Getting pwd", err)
 	}
-	
+
 	utils.Log("Starting in " + pwd)
 	if _, err := os.Stat(pwd + "/static"); os.IsNotExist(err) {
-		utils.Fatal("Static folder not found at " + pwd + "/static", err)
+		utils.Fatal("Static folder not found at "+pwd+"/static", err)
 	}
 
 	// fs := http.FileServer(http.Dir(pwd + "/static"))
 	uirouter := router.PathPrefix("/cosmos-ui").Subrouter()
 	uirouter.Use(utils.SetSecurityHeaders)
 	SecureAPI(uirouter, true, true, false)
-	uirouter.PathPrefix("/").Handler(http.StripPrefix("/cosmos-ui", utils.SPAHandler(pwd + "/static")))
-	
-	if(!config.HTTPConfig.AcceptAllInsecureHostname) {
+	uirouter.PathPrefix("/").Handler(http.StripPrefix("/cosmos-ui", utils.SPAHandler(pwd+"/static")))
+
+	if !config.HTTPConfig.AcceptAllInsecureHostname {
 		uirouter.Use(utils.EnsureHostname)
 	}
 
@@ -1329,13 +1338,13 @@ func InitServer() *mux.Router {
 	SecureAPI(serverRouter, true, true, true)
 
 	authorizationserver.RegisterHandlers(wellKnownRouter, userRouter, serverRouter)
-	
+
 	router.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    	http.Redirect(w, r, "/cosmos-ui/", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/cosmos-ui/", http.StatusTemporaryRedirect)
 	}))
 
 	router.HandleFunc("/cosmos-ui", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    	http.Redirect(w, r, "/cosmos-ui/", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/cosmos-ui/", http.StatusTemporaryRedirect)
 	}))
 
 	return router
@@ -1347,24 +1356,22 @@ func StartServer() {
 	// start https server
 	var errServ error
 
-	for(errServ == http.ErrServerClosed || errServ == nil) {
+	for errServ == http.ErrServerClosed || errServ == nil {
 		config := utils.GetMainConfig()
 		HTTPConfig := config.HTTPConfig
 
 		var tlsCert = HTTPConfig.TLSCert
-		var tlsKey= HTTPConfig.TLSKey
+		var tlsKey = HTTPConfig.TLSKey
 
-		if (HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"]) {
+		if HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"] {
 			tlsCert = HTTPConfig.SelfTLSCert
 			tlsKey = HTTPConfig.SelfTLSKey
 		}
 
-		if (
-			(
-				HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"] ||
-				HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["PROVIDED"]  ||
-				HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"]) &&
-				tlsCert != "" && tlsKey != "") {
+		if (HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["SELFSIGNED"] ||
+			HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["PROVIDED"] ||
+			HTTPConfig.HTTPSCertificateMode == utils.HTTPSCertModeList["LETSENCRYPT"]) &&
+			tlsCert != "" && tlsKey != "" {
 			utils.Log("TLS certificate exist, starting HTTPS servers and redirecting HTTP to HTTPS")
 			errServ = startHTTPSServer(router)
 		} else {
@@ -1384,7 +1391,7 @@ func StartServer() {
 func RestartHTTPServer() {
 	utils.LetsEncryptErrors = []string{}
 	IconCache = map[string]CachedImage{}
-	
+
 	utils.Log("Restarting HTTP Server...")
 	LoadConfig()
 

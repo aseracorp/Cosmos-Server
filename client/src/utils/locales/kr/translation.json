@@ -2326,5 +2326,13 @@
   "mgmt.shield.whitelist.bypassGeo": "지역 제한 우회",
   "mgmt.shield.whitelist.bypassIP": "URL IP 제한 우회",
   "mgmt.shield.whitelist.deleteConfirm": "허용 목록에서 {{ip}}를 삭제하시겠습니까?",
-  "mgmt.shield.whitelist.invalidIP": "유효한 IP 주소 또는 CIDR 범위를 입력하세요"
+  "mgmt.shield.whitelist.invalidIP": "유효한 IP 주소 또는 CIDR 범위를 입력하세요",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

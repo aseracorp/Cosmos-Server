@@ -2326,5 +2326,13 @@
   "mgmt.shield.whitelist.bypassGeo": "Geografische beperkingen omzeilen",
   "mgmt.shield.whitelist.bypassIP": "IP-beperkingen voor URL's omzeilen",
   "mgmt.shield.whitelist.deleteConfirm": "{{ip}} van de toelatingslijst verwijderen?",
-  "mgmt.shield.whitelist.invalidIP": "Voer een geldig IP-adres of CIDR-bereik in"
+  "mgmt.shield.whitelist.invalidIP": "Voer een geldig IP-adres of CIDR-bereik in",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

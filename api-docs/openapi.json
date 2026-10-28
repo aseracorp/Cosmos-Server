@@ -19093,6 +19093,10 @@
           "publishMDNS": {
             "type": "boolean"
           },
+          "robotsPolicy": {
+            "description": "RobotsPolicy is the node-wide indexing default: \"allow\", \"block\" or\nempty to inherit the legacy AllowSearchEngine flag.",
+            "type": "string"
+          },
           "selfTLSCert": {
             "type": "string"
           },
@@ -19435,6 +19439,10 @@
           },
           "restrictToConstellation": {
             "type": "boolean"
+          },
+          "robotsPolicy": {
+            "description": "RobotsPolicy overrides the node-wide indexing default for this route:\n\"allow\", \"block\" or empty to inherit it.",
+            "type": "string"
           },
           "skipURLClean": {
             "type": "boolean"

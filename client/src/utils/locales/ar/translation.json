@@ -2326,5 +2326,13 @@
   "mgmt.shield.whitelist.bypassGeo": "تجاوز القيود الجغرافية",
   "mgmt.shield.whitelist.bypassIP": "تجاوز قيود عناوين IP الخاصة بعناوين URL",
   "mgmt.shield.whitelist.deleteConfirm": "هل تريد إزالة {{ip}} من قائمة السماح؟",
-  "mgmt.shield.whitelist.invalidIP": "أدخل عنوان IP أو نطاق CIDR صالحًا"
+  "mgmt.shield.whitelist.invalidIP": "أدخل عنوان IP أو نطاق CIDR صالحًا",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }

@@ -2326,5 +2326,13 @@
   "mgmt.functions.form.envTitle": "Umgebung",
   "mgmt.functions.form.envHelp": "Deployment-Vorlagen können hier verwendet werden: ${db.<name>.url}, ${s3.<name>.endpoint}, ${node_name}...",
   "mgmt.functions.form.duplicateEnv": "Die Umgebungsvariable {{key}} ist zweimal gesetzt",
-  "mgmt.functions.form.advanced": "Erweitert"
+  "mgmt.functions.form.advanced": "Erweitert",
+  "mgmt.config.http.robotsPolicySelect.label": "Search engine indexing",
+  "mgmt.config.http.robotsPolicySelect.inherit": "Inherit (legacy AllowSearchEngine setting)",
+  "mgmt.config.http.robotsPolicySelect.allow": "Allow indexing (robots.txt: Allow /)",
+  "mgmt.config.http.robotsPolicySelect.block": "Ask search engines not to index (robots.txt: Disallow /)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.label": "Search engine indexing",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.inherit": "Inherit the server-wide setting",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
+  "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)"
 }
