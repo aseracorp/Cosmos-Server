@@ -1,1 +1,121 @@
-cGFja2FnZSBwcm94eQoKaW1wb3J0ICgKCSJlcnJvcnMiCgkibmV0L2h0dHAiCgkiZm10IgoJIm5ldC91cmwiCgkiY3J5cHRvL3NoYTI1NiIKCSJlbmNvZGluZy9iYXNlNjQiCgoJImdpdGh1Yi5jb20vYXp1a2Fhci9jb3Ntb3Mtc2VydmVyL3NyYy91dGlscyIKKQoKZnVuYyBwZXJmb3JtTG9naW4odyBodHRwLlJlc3BvbnNlV3JpdGVyLCByZXEgKmh0dHAuUmVxdWVzdCwgcm91dGUgdXRpbHMuUHJveHlSb3V0ZUNvbmZpZykgZXJyb3IgewoJY29uZmlnIDo9IHV0aWxzLkdldE1haW5Db25maWcoKQoJLy8ga2V5ZWQgb24gaG9zdCtwYXRoIHNvIHNhbWUtcGF0aCBhcHBzIG9uIGRpZmZlcmVudCBob3N0cyBkb24ndCBjb2xsaWRlCglwYXRoSGFzaCA6PSBzaGEyNTYuU3VtMjU2KFtdYnl0ZShyb3V0ZS5Ib3N0ICsgIlx4MDAiICsgcmVxLlVSTC5QYXRoICsgY29uZmlnLkhUVFBDb25maWcuQXV0aFByaXZhdGVLZXlbMzI6NjRdKSkKCS8vIFRha2UgZmlyc3QgMTYgYnl0ZXMgb2YgaGFzaCBhbmQgZW5jb2RlIHRvIGJhc2U2NHVybCBmb3Igc2hvcnRlciBzdHJpbmcKCWhhc2hTdHIgOj0gYmFzZTY0LlJhd1VSTEVuY29kaW5nLkVuY29kZVRvU3RyaW5nKHBhdGhIYXNoWzoxNl0pCgkvLyBDb21iaW5lIGhhc2ggYW5kIG9yaWdpbmFsIHBhdGggd2l0aCBjb21tYQoJc3RhdGUgOj0gZm10LlNwcmludGYoIiVzLCwlcyIsIGhhc2hTdHIsIHVybC5RdWVyeUVzY2FwZShyZXEuVVJMLlBhdGgpKQoKCS8vIEdldCBwcm94eSBjbGllbnQgaW5mbyBpZiB0aGlzIGlzIGEgcHJveHkgcm91dGUKCWlmIHJvdXRlLkF1dGhFbmFibGVkIHsKCQkJY2xpZW50IDo9IHV0aWxzLkdldFByb3h5T0lEQ3JlZGVudGlhbHMocm91dGUsIGZhbHNlKQoJCQkvLyBSZWRpcmVjdCB0byB0aGUgaG9zdCB0aGUgdXNlciBhY3R1YWxseSB1c2VkICh0aGUgcHJveHkgcm91dGUgaG9zdCksCgkJCS8vIG5vdCB0aGUgY29uZmlndXJlZCBtYWluIGhvc3RuYW1lIOKAlCB0aGUgbGF0dGVyIG1heSBiZSBhIHByaXZhdGUgSVAgLwoJCQkvLyBkaWZmZXJlbnQgbmFtZSB0aGF0IHRoZSBjbGllbnQgY2Fubm90IHJlYWNoIChUYWlsc2NhbGUsIHJldmVyc2UKCQkJLy8gcHJveHksIGN1c3RvbSBkb21haW4pLiBEaXNjb3ZlcnkgbWlycm9ycyB0aGlzIGJ5IGRlcml2aW5nIGFsbAoJCQkvLyBlbmRwb2ludHMgZnJvbSByZXEuSG9zdC4KCQkJYXV0aEhvc3QgOj0gcmVxLkhvc3QKCQkJaWYgcm91dGUuSG9zdCAhPSAiIiB7CgkJCQlhdXRoSG9zdCA9IHJvdXRlLkhvc3QKCQkJfQoJCQlzY2hlbWUgOj0gImh0dHA6Ly8iCgkJCWlmIHV0aWxzLklzSFRUUFMgewoJCQkJCXNjaGVtZSA9ICJodHRwczovLyIKCQkJfQoJCQkKCQkJLy8gVGhlIGF1dG8tcHJvdmlzaW9uZWQgY2xpZW50IGlzIHB1YmxpYywgc28gUEtDRSBpcyBtYW5kYXRvcnkuIERlcml2ZSB0aGUKCQkJLy8gdmVyaWZpZXIgZGV0ZXJtaW5pc3RpY2FsbHkgZnJvbSBob3N0K3BhdGggKHJlY29tcHV0ZWQgaW4gZGV0ZWN0Q2FsbGJhY2tFbmRwb2ludCkKCQkJLy8gYW5kIHNlbmQgaXRzIFMyNTYgY2hhbGxlbmdlLiBiYXNlNjR1cmwgb3V0cHV0IG5lZWRzIG5vIFVSTC1lc2NhcGluZy4KCQkJdmVyaWZpZXIgOj0gdXRpbHMuRGVyaXZlUEtDRVZlcmlmaWVyKHJvdXRlLkhvc3QsIHJlcS5VUkwuUGF0aCkKCQkJY2hhbGxlbmdlSGFzaCA6PSBzaGEyNTYuU3VtMjU2KFtdYnl0ZSh2ZXJpZmllcikpCgkJCWNvZGVDaGFsbGVuZ2UgOj0gYmFzZTY0LlJhd1VSTEVuY29kaW5nLkVuY29kZVRvU3RyaW5nKGNoYWxsZW5nZUhhc2hbOl0pCgoJCQkvL1RPRE86IFN0YXRlIHNob3VsZCBiZSBhIHJhbmRvbSBzdHJpbmcKCQkJYXV0aFVSTCA6PSBmbXQuU3ByaW50ZigiJXMvY29zbW9zLXVpL29wZW5pZD8iKwoJCQkJCSJyZXNwb25zZV90eXBlPWNvZGUmIisKCQkJCQkiY2xpZW50X2lkPSVzJiIrCgkJCQkJInJlZGlyZWN0X3VyaT0lcyYiKwoJCQkJCSJzY29wZT1vcGVuaWQmIisKCQkJCQkic3RhdGU9JXMmIisKCQkJCQkiY29kZV9jaGFsbGVuZ2U9JXMmIisKCQkJCQkiY29kZV9jaGFsbGVuZ2VfbWV0aG9kPVMyNTYiLAoJCQkJCXNjaGVtZSthdXRoSG9zdCwKCQkJCQljbGllbnQuSUQsCgkJCQkJdXJsLlF1ZXJ5RXNjYXBlKGNsaWVudC5SZWRpcmVjdFVSSXNbMF0pLAoJCQkJCXVybC5RdWVyeUVzY2FwZShzdGF0ZSksCgkJCQkJY29kZUNoYWxsZW5nZSwKCQkJKQoJCQkKCQkJaHR0cC5SZWRpcmVjdCh3LCByZXEsIGF1dGhVUkwsIGh0dHAuU3RhdHVzRm91bmQpCgkJCXJldHVybiBlcnJvcnMuTmV3KCJVc2VyIG5vdCBsb2dnZWQgaW4sIHJlZGlyZWN0aW5nIHRvIE9wZW5JRCIpCgl9CgoJcmV0dXJuIG5pbAp9CgovLyByZWRpcmVjdFRvTUZBIHNlbmRzIGEgaGFsZi1hdXRoZW50aWNhdGVkIHNlc3Npb24gdG8gdGhlIE1GQSBwYWdlIG9uIHRoZSBob3N0IHRoZSB1c2VyIGlzIHVzaW5nCmZ1bmMgcmVkaXJlY3RUb01GQSh3IGh0dHAuUmVzcG9uc2VXcml0ZXIsIHJlcSAqaHR0cC5SZXF1ZXN0LCBtZmFTdGF0ZSBpbnQpIGVycm9yIHsKCXNjaGVtZSA6PSAiaHR0cDovLyIKCWlmIHV0aWxzLklzSFRUUFMgewoJCXNjaGVtZSA9ICJodHRwczovLyIKCX0KCS8vIGNyb3NzLWhvc3QgYXBwcyBjYW4ndCByZWRpcmVjdCBiYWNrIHRvIHRoZW1zZWx2ZXM7IGJvdW5jZSB0byB0aGUgVUkgaG9tZQoJYmFjayA6PSAiL2Nvc21vcy11aSIKCWlmIHJlcS5Ib3N0ID09IHV0aWxzLkdldE1haW5Db25maWcoKS5IVFRQQ29uZmlnLkhvc3RuYW1lIHsKCQliYWNrID0gcmVxLlVSTC5QYXRoCgl9CglwYWdlIDo9ICJsb2dpbm1mYSIKCWlmIG1mYVN0YXRlID09IDIgewoJCXBhZ2UgPSAibmV3bWZhIgoJfQoJaHR0cC5SZWRpcmVjdCh3LCByZXEsIHNjaGVtZStyZXEuSG9zdCsiL2Nvc21vcy11aS8iK3BhZ2UrIj9pbnZhbGlkPTEmcmVkaXJlY3Q9Iit1cmwuUXVlcnlFc2NhcGUoYmFjayksIGh0dHAuU3RhdHVzVGVtcG9yYXJ5UmVkaXJlY3QpCglyZXR1cm4gZXJyb3JzLk5ldygiVXNlciByZXF1aXJlcyBNRkEiKQp9CgpmdW5jIExvZ2dlZEluT25seVdpdGhSZWRpcmVjdCh3IGh0dHAuUmVzcG9uc2VXcml0ZXIsIHJlcSAqaHR0cC5SZXF1ZXN0LCByb3V0ZSB1dGlscy5Qcm94eVJvdXRlQ29uZmlnKSBlcnJvciB7CglpZiB1dGlscy5HZXRBdXRoQ29udGV4dChyZXEpLk5pY2tuYW1lID09ICIiIHsKCQl1dGlscy5FcnJvcigiQXBwIGdhdGU6IFVzZXIgaXMgbm90IGxvZ2dlZCBpbiIsIG5pbCkKCQlyZXR1cm4gcGVyZm9ybUxvZ2luKHcsIHJlcSwgcm91dGUpCgl9CgoJaWYgc3QgOj0gdXRpbHMuR2V0QXV0aENvbnRleHQocmVxKS5NRkFTdGF0ZTsgc3QgIT0gMCB7CgkJdXRpbHMuRXJyb3IoIkFwcCBnYXRlOiBNRkEgcmVxdWlyZWQiLCBuaWwpCgkJcmV0dXJuIHJlZGlyZWN0VG9NRkEodywgcmVxLCBzdCkKCX0KCglyZXR1cm4gbmlsCn0KCmZ1bmMgQWRtaW5Pbmx5V2l0aFJlZGlyZWN0KHcgaHR0cC5SZXNwb25zZVdyaXRlciwgcmVxICpodHRwLlJlcXVlc3QsIHJvdXRlIHV0aWxzLlByb3h5Um91dGVDb25maWcpIGVycm9yIHsKCWlmIHV0aWxzLkdldEF1dGhDb250ZXh0KHJlcSkuTmlja25hbWUgPT0gIiIgewoJCXV0aWxzLkVycm9yKCJBcHAgZ2F0ZTogVXNlciBpcyBub3QgbG9nZ2VkIGluIiwgbmlsKQoJCXJldHVybiBwZXJmb3JtTG9naW4odywgcmVxLCByb3V0ZSkKCX0KCglpZiAhdXRpbHMuSGFzUGVybWlzc2lvbihyZXEsIHV0aWxzLlBFUk1fQURNSU5fUkVBRCkgewoJCXV0aWxzLkVycm9yKCJBcHAgZ2F0ZTogVXNlciBpcyBub3QgQXV0aG9yaXplZCAobm90IGFkbWluKSIsIG5pbCkKCQl1dGlscy5IVFRQRXJyb3IodywgIlVzZXIgbm90IEF1dGhvcml6ZWQiLCBodHRwLlN0YXR1c1VuYXV0aG9yaXplZCwgIkhUVFAwMDQiKQoJCXJldHVybiBlcnJvcnMuTmV3KCJVc2VyIGlzIG5vdCBBZG1pbiIpCgl9CgoJaWYgc3QgOj0gdXRpbHMuR2V0QXV0aENvbnRleHQocmVxKS5NRkFTdGF0ZTsgc3QgIT0gMCB7CgkJdXRpbHMuRXJyb3IoIkFwcCBnYXRlOiBNRkEgcmVxdWlyZWQiLCBuaWwpCgkJcmV0dXJuIHJlZGlyZWN0VG9NRkEodywgcmVxLCBzdCkKCX0KCglyZXR1cm4gbmlsCn0K
+package proxy
+
+import (
+	"errors"
+	"net/http"
+	"fmt"
+	"net/url"
+	"crypto/sha256"
+	"encoding/base64"
+
+	"github.com/azukaar/cosmos-server/src/utils"
+)
+
+func performLogin(w http.ResponseWriter, req *http.Request, route utils.ProxyRouteConfig) error {
+	config := utils.GetMainConfig()
+	// keyed on host+path so same-path apps on different hosts don't collide
+	pathHash := sha256.Sum256([]byte(route.Host + "\x00" + req.URL.Path + config.HTTPConfig.AuthPrivateKey[32:64]))
+	// Take first 16 bytes of hash and encode to base64url for shorter string
+	hashStr := base64.RawURLEncoding.EncodeToString(pathHash[:16])
+	// Combine hash and original path with comma
+	state := fmt.Sprintf("%s,,%s", hashStr, url.QueryEscape(req.URL.Path))
+
+	// Get proxy client info if this is a proxy route
+	if route.AuthEnabled {
+			client := utils.GetProxyOIDCredentials(route, false)
+			// Redirect to the host the user actually used (the proxy route host),
+			// not the configured main hostname — the latter may be a private IP /
+			// different name that the client cannot reach (Tailscale, reverse
+			// proxy, custom domain). Discovery mirrors this by deriving all
+			// endpoints from req.Host.
+			authHost := req.Host
+			if route.Host != "" {
+				authHost = route.Host
+			}
+			scheme := "http://"
+			if utils.IsHTTPS {
+					scheme = "https://"
+			}
+			
+			// The auto-provisioned client is public, so PKCE is mandatory. Derive the
+			// verifier deterministically from host+path (recomputed in detectCallbackEndpoint)
+			// and send its S256 challenge. base64url output needs no URL-escaping.
+			verifier := utils.DerivePKCEVerifier(route.Host, req.URL.Path)
+			challengeHash := sha256.Sum256([]byte(verifier))
+			codeChallenge := base64.RawURLEncoding.EncodeToString(challengeHash[:])
+
+			//TODO: State should be a random string
+			authURL := fmt.Sprintf("%s/cosmos-ui/openid?"+
+					"response_type=code&"+
+					"client_id=%s&"+
+					"redirect_uri=%s&"+
+					"scope=openid&"+
+					"state=%s&"+
+					"code_challenge=%s&"+
+					"code_challenge_method=S256",
+					scheme+authHost,
+					client.ID,
+					url.QueryEscape(client.RedirectURIs[0]),
+					url.QueryEscape(state),
+					codeChallenge,
+			)
+			
+			http.Redirect(w, req, authURL, http.StatusFound)
+			return errors.New("User not logged in, redirecting to OpenID")
+	}
+
+	return nil
+}
+
+// redirectToMFA sends a half-authenticated session to the MFA page on the host the user is using
+func redirectToMFA(w http.ResponseWriter, req *http.Request, mfaState int) error {
+	scheme := "http://"
+	if utils.IsHTTPS {
+		scheme = "https://"
+	}
+	// cross-host apps can't redirect back to themselves; bounce to the UI home
+	back := "/cosmos-ui"
+	if req.Host == utils.GetMainConfig().HTTPConfig.Hostname {
+		back = req.URL.Path
+	}
+	page := "loginmfa"
+	if mfaState == 2 {
+		page = "newmfa"
+	}
+	http.Redirect(w, req, scheme+req.Host+"/cosmos-ui/"+page+"?invalid=1&redirect="+url.QueryEscape(back), http.StatusTemporaryRedirect)
+	return errors.New("User requires MFA")
+}
+
+func LoggedInOnlyWithRedirect(w http.ResponseWriter, req *http.Request, route utils.ProxyRouteConfig) error {
+	if utils.GetAuthContext(req).Nickname == "" {
+		utils.Error("App gate: User is not logged in", nil)
+		return performLogin(w, req, route)
+	}
+
+	if st := utils.GetAuthContext(req).MFAState; st != 0 {
+		utils.Error("App gate: MFA required", nil)
+		return redirectToMFA(w, req, st)
+	}
+
+	return nil
+}
+
+func AdminOnlyWithRedirect(w http.ResponseWriter, req *http.Request, route utils.ProxyRouteConfig) error {
+	if utils.GetAuthContext(req).Nickname == "" {
+		utils.Error("App gate: User is not logged in", nil)
+		return performLogin(w, req, route)
+	}
+
+	if !utils.HasPermission(req, utils.PERM_ADMIN_READ) {
+		utils.Error("App gate: User is not Authorized (not admin)", nil)
+		utils.HTTPError(w, "User not Authorized", http.StatusUnauthorized, "HTTP004")
+		return errors.New("User is not Admin")
+	}
+
+	if st := utils.GetAuthContext(req).MFAState; st != 0 {
+		utils.Error("App gate: MFA required", nil)
+		return redirectToMFA(w, req, st)
+	}
+
+	return nil
+}
