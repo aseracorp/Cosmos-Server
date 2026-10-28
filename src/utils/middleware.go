@@ -363,6 +363,22 @@ func EnsureHostname(next http.Handler) http.Handler {
 				isOk = true
 			}
 		}
+
+		// The OIDC login flow must be reachable on whatever host the relying
+		// party used to fetch /.well-known/openid-configuration. Discovery builds
+		// all endpoints from req.Host, so if we reject e.g. a Tailscale hostname
+		// or a reverse-proxy domain here, the authorization request never renders.
+		// These are public SPA pages (the actual auth happens via the OAuth2
+		// endpoints which have their own protection), so exempting them from the
+		// hostname allow-list does not weaken the admin/API surface.
+		if !isOk {
+			switch r.URL.Path {
+			case "/cosmos-ui/openid", "/cosmos-ui/oauth", "/cosmos-ui/logout",
+				"/cosmos-ui/openid/", "/cosmos-ui/oauth/", "/cosmos-ui/logout/":
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
 		
 		if !isOk {
 			PushShieldMetrics("hostname")
