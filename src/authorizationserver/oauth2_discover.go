@@ -1,1 +1,127 @@
-cGFja2FnZSBhdXRob3JpemF0aW9uc2VydmVyCgppbXBvcnQgKAoJImVuY29kaW5nL2pzb24iCgkibmV0L2h0dHAiCgkvLyBfdXJsICJuZXQvdXJsIgoKCSJnaXRodWIuY29tL2F6dWthYXIvY29zbW9zLXNlcnZlci9zcmMvdXRpbHMiCikKCnR5cGUgb2lkY0NvbmZpZ3VyYXRpb24gc3RydWN0IHsKCUlzc3VlciBzdHJpbmcgYGpzb246Imlzc3VlciJgCglBdXRoVVJMIHN0cmluZyBganNvbjoiYXV0aG9yaXphdGlvbl9lbmRwb2ludCJgCglSZWdpc3RyYXRpb25FbmRwb2ludCBzdHJpbmcgYGpzb246InJlZ2lzdHJhdGlvbl9lbmRwb2ludCxvbWl0ZW1wdHkiYAoJVG9rZW5VUkwgc3RyaW5nIGBqc29uOiJ0b2tlbl9lbmRwb2ludCJgCglKV0tzVVJJIHN0cmluZyBganNvbjoiandrc191cmkiYAoJU3ViamVjdFR5cGVzIFtdc3RyaW5nIGBqc29uOiJzdWJqZWN0X3R5cGVzX3N1cHBvcnRlZCJgCglSZXNwb25zZVR5cGVzIFtdc3RyaW5nIGBqc29uOiJyZXNwb25zZV90eXBlc19zdXBwb3J0ZWQiYAoJQ2xhaW1zU3VwcG9ydGVkIFtdc3RyaW5nIGBqc29uOiJjbGFpbXNfc3VwcG9ydGVkImAKCUdyYW50VHlwZXNTdXBwb3J0ZWQgW11zdHJpbmcgYGpzb246ImdyYW50X3R5cGVzX3N1cHBvcnRlZCJgCglSZXNwb25zZU1vZGVzU3VwcG9ydGVkIFtdc3RyaW5nIGBqc29uOiJyZXNwb25zZV9tb2Rlc19zdXBwb3J0ZWQiYAoJVXNlcmluZm9FbmRwb2ludCBzdHJpbmcgYGpzb246InVzZXJpbmZvX2VuZHBvaW50ImAKCVNjb3Blc1N1cHBvcnRlZCBbXXN0cmluZyBganNvbjoic2NvcGVzX3N1cHBvcnRlZCJgCglUb2tlbkVuZHBvaW50QXV0aE1ldGhvZHNTdXBwb3J0ZWQgW11zdHJpbmcgYGpzb246InRva2VuX2VuZHBvaW50X2F1dGhfbWV0aG9kc19zdXBwb3J0ZWQiYAoJVXNlcmluZm9TaWduaW5nQWxnVmFsdWVzU3VwcG9ydGVkIFtdc3RyaW5nIGBqc29uOiJ1c2VyaW5mb19zaWduaW5nX2FsZ192YWx1ZXNfc3VwcG9ydGVkImAKCUlEVG9rZW5TaWduaW5nQWxnVmFsdWVzU3VwcG9ydGVkIFtdc3RyaW5nIGBqc29uOiJpZF90b2tlbl9zaWduaW5nX2FsZ192YWx1ZXNfc3VwcG9ydGVkImAKCUlEVG9rZW5TaWduZWRSZXNwb25zZUFsZyBbXXN0cmluZyBganNvbjoiaWRfdG9rZW5fc2lnbmVkX3Jlc3BvbnNlX2FsZyJgCglVc2VyaW5mb1NpZ25lZFJlc3BvbnNlQWxnIFtdc3RyaW5nIGBqc29uOiJ1c2VyaW5mb19zaWduZWRfcmVzcG9uc2VfYWxnImAKCVJlcXVlc3RQYXJhbWV0ZXJTdXBwb3J0ZWQgYm9vbCBganNvbjoicmVxdWVzdF9wYXJhbWV0ZXJfc3VwcG9ydGVkImAKCVJlcXVlc3RVUklQYXJhbWV0ZXJTdXBwb3J0ZWQgYm9vbCBganNvbjoicmVxdWVzdF91cmlfcGFyYW1ldGVyX3N1cHBvcnRlZCJgCglSZXF1aXJlUmVxdWVzdFVSSVJlZ2lzdHJhdGlvbiBib29sIGBqc29uOiJyZXF1aXJlX3JlcXVlc3RfdXJpX3JlZ2lzdHJhdGlvbiJgCglDbGFpbXNQYXJhbWV0ZXJTdXBwb3J0ZWQgYm9vbCBganNvbjoiY2xhaW1zX3BhcmFtZXRlcl9zdXBwb3J0ZWQiYAoJUmV2b2NhdGlvbkVuZHBvaW50IHN0cmluZyBganNvbjoicmV2b2NhdGlvbl9lbmRwb2ludCJgCglCYWNrQ2hhbm5lbExvZ291dFN1cHBvcnRlZCBib29sIGBqc29uOiJiYWNrY2hhbm5lbF9sb2dvdXRfc3VwcG9ydGVkImAKCUJhY2tDaGFubmVsTG9nb3V0U2Vzc2lvblN1cHBvcnRlZCBib29sIGBqc29uOiJiYWNrY2hhbm5lbF9sb2dvdXRfc2Vzc2lvbl9zdXBwb3J0ZWQiYAoJRnJvbnRDaGFubmVsTG9nb3V0U3VwcG9ydGVkIGJvb2wgYGpzb246ImZyb250Y2hhbm5lbF9sb2dvdXRfc3VwcG9ydGVkImAKCUZyb250Q2hhbm5lbExvZ291dFNlc3Npb25TdXBwb3J0ZWQgYm9vbCBganNvbjoiZnJvbnRjaGFubmVsX2xvZ291dF9zZXNzaW9uX3N1cHBvcnRlZCJgCglFbmRTZXNzaW9uRW5kcG9pbnQgc3RyaW5nIGBqc29uOiJlbmRfc2Vzc2lvbl9lbmRwb2ludCJgCglSZXF1ZXN0T2JqZWN0U2lnbmluZ0FsZ1ZhbHVlc1N1cHBvcnRlZCBbXXN0cmluZyBganNvbjoicmVxdWVzdF9vYmplY3Rfc2lnbmluZ19hbGdfdmFsdWVzX3N1cHBvcnRlZCJgCglDb2RlQ2hhbGxlbmdlTWV0aG9kc1N1cHBvcnRlZCBbXXN0cmluZyBganNvbjoiY29kZV9jaGFsbGVuZ2VfbWV0aG9kc19zdXBwb3J0ZWQiYAp9CgpmdW5jIGRpc2NvdmVyRW5kcG9pbnQocncgaHR0cC5SZXNwb25zZVdyaXRlciwgcmVxICpodHRwLlJlcXVlc3QpIHsKCWhvc3RuYW1lLCBwcm94eVJvdXRlIDo9IHV0aWxzLkZpbmRSb3V0ZUJ5UmVxSG9zdChyZXEuSG9zdCkKCQoJLy8gQnVpbGQgZXZlcnkgZW5kcG9pbnQgZnJvbSB0aGUgaG9zdCB0aGUgY2xpZW50IGFjdHVhbGx5IHVzZWQgdG8gcmVhY2ggdXMKCS8vIChyZXEuSG9zdCkuIFVzaW5nIGNvbmZpZy5IVFRQQ29uZmlnLkhvc3RuYW1lIGhlcmUgYnJlYWtzIGFueSBkZXBsb3ltZW50CgkvLyB3aGVyZSB0aGUgY2xpZW50IGNvbm5lY3RzIHRocm91Z2ggYSBkaWZmZXJlbnQgbmFtZSB0aGFuIHRoZSBjb25maWd1cmVkIG9uZQoJLy8gKFRhaWxzY2FsZSBob3N0bmFtZSwgcmV2ZXJzZSBwcm94eSwgY3VzdG9tIGRvbWFpbiwgTEFOIElQIHZzIHB1YmxpYyBuYW1lKToKCS8vIHRoZSBpc3N1ZXIgd291bGQgc2F5IG9uZSB0aGluZyB3aGlsZSBhdXRob3JpemF0aW9uX2VuZHBvaW50IHBvaW50cyBhdCBhbgoJLy8gdW5yZWFjaGFibGUvcHJpdmF0ZSBhZGRyZXNzLCBzbyBPSURDIGNsaWVudHMgKGUuZy4gSG9tZSBBc3Npc3RhbnQpIGZhaWwuCglzY2hlbWUgOj0gImh0dHA6Ly8iCglpZiB1dGlscy5Jc0hUVFBTIHsKCQlzY2hlbWUgPSAiaHR0cHM6Ly8iCgl9Cglob3N0bmFtZSA9IHNjaGVtZSArIGhvc3RuYW1lCgoJcncuSGVhZGVyKCkuRGVsKCJDb250ZW50LVR5cGUiKQoJcncuSGVhZGVyKCkuU2V0KCJDb250ZW50LVR5cGUiLCAiYXBwbGljYXRpb24vanNvbiIpCgoJY29uZmlndXJhdGlvbiA6PSAmb2lkY0NvbmZpZ3VyYXRpb257CgkJCUlzc3VlcjogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBob3N0bmFtZSwKCQkJQXV0aFVSTDogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGhvc3RuYW1lICsgIi9jb3Ntb3MtdWkvb3BlbmlkIiwKCQkJVG9rZW5VUkw6ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGhvc3RuYW1lICsgIi9vYXV0aDIvdG9rZW4iLAoJCQlKV0tzVVJJOiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgaG9zdG5hbWUgKyAiLy53ZWxsLWtub3duL2p3a3MuanNvbiIsCgkJCVJldm9jYXRpb25FbmRwb2ludDogICAgICAgICAgICAgICAgICAgICBob3N0bmFtZSArICIvb2F1dGgyL3Jldm9rZSIsCgkJCVVzZXJpbmZvRW5kcG9pbnQ6ICAgICAgICAgICAgICAgICAgICAgICBob3N0bmFtZSArICIvb2F1dGgyL3VzZXJpbmZvIiwKCQkJU3ViamVjdFR5cGVzOiAgICAgICAgICAgICAgICAgICAgICAgICAgIFtdc3RyaW5neyJwdWJsaWMiLCAicGFpcndpc2UifSwKCQkJUmVzcG9uc2VUeXBlczogICAgICAgICAgICAgICAgICAgICAgICAgIFtdc3RyaW5neyJjb2RlIiwgImNvZGUgaWRfdG9rZW4iLCAiaWRfdG9rZW4iLCAidG9rZW4gaWRfdG9rZW4iLCAidG9rZW4iLCAidG9rZW4gaWRfdG9rZW4gY29kZSJ9LAoJCQlDbGFpbXNTdXBwb3J0ZWQ6ICAgICAgICAgICAgICAgICAgICAgICAgW11zdHJpbmd7ImF1ZCIsICJlbWFpbCIsICJlbWFpbF92ZXJpZmllZCIsICJleHAiLCAiaWF0IiwgImlzcyIsICJsb2NhbGUiLCAibmFtZSIsICJzdWIifSwKCQkJU2NvcGVzU3VwcG9ydGVkOiAgICAgICAgICAgICAgICAgICAgICAgIFtdc3RyaW5neyJvcGVuaWQiLCAib2ZmbGluZSIsICJwcm9maWxlIiwgImVtYWlsIiwgImFkZHJlc3MiLCAicGhvbmUifSwKCQkJVG9rZW5FbmRwb2ludEF1dGhNZXRob2RzU3VwcG9ydGVkOiAgICAgIFtdc3RyaW5neyJjbGllbnRfc2VjcmV0X3Bvc3QiLCAiY2xpZW50X3NlY3JldF9iYXNpYyIsICJwcml2YXRlX2tleV9qd3QiLCAibm9uZSJ9LAoJCQlHcmFudFR5cGVzU3VwcG9ydGVkOiAgICAgICAgICAgICAgICAgICAgW11zdHJpbmd7ImF1dGhvcml6YXRpb25fY29kZSIsICJpbXBsaWNpdCIsICJjbGllbnRfY3JlZGVudGlhbHMiLCAicmVmcmVzaF90b2tlbiJ9LAoJCQlSZXNwb25zZU1vZGVzU3VwcG9ydGVkOiAgICAgICAgICAgICAgICAgW11zdHJpbmd7InF1ZXJ5IiwgImZyYWdtZW50In0sCgkJCVJlcXVlc3RQYXJhbWV0ZXJTdXBwb3J0ZWQ6ICAgICAgICAgICAgICB0cnVlLAoJCQlSZXF1ZXN0VVJJUGFyYW1ldGVyU3VwcG9ydGVkOiAgICAgICAgICAgdHJ1ZSwKCQkJUmVxdWlyZVJlcXVlc3RVUklSZWdpc3RyYXRpb246ICAgICAgICAgIHRydWUsCgkJCUJhY2tDaGFubmVsTG9nb3V0U3VwcG9ydGVkOiAgICAgICAgICAgICB0cnVlLAoJCQlCYWNrQ2hhbm5lbExvZ291dFNlc3Npb25TdXBwb3J0ZWQ6ICAgICAgdHJ1ZSwKCQkJRnJvbnRDaGFubmVsTG9nb3V0U3VwcG9ydGVkOiAgICAgICAgICAgIHRydWUsCgkJCUZyb250Q2hhbm5lbExvZ291dFNlc3Npb25TdXBwb3J0ZWQ6ICAgICB0cnVlLAoJCQlFbmRTZXNzaW9uRW5kcG9pbnQ6ICAgICAgICAgICAgICAgICAgICAgaG9zdG5hbWUgKyAiL2Nvc21vcy11aS9sb2dvdXQiLAoJCQlSZXF1ZXN0T2JqZWN0U2lnbmluZ0FsZ1ZhbHVlc1N1cHBvcnRlZDogW11zdHJpbmd7IlJTMjU2In0sCgkJCUNvZGVDaGFsbGVuZ2VNZXRob2RzU3VwcG9ydGVkOiAgICAgICAgICBbXXN0cmluZ3siUzI1NiJ9LAoJCQlJRFRva2VuU2lnbmluZ0FsZ1ZhbHVlc1N1cHBvcnRlZDogICAgICAgW11zdHJpbmd7IlJTMjU2In0sCgl9CgoJY29uZmlndXJhdGlvbk1hcCA6PSBtYXBbc3RyaW5nXWludGVyZmFjZXt9e30KCgkvLyBjb252ZXJ0IHN0cnVjdCB0byBtYXAKCWNvbmZpZ3VyYXRpb25CeXRlcywgXyA6PSBqc29uLk1hcnNoYWwoY29uZmlndXJhdGlvbikKCgkvLyBjb252ZXJ0IG1hcCB0byBqc29uCglqc29uLlVubWFyc2hhbChjb25maWd1cmF0aW9uQnl0ZXMsICZjb25maWd1cmF0aW9uTWFwKQoKCS8vIElmIHRoaXMgaXMgYSBwcm94eSBkb21haW4sIGFkZCBwcm94eS1zcGVjaWZpYyBtZXRhZGF0YQoJLy8gKG9ubHkgd2hlbiB0aGUgcm91dGUgYWN0dWFsbHkgaGFzIGEgcmVnaXN0ZXJlZCBjbGllbnQsIHNlZSBvYXV0aDIuZ28gSW5pdCkKCWlmIHByb3h5Um91dGUgIT0gbmlsICYmIChwcm94eVJvdXRlLkF1dGhFbmFibGVkIHx8IHByb3h5Um91dGUuUHVibGljT3BlbklETmFtZSAhPSAiIikgewoJCWNsaWVudCA6PSB1dGlscy5HZXRQcm94eU9JRENyZWRlbnRpYWxzKCpwcm94eVJvdXRlLCBmYWxzZSkKCgkJZGV0ZWN0TWFwIDo9IG1hcFtzdHJpbmddaW50ZXJmYWNle317fQoJCWRldGVjdE1hcFsiZW5hYmxlZCJdID0gdHJ1ZQoKCQlkZXRlY3RNYXBbImNsaWVudF9pZCJdID0gY2xpZW50LklECgkJZGV0ZWN0TWFwWyJyZWRpcmVjdF91cmkiXSA9IGNsaWVudC5SZWRpcmVjdFVSSXMKCQkvLyBBdXRvLXByb3Zpc2lvbmVkIGNsaWVudHMgYXJlIHB1YmxpYyAoUEtDRSwgbm8gc2VjcmV0KTsgc2lnbmFsIHRoaXMgc28gbmF0aXZlL1NQQQoJCS8vIGNsaWVudCBsaWJyYXJpZXMgcmVhZGluZyBvaWRfZGV0ZWN0IHVzZSBQS0NFIGFuZCBleHBlY3Qgbm8gY2xpZW50IHNlY3JldC4KCQlkZXRlY3RNYXBbInRva2VuX2VuZHBvaW50X2F1dGhfbWV0aG9kIl0gPSAibm9uZSIKCQlkZXRlY3RNYXBbImNvZGVfY2hhbGxlbmdlX21ldGhvZHNfc3VwcG9ydGVkIl0gPSBbXXN0cmluZ3siUzI1NiJ9CgkJZGV0ZWN0TWFwWyJjb25maWd1cmF0aW9uX2VuZHBvaW50Il0gPSBob3N0bmFtZSArICIvLndlbGwta25vd24vb3BlbmlkLWNvbmZpZ3VyYXRpb24iCgkJZGV0ZWN0TWFwWyJhdXRoX2VuZHBvaW50Il0gPSBob3N0bmFtZSArICIvY29zbW9zLXVpL29hdXRoIgoJCWRldGVjdE1hcFsic3VnZ2VzdGVkX3JlZGlyZWN0Il0gPSAiL29hdXRoL2NhbGxiYWNrIgoKCQlkZXRlY3RNYXBbInByb3ZpZGVyX25hbWUiXSA9ICJDb3Ntb3MgQ2xvdWQiCgkJZGV0ZWN0TWFwWyJwcm92aWRlcl9sb2dvIl0gPSBob3N0bmFtZSArICIvbG9nbyIKCgkJZGV0ZWN0TWFwWyJsb2dpbl9sYWJlbCJdID0gIkxvZ2luIHdpdGggQ29zbW9zIENsb3VkIgoJCWRldGVjdE1hcFsibG9naW5fbG9nbyJdID0gaG9zdG5hbWUgKyAiL2xvZ28iCgkJZGV0ZWN0TWFwWyJsb2dpbl9iZyJdID0gIiMwMDAwMDAiCgkJZGV0ZWN0TWFwWyJsb2dpbl9jb2xvciJdID0gIiNmZmZmZmYiCgoJCWNvbmZpZ3VyYXRpb25NYXBbIm9pZF9kZXRlY3QiXSA9IGRldGVjdE1hcAoJfQoKCS8vIFJlZ3VsYXIgT0lEQyBjb25maWcgZm9yIG1haW4gZG9tYWluCglqc29uLk5ld0VuY29kZXIocncpLkVuY29kZShjb25maWd1cmF0aW9uTWFwKQp9
+package authorizationserver
+
+import (
+	"encoding/json"
+	"net/http"
+	// _url "net/url"
+
+	"github.com/azukaar/cosmos-server/src/utils"
+)
+
+type oidcConfiguration struct {
+	Issuer string `json:"issuer"`
+	AuthURL string `json:"authorization_endpoint"`
+	RegistrationEndpoint string `json:"registration_endpoint,omitempty"`
+	TokenURL string `json:"token_endpoint"`
+	JWKsURI string `json:"jwks_uri"`
+	SubjectTypes []string `json:"subject_types_supported"`
+	ResponseTypes []string `json:"response_types_supported"`
+	ClaimsSupported []string `json:"claims_supported"`
+	GrantTypesSupported []string `json:"grant_types_supported"`
+	ResponseModesSupported []string `json:"response_modes_supported"`
+	UserinfoEndpoint string `json:"userinfo_endpoint"`
+	ScopesSupported []string `json:"scopes_supported"`
+	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
+	UserinfoSigningAlgValuesSupported []string `json:"userinfo_signing_alg_values_supported"`
+	IDTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
+	IDTokenSignedResponseAlg []string `json:"id_token_signed_response_alg"`
+	UserinfoSignedResponseAlg []string `json:"userinfo_signed_response_alg"`
+	RequestParameterSupported bool `json:"request_parameter_supported"`
+	RequestURIParameterSupported bool `json:"request_uri_parameter_supported"`
+	RequireRequestURIRegistration bool `json:"require_request_uri_registration"`
+	ClaimsParameterSupported bool `json:"claims_parameter_supported"`
+	RevocationEndpoint string `json:"revocation_endpoint"`
+	BackChannelLogoutSupported bool `json:"backchannel_logout_supported"`
+	BackChannelLogoutSessionSupported bool `json:"backchannel_logout_session_supported"`
+	FrontChannelLogoutSupported bool `json:"frontchannel_logout_supported"`
+	FrontChannelLogoutSessionSupported bool `json:"frontchannel_logout_session_supported"`
+	EndSessionEndpoint string `json:"end_session_endpoint"`
+	RequestObjectSigningAlgValuesSupported []string `json:"request_object_signing_alg_values_supported"`
+	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported"`
+}
+
+func discoverEndpoint(rw http.ResponseWriter, req *http.Request) {
+	hostname, proxyRoute := utils.FindRouteByReqHost(req.Host)
+	
+	// Build every endpoint from the host the client actually used to reach us
+	// (req.Host). Using config.HTTPConfig.Hostname here breaks any deployment
+	// where the client connects through a different name than the configured one
+	// (Tailscale hostname, reverse proxy, custom domain, LAN IP vs public name):
+	// the issuer would say one thing while authorization_endpoint points at an
+	// unreachable/private address, so OIDC clients (e.g. Home Assistant) fail.
+	scheme := "http://"
+	if utils.IsHTTPS {
+		scheme = "https://"
+	}
+	hostname = scheme + hostname
+
+	rw.Header().Del("Content-Type")
+	rw.Header().Set("Content-Type", "application/json")
+
+	configuration := &oidcConfiguration{
+			Issuer:                                 hostname,
+			AuthURL:                                hostname + "/cosmos-ui/openid",
+			TokenURL:                               hostname + "/oauth2/token",
+			JWKsURI:                                hostname + "/.well-known/jwks.json",
+			RevocationEndpoint:                     hostname + "/oauth2/revoke",
+			UserinfoEndpoint:                       hostname + "/oauth2/userinfo",
+			SubjectTypes:                           []string{"public", "pairwise"},
+			ResponseTypes:                          []string{"code", "code id_token", "id_token", "token id_token", "token", "token id_token code"},
+			ClaimsSupported:                        []string{"aud", "email", "email_verified", "exp", "iat", "iss", "locale", "name", "sub"},
+			ScopesSupported:                        []string{"openid", "offline", "profile", "email", "address", "phone"},
+			TokenEndpointAuthMethodsSupported:      []string{"client_secret_post", "client_secret_basic", "private_key_jwt", "none"},
+			GrantTypesSupported:                    []string{"authorization_code", "implicit", "client_credentials", "refresh_token"},
+			ResponseModesSupported:                 []string{"query", "fragment"},
+			RequestParameterSupported:              true,
+			RequestURIParameterSupported:           true,
+			RequireRequestURIRegistration:          true,
+			BackChannelLogoutSupported:             true,
+			BackChannelLogoutSessionSupported:      true,
+			FrontChannelLogoutSupported:            true,
+			FrontChannelLogoutSessionSupported:     true,
+			EndSessionEndpoint:                     hostname + "/cosmos-ui/logout",
+			RequestObjectSigningAlgValuesSupported: []string{"RS256"},
+			CodeChallengeMethodsSupported:          []string{"S256"},
+			IDTokenSigningAlgValuesSupported:       []string{"RS256"},
+	}
+
+	configurationMap := map[string]interface{}{}
+
+	// convert struct to map
+	configurationBytes, _ := json.Marshal(configuration)
+
+	// convert map to json
+	json.Unmarshal(configurationBytes, &configurationMap)
+
+	// If this is a proxy domain, add proxy-specific metadata
+	// (only when the route actually has a registered client, see oauth2.go Init)
+	if proxyRoute != nil && (proxyRoute.AuthEnabled || proxyRoute.PublicOpenIDName != "") {
+		client := utils.GetProxyOIDCredentials(*proxyRoute, false)
+
+		detectMap := map[string]interface{}{}
+		detectMap["enabled"] = true
+
+		detectMap["client_id"] = client.ID
+		detectMap["redirect_uri"] = client.RedirectURIs
+		// Auto-provisioned clients are public (PKCE, no secret); signal this so native/SPA
+		// client libraries reading oid_detect use PKCE and expect no client secret.
+		detectMap["token_endpoint_auth_method"] = "none"
+		detectMap["code_challenge_methods_supported"] = []string{"S256"}
+		detectMap["configuration_endpoint"] = hostname + "/.well-known/openid-configuration"
+		detectMap["auth_endpoint"] = hostname + "/cosmos-ui/oauth"
+		detectMap["suggested_redirect"] = "/oauth/callback"
+
+		detectMap["provider_name"] = "Cosmos Cloud"
+		detectMap["provider_logo"] = hostname + "/logo"
+
+		detectMap["login_label"] = "Login with Cosmos Cloud"
+		detectMap["login_logo"] = hostname + "/logo"
+		detectMap["login_bg"] = "#000000"
+		detectMap["login_color"] = "#ffffff"
+
+		configurationMap["oid_detect"] = detectMap
+	}
+
+	// Regular OIDC config for main domain
+	json.NewEncoder(rw).Encode(configurationMap)
+}
