@@ -152,18 +152,24 @@ func newSession(user string, req *http.Request) *openid.DefaultSession {
 	// get hostname from request
 	hostname := req.Host
 
-	// external request
-	if hostname == utils.GetMainConfig().HTTPConfig.Hostname {
-		if utils.IsHTTPS {
-			hostname = "https://" + hostname
-		} else {
-			hostname = "http://" + hostname
-		}
-	} else if hostname == os.Getenv("HOSTNAME") {
-		hostname = "http://" + hostname
-	} else {
-		utils.Error("Invalid hostname for OpenID request: " + hostname, nil)
+	// Accept the configured hostname, the container hostname, and any host that
+	// resolves to a proxy route / constellation tunnel (same check discovery
+	// uses). OIDC clients often reach Cosmos through an alternate name (Tailscale
+	// hostname, reverse proxy, custom domain) and the issuer in the ID token must
+	// match the issuer in the discovery document, which is built from req.Host.
+	_, proxyRoute := utils.FindRouteByReqHost(hostname)
+	isKnownHost := hostname == utils.GetMainConfig().HTTPConfig.Hostname ||
+		hostname == os.Getenv("HOSTNAME") || proxyRoute != nil
+
+	if !isKnownHost {
+		utils.Error("Invalid hostname for OpenID request: "+hostname, nil)
 		return nil
+	}
+
+	if utils.IsHTTPS {
+		hostname = "https://" + hostname
+	} else {
+		hostname = "http://" + hostname
 	}
 
 	return &openid.DefaultSession{
