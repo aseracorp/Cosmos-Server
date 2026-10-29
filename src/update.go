@@ -1,1 +1,210 @@
-cGFja2FnZSBtYWluCgppbXBvcnQgKAogICAgImVuY29kaW5nL2pzb24iCiAgICAiZm10IgogICAgImlvIgogICAgIm9zIgogICAgIm5ldC9odHRwIgogICAgInBhdGgvZmlsZXBhdGgiCiAgICAiYnVmaW8iCiAgICAic3RyaW5ncyIKICAgICJzeXNjYWxsIgoKICAgICJnaXRodWIuY29tL2F6dWthYXIvY29zbW9zLXNlcnZlci9zcmMvdXRpbHMiCikKCnR5cGUgUmVsZWFzZUFzc2V0IHN0cnVjdCB7CiAgICBOYW1lICAgICAgICBzdHJpbmcgYGpzb246Im5hbWUiYAogICAgRG93bmxvYWRVUkwgc3RyaW5nIGBqc29uOiJicm93c2VyX2Rvd25sb2FkX3VybCJgCn0KCmZ1bmMgKGEgKlJlbGVhc2VBc3NldCkgVW5tYXJzaGFsSlNPTihkYXRhIFtdYnl0ZSkgZXJyb3IgewogICAgdmFyIHJhdyBzdHJ1Y3QgewogICAgICAgIE5hbWUgICAgICAgICAgICAgICBzdHJpbmcgYGpzb246Im5hbWUiYAogICAgICAgIEJyb3dzZXJEb3dubG9hZFVSTCBzdHJpbmcgYGpzb246ImJyb3dzZXJfZG93bmxvYWRfdXJsImAKICAgICAgICBEb3dubG9hZFVSTCAgICAgICAgc3RyaW5nIGBqc29uOiJkb3dubG9hZF91cmwiYAogICAgfQogICAgaWYgZXJyIDo9IGpzb24uVW5tYXJzaGFsKGRhdGEsICZyYXcpOyBlcnIgIT0gbmlsIHsKICAgICAgICByZXR1cm4gZXJyCiAgICB9CiAgICBhLk5hbWUgPSByYXcuTmFtZQogICAgYS5Eb3dubG9hZFVSTCA9IHJhdy5Ccm93c2VyRG93bmxvYWRVUkwKICAgIGlmIGEuRG93bmxvYWRVUkwgPT0gIiIgewogICAgICAgIGEuRG93bmxvYWRVUkwgPSByYXcuRG93bmxvYWRVUkwKICAgIH0KICAgIHJldHVybiBuaWwKfQoKdHlwZSBSZWxlYXNlIHN0cnVjdCB7CiAgICBUYWdOYW1lIHN0cmluZyAgICAgICAgIGBqc29uOiJ0YWdfbmFtZSJgCiAgICBQcmVSZWxlYXNlIGJvb2wgICAgICAgIGBqc29uOiJwcmVyZWxlYXNlImAKICAgIEFzc2V0cyAgW11SZWxlYXNlQXNzZXQgYGpzb246ImFzc2V0cyJgCn0KCnR5cGUgVmVyc2lvbkluZm8gc3RydWN0IHsKICAgIFZlcnNpb24gICAgIHN0cmluZwogICAgQU1EVVJMICAgICAgc3RyaW5nCiAgICBBUk1VUkwgICAgICBzdHJpbmcKICAgIEFNRE1ENSAgICAgIHN0cmluZwogICAgQVJNTUQ1ICAgICAgc3RyaW5nCn0KCmZ1bmMgcGFyc2VNRDVGaWxlKGNvbnRlbnQgc3RyaW5nKSBzdHJpbmcgewoJLy8gUmVhZCBmaXJzdCBsaW5lIG9ubHkgKHRoZXJlIHNob3VsZCBvbmx5IGJlIG9uZSBhbnl3YXkpCglzY2FubmVyIDo9IGJ1ZmlvLk5ld1NjYW5uZXIoc3RyaW5ncy5OZXdSZWFkZXIoY29udGVudCkpCglpZiBzY2FubmVyLlNjYW4oKSB7CgkJCS8vIFNwbGl0IGJ5IHdoaXRlc3BhY2UgYW5kIHRha2UgZmlyc3QgcGFydCAodGhlIGhhc2gpCgkJCXBhcnRzIDo9IHN0cmluZ3MuRmllbGRzKHNjYW5uZXIuVGV4dCgpKQoJCQlpZiBsZW4ocGFydHMpID4gMCB7CgkJCQkJcmV0dXJuIHBhcnRzWzBdCgkJCX0KCX0KCXJldHVybiAiIgp9CgpmdW5jIEdldExhdGVzdFZlcnNpb24oaW5jbHVkZUJldGEgYm9vbCkgKCpWZXJzaW9uSW5mbywgZXJyb3IpIHsKICAgIC8vIEZldGNoIHJlbGVhc2VzIGZyb20gR2l0SHViIEFQSQoKICAgIHVwZGF0ZVVSTCA6PSAiaHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy9hc2VyYWNvcnAvY29zbW9zLXNlcnZlci9yZWxlYXNlcyIKICAgIGlmIHV0aWxzLklzUHJvKCkgewogICAgICAgIHVwZGF0ZVVSTCA9ICJodHRwczovL2FwaS5jb3Ntb3MtY2xvdWQuaW8vcHJvdXBkYXRlcyIKICAgIH0KCiAgICByZXNwLCBlcnIgOj0gaHR0cC5HZXQodXBkYXRlVVJMKQogICAgaWYgZXJyICE9IG5pbCB7CiAgICAgICAgcmV0dXJuIG5pbCwgZm10LkVycm9yZigiZmFpbGVkIHRvIGZldGNoIHJlbGVhc2VzOiAldiIsIGVycikKICAgIH0KICAgIGRlZmVyIHJlc3AuQm9keS5DbG9zZSgpCgogICAgYm9keSwgZXJyIDo9IGlvLlJlYWRBbGwocmVzcC5Cb2R5KQogICAgaWYgZXJyICE9IG5pbCB7CiAgICAgICAgcmV0dXJuIG5pbCwgZm10LkVycm9yZigiZmFpbGVkIHRvIHJlYWQgcmVzcG9uc2UgYm9keTogJXYiLCBlcnIpCiAgICB9CgogICAgdmFyIHJlbGVhc2VzIFtdUmVsZWFzZQogICAgaWYgdXRpbHMuSXNQcm8oKSB7CiAgICAgICAgdmFyIHdyYXBwZXIgc3RydWN0IHsKICAgICAgICAgICAgUmVsZWFzZXMgW11SZWxlYXNlIGBqc29uOiJyZWxlYXNlcyJgCiAgICAgICAgfQogICAgICAgIGlmIGVyciA6PSBqc29uLlVubWFyc2hhbChib2R5LCAmd3JhcHBlcik7IGVyciAhPSBuaWwgewogICAgICAgICAgICByZXR1cm4gbmlsLCBmbXQuRXJyb3JmKCJmYWlsZWQgdG8gcGFyc2UgSlNPTjogJXYiLCBlcnIpCiAgICAgICAgfQogICAgICAgIHJlbGVhc2VzID0gd3JhcHBlci5SZWxlYXNlcwogICAgfSBlbHNlIHsKICAgICAgICBpZiBlcnIgOj0ganNvbi5Vbm1hcnNoYWwoYm9keSwgJnJlbGVhc2VzKTsgZXJyICE9IG5pbCB7CiAgICAgICAgICAgIHJldHVybiBuaWwsIGZtdC5FcnJvcmYoImZhaWxlZCB0byBwYXJzZSBKU09OOiAldiIsIGVycikKICAgICAgICB9CiAgICB9CgogICAgLy8gRmluZCBsYXRlc3QgcmVsZWFzZSB0aGF0IG1hdGNoZXMgY3JpdGVyaWEKICAgIHZhciBsYXRlc3RSZWxlYXNlICpSZWxlYXNlCiAgICBmb3IgXywgcmVsZWFzZSA6PSByYW5nZSByZWxlYXNlcyB7CiAgICAgICAgaWYgIWluY2x1ZGVCZXRhICYmIHJlbGVhc2UuUHJlUmVsZWFzZSB7CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgfQogICAgICAgIGxhdGVzdFJlbGVhc2UgPSAmcmVsZWFzZQogICAgICAgIGJyZWFrCiAgICB9CgogICAgaWYgbGF0ZXN0UmVsZWFzZSA9PSBuaWwgewogICAgICAgIHJldHVybiBuaWwsIG5pbAogICAgfQoKICAgIC8vIEluaXRpYWxpemUgdmVyc2lvbiBpbmZvCiAgICBpbmZvIDo9ICZWZXJzaW9uSW5mb3sKICAgICAgICBWZXJzaW9uOiBsYXRlc3RSZWxlYXNlLlRhZ05hbWUsCiAgICB9CgogICAgLy8gUGFyc2UgYXNzZXRzIHRvIGZpbmQgVVJMcyBhbmQgTUQ1cwogICAgZm9yIF8sIGFzc2V0IDo9IHJhbmdlIGxhdGVzdFJlbGVhc2UuQXNzZXRzIHsKICAgICAgICBuYW1lIDo9IHN0cmluZ3MuVG9Mb3dlcihhc3NldC5OYW1lKQogICAgICAgIAogICAgICAgIC8vIE1hdGNoIEFNRDY0IGJpbmFyeQogICAgICAgIGlmIHN0cmluZ3MuQ29udGFpbnMobmFtZSwgImFtZDY0IikgJiYgIXN0cmluZ3MuSGFzU3VmZml4KG5hbWUsICIubWQ1IikgJiYgIXN0cmluZ3MuQ29udGFpbnMobmFtZSwgInRlcnJhZm9ybSIpIHsKICAgICAgICAgICAgaW5mby5BTURVUkwgPSBhc3NldC5Eb3dubG9hZFVSTAogICAgICAgIH0KICAgICAgICAvLyBNYXRjaCBBUk02NCBiaW5hcnkKICAgICAgICBpZiBzdHJpbmdzLkNvbnRhaW5zKG5hbWUsICJhcm02NCIpICYmICFzdHJpbmdzLkhhc1N1ZmZpeChuYW1lLCAiLm1kNSIpICYmICFzdHJpbmdzLkNvbnRhaW5zKG5hbWUsICJ0ZXJyYWZvcm0iKSB7CiAgICAgICAgICAgIGluZm8uQVJNVVJMID0gYXNzZXQuRG93bmxvYWRVUkwKICAgICAgICB9CiAgICAgICAgLy8gTWF0Y2ggTUQ1IGZpbGVzCiAgICAgICAgaWYgc3RyaW5ncy5IYXNTdWZmaXgobmFtZSwgIi5tZDUiKSB7CiAgICAgICAgICAgIC8vIEZldGNoIE1ENSBjb250ZW50CiAgICAgICAgICAgIG1kNVJlc3AsIGVyciA6PSBodHRwLkdldChhc3NldC5Eb3dubG9hZFVSTCkKICAgICAgICAgICAgaWYgZXJyICE9IG5pbCB7CiAgICAgICAgICAgICAgICBjb250aW51ZQogICAgICAgICAgICB9CiAgICAgICAgICAgIG1kNUNvbnRlbnQsIGVyciA6PSBpby5SZWFkQWxsKG1kNVJlc3AuQm9keSkKICAgICAgICAgICAgbWQ1UmVzcC5Cb2R5LkNsb3NlKCkKICAgICAgICAgICAgaWYgZXJyICE9IG5pbCB7CiAgICAgICAgICAgICAgICBjb250aW51ZQogICAgICAgICAgICB9CiAgICAgICAgICAgIAogICAgICAgICAgICBtZDVTdHJpbmcgOj0gc3RyaW5ncy5UcmltU3BhY2Uoc3RyaW5nKG1kNUNvbnRlbnQpKQogICAgICAgICAgICAKICAgICAgICAgICAgaWYgc3RyaW5ncy5Db250YWlucyhuYW1lLCAiYW1kNjQiKSAmJiAhc3RyaW5ncy5Db250YWlucyhuYW1lLCAidGVycmFmb3JtIikgewogICAgICAgICAgICAgICAgaW5mby5BTURNRDUgPSBwYXJzZU1ENUZpbGUobWQ1U3RyaW5nKQogICAgICAgICAgICB9CiAgICAgICAgICAgIGlmIHN0cmluZ3MuQ29udGFpbnMobmFtZSwgImFybTY0IikgJiYgIXN0cmluZ3MuQ29udGFpbnMobmFtZSwgInRlcnJhZm9ybSIpIHsKICAgICAgICAgICAgICAgIGluZm8uQVJNTUQ1ID0gcGFyc2VNRDVGaWxlKG1kNVN0cmluZykKICAgICAgICAgICAgfQogICAgICAgIH0KICAgIH0KCiAgICByZXR1cm4gaW5mbywgbmlsCn0KCmZ1bmMgY2xlYW5VcFVwZGF0ZUZpbGVzKCkgewogICAgZXhlY1BhdGgsIGVyciA6PSBvcy5FeGVjdXRhYmxlKCkKICAgIGlmIGVyciAhPSBuaWwgewogICAgICAgIHJldHVybgogICAgfQogICAgCiAgICBjdXJyZW50Rm9sZGVyIDo9IGZpbGVwYXRoLkRpcihleGVjUGF0aCkKCiAgICBkbFBhdGggOj0gY3VycmVudEZvbGRlciArICIvY29zbW9zLXVwZGF0ZS56aXAiCgogICAgaWYgXywgZXJyIDo9IG9zLlN0YXQoZGxQYXRoKTsgZXJyID09IG5pbCB7CiAgICAgICAgb3MuUmVtb3ZlKGRsUGF0aCkKICAgIH0KCiAgICAvLyBpZiBjb3Ntb3MtbGF1bWNoZXIudXBkYXRlZCBleGlzdHMsIHJlbmFtZSBpdCB0byBjb3Ntb3MtbGF1bmNoZXIKICAgIHVwZGF0ZWRQYXRoIDo9IGN1cnJlbnRGb2xkZXIgKyAiL2Nvc21vcy1sYXVuY2hlci51cGRhdGVkIgogICAgaWYgXywgZXJyIDo9IG9zLlN0YXQodXBkYXRlZFBhdGgpOyBlcnIgPT0gbmlsIHsKICAgICAgICAvLyBnZXQgb2xkIHBlcm1pc3Npb25zCiAgICAgICAgdmFyIHBlcm1zIG9zLkZpbGVNb2RlCiAgICAgICAgaWYgaW5mbywgZXJyIDo9IG9zLlN0YXQoY3VycmVudEZvbGRlciArICIvY29zbW9zLWxhdW5jaGVyIik7IGVyciA9PSBuaWwgewogICAgICAgICAgICBwZXJtcyA9IGluZm8uTW9kZSgpCiAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgZm10LlByaW50bG4oIlVwZGF0ZTogRmFpbGVkIHRvIGdldCBvbGQgcGVybWlzc2lvbnM6IiwgZXJyKQogICAgICAgIH0KICAgICAgICAvLyBnZXQgb2xkIG93bmVyCiAgICAgICAgdmFyIG93bmVyIGludAogICAgICAgIGlmIGluZm8sIGVyciA6PSBvcy5TdGF0KGN1cnJlbnRGb2xkZXIgKyAiL2Nvc21vcy1sYXVuY2hlciIpOyBlcnIgPT0gbmlsIHsKICAgICAgICAgICAgb3duZXIgPSBpbnQoaW5mby5TeXMoKS4oKnN5c2NhbGwuU3RhdF90KS5VaWQpCiAgICAgICAgfSBlbHNlIHsKICAgICAgICAgICAgZm10LlByaW50bG4oIlVwZGF0ZTogRmFpbGVkIHRvIGdldCBvbGQgb3duZXI6IiwgZXJyKQogICAgICAgIH0KCiAgICAgICAgZXJyIDo9IG9zLlJlbmFtZSh1cGRhdGVkUGF0aCwgY3VycmVudEZvbGRlciArICIvY29zbW9zLWxhdW5jaGVyIikKICAgICAgICBpZiBlcnIgIT0gbmlsIHsKICAgICAgICAgICAgZm10LlByaW50bG4oIlVwZGF0ZTogRmFpbGVkIHRvIHJlbmFtZSBjb3Ntb3MtbGF1bmNoZXIudXBkYXRlZDoiLCBlcnIpCiAgICAgICAgfQoKICAgICAgICAvLyBzZXQgb2xkIHBlcm1pc3Npb25zCiAgICAgICAgaWYgcGVybXMgIT0gMCB7CiAgICAgICAgICAgIGVyciA9IG9zLkNobW9kKGN1cnJlbnRGb2xkZXIgKyAiL2Nvc21vcy1sYXVuY2hlciIsIHBlcm1zKQogICAgICAgICAgICBpZiBlcnIgIT0gbmlsIHsKICAgICAgICAgICAgICAgIGZtdC5QcmludGxuKCJVcGRhdGU6IEZhaWxlZCB0byBzZXQgb2xkIHBlcm1pc3Npb25zOiIsIGVycikKICAgICAgICAgICAgfQogICAgICAgIH0KICAgICAgICAvLyBzZXQgb2xkIG93bmVyCiAgICAgICAgaWYgb3duZXIgIT0gMCB7CiAgICAgICAgICAgIGVyciA9IG9zLkNob3duKGN1cnJlbnRGb2xkZXIgKyAiL2Nvc21vcy1sYXVuY2hlciIsIG93bmVyLCAtMSkKICAgICAgICAgICAgaWYgZXJyICE9IG5pbCB7CiAgICAgICAgICAgICAgICBmbXQuUHJpbnRsbigiVXBkYXRlOiBGYWlsZWQgdG8gc2V0IG9sZCBvd25lcjoiLCBlcnIpCiAgICAgICAgICAgIH0KICAgICAgICB9CiAgICB9Cn0=
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io"
+    "os"
+    "net/http"
+    "path/filepath"
+    "bufio"
+    "strings"
+    "syscall"
+
+    "github.com/azukaar/cosmos-server/src/utils"
+)
+
+type ReleaseAsset struct {
+    Name        string `json:"name"`
+    DownloadURL string `json:"browser_download_url"`
+}
+
+func (a *ReleaseAsset) UnmarshalJSON(data []byte) error {
+    var raw struct {
+        Name               string `json:"name"`
+        BrowserDownloadURL string `json:"browser_download_url"`
+        DownloadURL        string `json:"download_url"`
+    }
+    if err := json.Unmarshal(data, &raw); err != nil {
+        return err
+    }
+    a.Name = raw.Name
+    a.DownloadURL = raw.BrowserDownloadURL
+    if a.DownloadURL == "" {
+        a.DownloadURL = raw.DownloadURL
+    }
+    return nil
+}
+
+type Release struct {
+    TagName string         `json:"tag_name"`
+    PreRelease bool        `json:"prerelease"`
+    Assets  []ReleaseAsset `json:"assets"`
+}
+
+type VersionInfo struct {
+    Version     string
+    AMDURL      string
+    ARMURL      string
+    AMDMD5      string
+    ARMMD5      string
+}
+
+func parseMD5File(content string) string {
+	// Read first line only (there should only be one anyway)
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	if scanner.Scan() {
+			// Split by whitespace and take first part (the hash)
+			parts := strings.Fields(scanner.Text())
+			if len(parts) > 0 {
+					return parts[0]
+			}
+	}
+	return ""
+}
+
+func GetLatestVersion(includeBeta bool) (*VersionInfo, error) {
+    // Fetch releases from GitHub API
+
+    updateURL := "https://api.github.com/repos/aseracorp/cosmos-server/releases"
+    if utils.IsPro() {
+        updateURL = "https://api.cosmos-cloud.io/proupdates"
+    }
+
+    resp, err := http.Get(updateURL)
+    if err != nil {
+        return nil, fmt.Errorf("failed to fetch releases: %v", err)
+    }
+    defer resp.Body.Close()
+
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read response body: %v", err)
+    }
+
+    var releases []Release
+    if utils.IsPro() {
+        var wrapper struct {
+            Releases []Release `json:"releases"`
+        }
+        if err := json.Unmarshal(body, &wrapper); err != nil {
+            return nil, fmt.Errorf("failed to parse JSON: %v", err)
+        }
+        releases = wrapper.Releases
+    } else {
+        if err := json.Unmarshal(body, &releases); err != nil {
+            return nil, fmt.Errorf("failed to parse JSON: %v", err)
+        }
+    }
+
+    // Find latest release that matches criteria
+    var latestRelease *Release
+    for _, release := range releases {
+        if !includeBeta && release.PreRelease {
+            continue
+        }
+        latestRelease = &release
+        break
+    }
+
+    if latestRelease == nil {
+        return nil, nil
+    }
+
+    // Initialize version info
+    info := &VersionInfo{
+        Version: latestRelease.TagName,
+    }
+
+    // Parse assets to find URLs and MD5s
+    for _, asset := range latestRelease.Assets {
+        name := strings.ToLower(asset.Name)
+        
+        // Match AMD64 binary
+        if strings.Contains(name, "amd64") && !strings.HasSuffix(name, ".md5") && !strings.Contains(name, "terraform") {
+            info.AMDURL = asset.DownloadURL
+        }
+        // Match ARM64 binary
+        if strings.Contains(name, "arm64") && !strings.HasSuffix(name, ".md5") && !strings.Contains(name, "terraform") {
+            info.ARMURL = asset.DownloadURL
+        }
+        // Match MD5 files
+        if strings.HasSuffix(name, ".md5") {
+            // Fetch MD5 content
+            md5Resp, err := http.Get(asset.DownloadURL)
+            if err != nil {
+                continue
+            }
+            md5Content, err := io.ReadAll(md5Resp.Body)
+            md5Resp.Body.Close()
+            if err != nil {
+                continue
+            }
+            
+            md5String := strings.TrimSpace(string(md5Content))
+            
+            if strings.Contains(name, "amd64") && !strings.Contains(name, "terraform") {
+                info.AMDMD5 = parseMD5File(md5String)
+            }
+            if strings.Contains(name, "arm64") && !strings.Contains(name, "terraform") {
+                info.ARMMD5 = parseMD5File(md5String)
+            }
+        }
+    }
+
+    return info, nil
+}
+
+func cleanUpUpdateFiles() {
+    execPath, err := os.Executable()
+    if err != nil {
+        return
+    }
+    
+    currentFolder := filepath.Dir(execPath)
+
+    dlPath := currentFolder + "/cosmos-update.zip"
+
+    if _, err := os.Stat(dlPath); err == nil {
+        os.Remove(dlPath)
+    }
+
+    // if cosmos-laumcher.updated exists, rename it to cosmos-launcher
+    updatedPath := currentFolder + "/cosmos-launcher.updated"
+    if _, err := os.Stat(updatedPath); err == nil {
+        // get old permissions
+        var perms os.FileMode
+        if info, err := os.Stat(currentFolder + "/cosmos-launcher"); err == nil {
+            perms = info.Mode()
+        } else {
+            fmt.Println("Update: Failed to get old permissions:", err)
+        }
+        // get old owner
+        var owner int
+        if info, err := os.Stat(currentFolder + "/cosmos-launcher"); err == nil {
+            owner = int(info.Sys().(*syscall.Stat_t).Uid)
+        } else {
+            fmt.Println("Update: Failed to get old owner:", err)
+        }
+
+        err := os.Rename(updatedPath, currentFolder + "/cosmos-launcher")
+        if err != nil {
+            fmt.Println("Update: Failed to rename cosmos-launcher.updated:", err)
+        }
+
+        // set old permissions
+        if perms != 0 {
+            err = os.Chmod(currentFolder + "/cosmos-launcher", perms)
+            if err != nil {
+                fmt.Println("Update: Failed to set old permissions:", err)
+            }
+        }
+        // set old owner
+        if owner != 0 {
+            err = os.Chown(currentFolder + "/cosmos-launcher", owner, -1)
+            if err != nil {
+                fmt.Println("Update: Failed to set old owner:", err)
+            }
+        }
+    }
+}
