@@ -23,18 +23,11 @@ func performLogin(w http.ResponseWriter, req *http.Request, route utils.ProxyRou
 	// Get proxy client info if this is a proxy route
 	if route.AuthEnabled {
 			client := utils.GetProxyOIDCredentials(route, false)
-			// Redirect to the host the user actually used (the proxy route host),
-			// not the configured main hostname — the latter may be a private IP /
-			// different name that the client cannot reach (Tailscale, reverse
-			// proxy, custom domain). Discovery mirrors this by deriving all
-			// endpoints from req.Host.
-			authHost := req.Host
-			if route.Host != "" {
-				authHost = route.Host
-			}
-			scheme := "http://"
+			mainDomain := utils.GetMainConfig().HTTPConfig.Hostname
 			if utils.IsHTTPS {
-					scheme = "https://"
+					mainDomain = "https://" + mainDomain
+			} else {
+					mainDomain = "http://" + mainDomain
 			}
 			
 			// The auto-provisioned client is public, so PKCE is mandatory. Derive the
@@ -53,7 +46,7 @@ func performLogin(w http.ResponseWriter, req *http.Request, route utils.ProxyRou
 					"state=%s&"+
 					"code_challenge=%s&"+
 					"code_challenge_method=S256",
-					scheme+authHost,
+					mainDomain,
 					client.ID,
 					url.QueryEscape(client.RedirectURIs[0]),
 					url.QueryEscape(state),
@@ -67,22 +60,24 @@ func performLogin(w http.ResponseWriter, req *http.Request, route utils.ProxyRou
 	return nil
 }
 
-// redirectToMFA sends a half-authenticated session to the MFA page on the host the user is using
+// redirectToMFA sends a half-authenticated session to the MFA page on the main domain
 func redirectToMFA(w http.ResponseWriter, req *http.Request, mfaState int) error {
+	config := utils.GetMainConfig()
+	mainDomain := config.HTTPConfig.Hostname
 	scheme := "http://"
 	if utils.IsHTTPS {
 		scheme = "https://"
 	}
 	// cross-host apps can't redirect back to themselves; bounce to the UI home
 	back := "/cosmos-ui"
-	if req.Host == utils.GetMainConfig().HTTPConfig.Hostname {
+	if req.Host == mainDomain {
 		back = req.URL.Path
 	}
 	page := "loginmfa"
 	if mfaState == 2 {
 		page = "newmfa"
 	}
-	http.Redirect(w, req, scheme+req.Host+"/cosmos-ui/"+page+"?invalid=1&redirect="+url.QueryEscape(back), http.StatusTemporaryRedirect)
+	http.Redirect(w, req, scheme+mainDomain+"/cosmos-ui/"+page+"?invalid=1&redirect="+url.QueryEscape(back), http.StatusTemporaryRedirect)
 	return errors.New("User requires MFA")
 }
 
