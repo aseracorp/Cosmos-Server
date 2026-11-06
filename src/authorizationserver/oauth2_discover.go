@@ -42,18 +42,11 @@ type oidcConfiguration struct {
 
 func discoverEndpoint(rw http.ResponseWriter, req *http.Request) {
 	hostname, proxyRoute := utils.FindRouteByReqHost(req.Host)
-	
-	// Build every endpoint from the host the client actually used to reach us
-	// (req.Host). Using config.HTTPConfig.Hostname here breaks any deployment
-	// where the client connects through a different name than the configured one
-	// (Tailscale hostname, reverse proxy, custom domain, LAN IP vs public name):
-	// the issuer would say one thing while authorization_endpoint points at an
-	// unreachable/private address, so OIDC clients (e.g. Home Assistant) fail.
-	scheme := "http://"
 	if utils.IsHTTPS {
-		scheme = "https://"
+			hostname = "https://" + hostname
+	} else {
+			hostname = "http://" + hostname
 	}
-	hostname = scheme + hostname
 
 	rw.Header().Del("Content-Type")
 	rw.Header().Set("Content-Type", "application/json")
