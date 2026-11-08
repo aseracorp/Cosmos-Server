@@ -16418,6 +16418,7 @@
             }
           },
           "memLimit": {
+            "description": "MemLimit / CPUs are pointers: absent means the constraint is left as it\nis, the convention this form already uses for DNS / NetworkMode / Volumes.",
             "type": "string"
           },
           "networkMode": {
