@@ -29,6 +29,7 @@ import ResponsiveButton from "../../../components/responseiveButton";
 import { useTranslation } from 'react-i18next';
 import PermissionGuard from '../../../components/permissionGuard';
 import { PERM_RESOURCES } from '../../../utils/permissions';
+import { parseBytes } from '../../../utils/bytes';
 
 const containerInfoFrom = (values) => {
   const labels = {};
@@ -195,6 +196,12 @@ const DockerContainerSetup = ({
       }
       if (uniqueLabelKeys.length !== labelKeys.length) {
         errors.submit = t('mgmt.servapps.newContainer.label.labelNotUniqueError');
+      }
+      // A limit the server cannot parse (e.g. "512x") must not be saved: it
+      // would be sent as 0, which means unlimited, so the limit silently does
+      // nothing. parseBytes returns -1 for anything unparseable.
+      if (parseBytes(values.memLimit) < 0) {
+        errors.memLimit = t('mgmt.servapps.newContainer.memoryLimitInvalid');
       }
       OnChange && OnChange(containerInfoFrom(values));
       return errors;

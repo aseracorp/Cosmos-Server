@@ -421,6 +421,14 @@ func EditContainer(oldContainerID string, newConfig types.ContainerJSON, noLock 
 	if createError != nil {
 		utils.Error("EditContainer - Failed to create container", createError)
 	}
+
+	// Same as CreateService: the daemon reports constraints it could not apply
+	// (no swap accounting, unsupported swappiness) on the create response. The
+	// update path recreates the container, so a limit that the kernel discarded
+	// is only visible through these warnings.
+	for _, warning := range createResponse.Warnings {
+		utils.Warn("EditContainer - " + warning)
+	}
 	
 	utils.Log("EditContainer - Container recreated. Re-connecting networks " + createResponse.ID)
 
