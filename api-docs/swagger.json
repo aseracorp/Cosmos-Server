@@ -13956,7 +13956,13 @@
                     }
                 },
                 "memLimit": {
-                    "description": "MemLimit / CPUs are pointers: absent means the constraint is left as it\nis, the convention this form already uses for DNS / NetworkMode / Volumes.",
+                    "description": "MemLimit / MemSwapLimit / MemReservation / CPUs are pointers: absent\nmeans the constraint is left as it is, the convention this form already\nuses for DNS / NetworkMode / Volumes. MemSwapLimit is the TOTAL of memory\n+ swap (docker-compose's memswap_limit), \"-1\" means unlimited swap.",
+                    "type": "string"
+                },
+                "memReservation": {
+                    "type": "string"
+                },
+                "memSwapLimit": {
                     "type": "string"
                 },
                 "networkMode": {

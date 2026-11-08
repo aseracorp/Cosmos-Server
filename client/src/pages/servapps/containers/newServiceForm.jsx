@@ -19,7 +19,7 @@ import DockerTerminal from './terminal';
 import NewDockerService from './newService';
 import RouteManagement from '../../config/routes/routeman';
 import { useTranslation } from 'react-i18next';
-import { parseBytes } from '../../../utils/bytes';
+import { parseBytes, parseSwapBytes } from '../../../utils/bytes';
 
 const NewDockerServiceForm = () => {
   const { t } = useTranslation();
@@ -101,6 +101,13 @@ const NewDockerServiceForm = () => {
   // parses them the way a hand-written compose file would.
   const memBytes = containerInfo.HostConfig.Memory;
   if (memBytes > 0) service.services.container_name.mem_limit = String(memBytes);
+  // Keys are added only when set (see the dns note above). Unlimited swap is
+  // the string "-1", which CreateService special-cases; CreateService parses
+  // memswap_limit as a byte size, so a byte count is sent as a string too.
+  const swapBytes = containerInfo.HostConfig.MemorySwap;
+  if (swapBytes !== 0) service.services.container_name.memswap_limit = String(swapBytes);
+  const resBytes = containerInfo.HostConfig.MemoryReservation;
+  if (resBytes > 0) service.services.container_name.mem_reservation = String(resBytes);
   const cpus = containerInfo.HostConfig.NanoCpus;
   if (cpus > 0) service.services.container_name.cpus = cpus / 1e9;
 
@@ -182,8 +189,11 @@ const NewDockerServiceForm = () => {
                 // into HostConfig — otherwise the summary page shows them and
                 // the service built below has nothing to send. parseBytes
                 // returns -1 for a typo, which is not a valid limit; drop it
-                // rather than sending a negative byte count.
+                // rather than sending a negative byte count. parseSwapBytes
+                // keeps -1, docker's "unlimited swap".
                 Memory: Math.max(parseBytes(values.memLimit), 0),
+                MemorySwap: parseSwapBytes(values.memSwapLimit) ?? 0,
+                MemoryReservation: Math.max(parseBytes(values.memReservation), 0),
                 NanoCpus: (parseFloat(values.cpus) || 0) * 1e9,
               },
             }
