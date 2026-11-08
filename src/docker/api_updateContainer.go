@@ -29,9 +29,13 @@ type ContainerForm struct {
 	NetworkMode 	 string           `json:"networkMode"`
 	// DNS replaces the DNS servers of the container when sent, an empty list for the default of Docker
 	DNS            []string          `json:"dns"`
-	// MemLimit / CPUs are pointers: absent means the constraint is left as it
-	// is, the convention this form already uses for DNS / NetworkMode / Volumes.
+	// MemLimit / MemSwapLimit / MemReservation / CPUs are pointers: absent
+	// means the constraint is left as it is, the convention this form already
+	// uses for DNS / NetworkMode / Volumes. MemSwapLimit is the TOTAL of memory
+	// + swap (docker-compose's memswap_limit), "-1" means unlimited swap.
 	MemLimit *string  `json:"memLimit"`
+	MemSwapLimit *string `json:"memSwapLimit"`
+	MemReservation *string `json:"memReservation"`
 	CPUs     *float64 `json:"cpus"`
 }
 
@@ -40,18 +44,40 @@ type ContainerForm struct {
 // left exactly as they are, so a partial update (say, env vars only) cannot
 // wipe limits the compose blueprint set.
 //
-// memLimitBytes / nanoCPUs are the already-parsed values; a nil pointer means
-// the field was absent from the request. The daemon rejects a memory limit
-// that is below an already-set memswap_limit, so the pair is validated
-// together against the state we are about to submit, not against this request
-// on its own.
-func applyResourceConstraints(resources *containerType.Resources, memLimitBytes *int64, nanoCPUs *int64) error {
+// The byte values are already parsed; a nil pointer means the field was absent
+// from the request. The daemon's own rules are applied against the state we
+// are about to submit, not against this request on its own, so a pair that the
+// daemon would reject fails here with a clean error instead of failing the
+// container recreate: mem_swap_limit >= mem_limit, and mem_limit >= reservation.
+func applyResourceConstraints(resources *containerType.Resources, memLimitBytes, memSwapBytes, memResBytes *int64, nanoCPUs *int64) error {
+	newMem := resources.Memory
 	if memLimitBytes != nil {
-		newMem := *memLimitBytes
-		if memSwap := resources.MemorySwap; newMem > 0 && memSwap > 0 && memSwap < newMem {
-			return errors.New("Memory limit can not be larger than the memory swap limit")
-		}
+		newMem = *memLimitBytes
+	}
+	newSwap := resources.MemorySwap
+	if memSwapBytes != nil {
+		newSwap = *memSwapBytes
+	}
+	newRes := resources.MemoryReservation
+	if memResBytes != nil {
+		newRes = *memResBytes
+	}
+
+	if newMem > 0 && newSwap > 0 && newSwap < newMem {
+		return errors.New("Memory swap limit can not be smaller than the memory limit")
+	}
+	if newMem > 0 && newRes > 0 && newRes > newMem {
+		return errors.New("Memory reservation can not be larger than the memory limit")
+	}
+
+	if memLimitBytes != nil {
 		resources.Memory = newMem
+	}
+	if memSwapBytes != nil {
+		resources.MemorySwap = newSwap
+	}
+	if memResBytes != nil {
+		resources.MemoryReservation = newRes
 	}
 	if nanoCPUs != nil {
 		resources.NanoCPUs = *nanoCPUs
@@ -61,24 +87,42 @@ func applyResourceConstraints(resources *containerType.Resources, memLimitBytes 
 
 // parseResourceForm turns the form's string/float limits into the raw byte /
 // nano-CPU values the daemon wants, reporting absence as nil.
-func parseResourceForm(form ContainerForm) (memLimitBytes *int64, nanoCPUs *int64, err error) {
-	if form.MemLimit != nil {
-		if *form.MemLimit == "" {
-			v := int64(0)
-			memLimitBytes = &v
-		} else {
-			parsed, perr := units.RAMInBytes(*form.MemLimit)
-			if perr != nil {
-				return nil, nil, perr
-			}
-			memLimitBytes = &parsed
+func parseResourceForm(form ContainerForm) (memLimitBytes, memSwapBytes, memResBytes *int64, nanoCPUs *int64, err error) {
+	// A byte-size field: "" clears the limit, "-1" is unlimited swap, anything
+	// else goes through RAMInBytes like CreateService parses compose byte sizes.
+	parse := func(field *string, name string, allowUnlimited bool) (*int64, error) {
+		if field == nil {
+			return nil, nil
 		}
+		if *field == "" {
+			v := int64(0)
+			return &v, nil
+		}
+		if allowUnlimited && *field == "-1" {
+			v := int64(-1)
+			return &v, nil
+		}
+		parsed, perr := units.RAMInBytes(*field)
+		if perr != nil {
+			return nil, fmt.Errorf("invalid %s value: %s", name, *field)
+		}
+		return &parsed, nil
+	}
+
+	if memLimitBytes, err = parse(form.MemLimit, "mem_limit", false); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if memSwapBytes, err = parse(form.MemSwapLimit, "memswap_limit", true); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if memResBytes, err = parse(form.MemReservation, "mem_reservation", false); err != nil {
+		return nil, nil, nil, nil, err
 	}
 	if form.CPUs != nil {
 		v := int64(*form.CPUs * 1e9)
 		nanoCPUs = &v
 	}
-	return memLimitBytes, nanoCPUs, nil
+	return memLimitBytes, memSwapBytes, memResBytes, nanoCPUs, nil
 }
 
 // UpdateContainerRoute godoc
@@ -206,13 +250,13 @@ func UpdateContainerRoute(w http.ResponseWriter, req *http.Request) {
 		// Resource constraints. Absent fields are left untouched (see the
 		// ContainerForm comment): an update that only changes env vars must
 		// not silently wipe the memory/CPU limits the compose blueprint set.
-		memLimitBytes, nanoCPUs, errRes := parseResourceForm(form)
+		memLimitBytes, memSwapBytes, memResBytes, nanoCPUs, errRes := parseResourceForm(form)
 		if errRes != nil {
 			utils.Error("UpdateContainer: Invalid resource limit", errRes)
-			utils.HTTPError(w, "Invalid resource limit: "+errRes.Error(), http.StatusBadRequest, "DS003")
+			utils.HTTPError(w, errRes.Error(), http.StatusBadRequest, "DS003")
 			return
 		}
-		if errRes := applyResourceConstraints(&container.HostConfig.Resources, memLimitBytes, nanoCPUs); errRes != nil {
+		if errRes := applyResourceConstraints(&container.HostConfig.Resources, memLimitBytes, memSwapBytes, memResBytes, nanoCPUs); errRes != nil {
 			utils.Error("UpdateContainer: Incompatible resource limits", errRes)
 			utils.HTTPError(w, errRes.Error(), http.StatusBadRequest, "DS003")
 			return
