@@ -6,6 +6,7 @@ import (
 	"os"
 	"fmt"
 	"strings"
+	"errors"
 
 	"github.com/azukaar/cosmos-server/src/utils"
 	containerType "github.com/docker/docker/api/types/container"
@@ -28,8 +29,56 @@ type ContainerForm struct {
 	NetworkMode 	 string           `json:"networkMode"`
 	// DNS replaces the DNS servers of the container when sent, an empty list for the default of Docker
 	DNS            []string          `json:"dns"`
-	MemLimit       string            `json:"memLimit"`
-	CPUs           float64           `json:"cpus"`
+	// MemLimit / CPUs are pointers: absent means the constraint is left as it
+	// is, the convention this form already uses for DNS / NetworkMode / Volumes.
+	MemLimit *string  `json:"memLimit"`
+	CPUs     *float64 `json:"cpus"`
+}
+
+// applyResourceConstraints writes the memory / CPU limits carried by the form
+// into an existing HostConfig. Fields that the request does not carry are
+// left exactly as they are, so a partial update (say, env vars only) cannot
+// wipe limits the compose blueprint set.
+//
+// memLimitBytes / nanoCPUs are the already-parsed values; a nil pointer means
+// the field was absent from the request. The daemon rejects a memory limit
+// that is below an already-set memswap_limit, so the pair is validated
+// together against the state we are about to submit, not against this request
+// on its own.
+func applyResourceConstraints(resources *containerType.Resources, memLimitBytes *int64, nanoCPUs *int64) error {
+	if memLimitBytes != nil {
+		newMem := *memLimitBytes
+		if memSwap := resources.MemorySwap; newMem > 0 && memSwap > 0 && memSwap < newMem {
+			return errors.New("Memory limit can not be larger than the memory swap limit")
+		}
+		resources.Memory = newMem
+	}
+	if nanoCPUs != nil {
+		resources.NanoCPUs = *nanoCPUs
+	}
+	return nil
+}
+
+// parseResourceForm turns the form's string/float limits into the raw byte /
+// nano-CPU values the daemon wants, reporting absence as nil.
+func parseResourceForm(form ContainerForm) (memLimitBytes *int64, nanoCPUs *int64, err error) {
+	if form.MemLimit != nil {
+		if *form.MemLimit == "" {
+			v := int64(0)
+			memLimitBytes = &v
+		} else {
+			parsed, perr := units.RAMInBytes(*form.MemLimit)
+			if perr != nil {
+				return nil, nil, perr
+			}
+			memLimitBytes = &parsed
+		}
+	}
+	if form.CPUs != nil {
+		v := int64(*form.CPUs * 1e9)
+		nanoCPUs = &v
+	}
+	return memLimitBytes, nanoCPUs, nil
 }
 
 // UpdateContainerRoute godoc
@@ -154,24 +203,19 @@ func UpdateContainerRoute(w http.ResponseWriter, req *http.Request) {
 			container.HostConfig.DNS = form.DNS
 		}
 
-		// Resource constraints
-		if form.MemLimit != "" {
-			memLimit, err := units.RAMInBytes(form.MemLimit)
-			if err != nil {
-				utils.Error("UpdateContainer: Invalid mem_limit", err)
-				utils.HTTPError(w, "Invalid memory limit: "+err.Error(), http.StatusBadRequest, "DS003")
-				return
-			}
-			container.HostConfig.Resources.Memory = memLimit
-		} else {
-			container.HostConfig.Resources.Memory = 0
-			container.HostConfig.Resources.MemorySwap = 0
+		// Resource constraints. Absent fields are left untouched (see the
+		// ContainerForm comment): an update that only changes env vars must
+		// not silently wipe the memory/CPU limits the compose blueprint set.
+		memLimitBytes, nanoCPUs, errRes := parseResourceForm(form)
+		if errRes != nil {
+			utils.Error("UpdateContainer: Invalid resource limit", errRes)
+			utils.HTTPError(w, "Invalid resource limit: "+errRes.Error(), http.StatusBadRequest, "DS003")
+			return
 		}
-
-		if form.CPUs > 0 {
-			container.HostConfig.Resources.NanoCPUs = int64(form.CPUs * 1e9)
-		} else {
-			container.HostConfig.Resources.NanoCPUs = 0
+		if errRes := applyResourceConstraints(&container.HostConfig.Resources, memLimitBytes, nanoCPUs); errRes != nil {
+			utils.Error("UpdateContainer: Incompatible resource limits", errRes)
+			utils.HTTPError(w, errRes.Error(), http.StatusBadRequest, "DS003")
+			return
 		}
 
 		// docker must not auto-restart a container Cosmos put to sleep

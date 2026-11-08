@@ -1,6 +1,8 @@
 ## Version 0.24.0
  - Each domain now has its own HTTPS and DynDNS settings (existing HTTPS setups are migrated automatically)
  - DynDNS: Cosmos can manage your DNS records on Cloudflare, Route53, OVH, Gandi, DigitalOcean, Hetzner, Porkbun, Namecheap, deSEC and DuckDNS
+ - Fix servapp memory/CPU limits: the new-servapp wizard now applies them, and an unrelated update no longer wipes them
+ - Surface docker's "kernel does not support swap limit capabilities" style warnings in the servapp create log
  - Per-route search engine indexing policy (robots.txt + X-Robots-Tag), overriding the server-wide setting
  - Server-wide indexing setting is now tri-state (allow / block / inherit the legacy flag)
  - Lazy loading

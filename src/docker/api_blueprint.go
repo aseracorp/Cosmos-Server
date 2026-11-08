@@ -1593,13 +1593,24 @@ func CreateService(serviceRequest DockerServiceCreateRequest, comments map[strin
 				Was: oldConfig,
 			})
 		}
-		_, err = DockerClient.ContainerCreate(DockerContext, containerConfig, hostConfig, networkingConfig, nil, container.Name)
+		// The daemon reports resource constraints it could not apply as
+		// warnings on the create response, e.g. "Your kernel does not support
+		// swap limit capabilities or the cgroup is not mounted. Memory limited
+		// without swap." Discarding the response hid them, so a limit that
+		// silently did nothing looked like a successful create. Surface them
+		// in the create log the user is already watching.
+		createResponse, err := DockerClient.ContainerCreate(DockerContext, containerConfig, hostConfig, networkingConfig, nil, container.Name)
 
 		if err != nil {
 			utils.Error("CreateService: Rolling back changes because of -- Container", err)
 			OnLog(utils.DoErr("%s", "Rolling back changes because of -- Container creation error: "+err.Error()))
 			Rollback(rollbackActions, OnLog)
 			return err
+		}
+
+		for _, warning := range createResponse.Warnings {
+			utils.Warn("CreateService: " + warning)
+			OnLog(utils.DoWarn("%s\n", warning))
 		}
 	
 		rollbackActions = append(rollbackActions, DockerServiceCreateRollback{

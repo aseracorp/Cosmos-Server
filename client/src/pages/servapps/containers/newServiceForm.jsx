@@ -19,6 +19,7 @@ import DockerTerminal from './terminal';
 import NewDockerService from './newService';
 import RouteManagement from '../../config/routes/routeman';
 import { useTranslation } from 'react-i18next';
+import { parseBytes } from '../../../utils/bytes';
 
 const NewDockerServiceForm = () => {
   const { t } = useTranslation();
@@ -70,7 +71,6 @@ const NewDockerServiceForm = () => {
         image: containerInfo.Config.Image,
         environment: containerInfo.Config.Env,
         labels: containerInfo.Config.Labels,
-        dns: containerInfo.HostConfig.Dns,
         devices: containerInfo.HostConfig.Devices ? containerInfo.HostConfig.Devices.map((device) => {
           return `${device.PathOnHost}:${device.PathInContainer}`;
         }) : [],
@@ -88,6 +88,21 @@ const NewDockerServiceForm = () => {
       }
     },
   }
+
+  // Keys are ADDED only when set, never written as undefined. The editor
+  // stringifies this with Hjson, and Hjson renders an undefined value as the
+  // literal token "undefined", which parses back as the string "undefined" —
+  // so `dns: containerInfo.HostConfig.Dns` (undefined on a fresh container)
+  // used to reach the server as dns:"undefined" and fail to unmarshal.
+  if (containerInfo.HostConfig.Dns) service.services.container_name.dns = containerInfo.HostConfig.Dns;
+
+  // The wizard's Resource-limits fields live in HostConfig.Memory / NanoCpus
+  // (set by OnChange above). Send them as compose fields so CreateService
+  // parses them the way a hand-written compose file would.
+  const memBytes = containerInfo.HostConfig.Memory;
+  if (memBytes > 0) service.services.container_name.mem_limit = String(memBytes);
+  const cpus = containerInfo.HostConfig.NanoCpus;
+  if (cpus > 0) service.services.container_name.cpus = cpus / 1e9;
 
   const nav = () => <Stack
     direction="row"
@@ -163,6 +178,13 @@ const NewDockerServiceForm = () => {
                 RestartPolicy: {
                   Name: values.restartPolicy,
                 },
+                // The Docker tab has these fields, so the wizard must carry them
+                // into HostConfig — otherwise the summary page shows them and
+                // the service built below has nothing to send. parseBytes
+                // returns -1 for a typo, which is not a valid limit; drop it
+                // rather than sending a negative byte count.
+                Memory: Math.max(parseBytes(values.memLimit), 0),
+                NanoCpus: (parseFloat(values.cpus) || 0) * 1e9,
               },
             }
             setContainerInfo(newValues);

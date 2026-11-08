@@ -1808,6 +1808,7 @@
   "mgmt.servapps.newContainer.label.labelNotUniqueError": "Labels must be unique",
   "mgmt.servapps.newContainer.labelsTitle": "Labels",
   "mgmt.servapps.newContainer.memoryLimit": "Memory Limit",
+  "mgmt.servapps.newContainer.memoryLimitInvalid": "Use a size like 512m, 1g, 512mb, or a plain byte count (leave empty for unlimited)",
   "mgmt.servapps.newContainer.pullImageButton": "Pull New Image",
   "mgmt.servapps.newContainer.pullingImageStatus": "Pulling New Image...",
   "mgmt.servapps.newContainer.resourceLimitsTitle": "Resource Limits",
