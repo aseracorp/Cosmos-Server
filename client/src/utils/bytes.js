@@ -41,6 +41,20 @@ export const parseBytes = (raw) => {
   return Math.round(num * mul);
 };
 
+// parseSwapBytes parses a memory+swap limit. It is parseBytes plus the one
+// value parseBytes cannot express: docker's "-1" for unlimited swap. RAMInBytes
+// rejects negative sizes, so "-1" has to be special-cased, exactly as the server
+// special-cases it in CreateService and parseResourceForm.
+//
+// Returns -1 for unlimited swap, 0 for unset, null for an unparseable value.
+export const parseSwapBytes = (raw) => {
+  if (raw == null) return 0;
+  const s = String(raw).trim();
+  if (s === "-1") return -1;
+  const parsed = parseBytes(s);
+  return parsed < 0 ? null : parsed;
+};
+
 // formatBytes renders a byte count back into the compact form the server's
 // export uses ("512mb", "1gb"), so a limit read from the daemon can be shown
 // in the same field the user typed into.

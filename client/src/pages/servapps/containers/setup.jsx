@@ -29,7 +29,7 @@ import ResponsiveButton from "../../../components/responseiveButton";
 import { useTranslation } from 'react-i18next';
 import PermissionGuard from '../../../components/permissionGuard';
 import { PERM_RESOURCES } from '../../../utils/permissions';
-import { parseBytes } from '../../../utils/bytes';
+import { parseBytes, parseSwapBytes, formatBytes } from '../../../utils/bytes';
 
 const containerInfoFrom = (values) => {
   const labels = {};
@@ -82,6 +82,10 @@ const initialValuesFromExport = (exp) => {
     }),
     interactive: !!(exp.tty && exp.stdin_open),
     memLimit: exp.mem_limit ? String(exp.mem_limit) : '',
+    // The export reports unlimited swap as the string "-1", which is the value
+    // the field must show, not empty: sending empty would clear the limit.
+    memSwapLimit: exp.memswap_limit ? String(exp.memswap_limit) : '',
+    memReservation: exp.mem_reservation ? String(exp.mem_reservation) : '',
     cpus: exp.cpus ? Number(exp.cpus) : 0,
   };
 };
@@ -159,6 +163,13 @@ const DockerContainerSetup = ({
         memLimit: containerInfo.HostConfig.Memory
           ? String(containerInfo.HostConfig.Memory)
           : '',
+        // formatBytes renders -1 as empty, which the server reads as "clear".
+        // Unlimited swap has to come back as the literal "-1" so the field can
+        // be edited without losing the setting.
+        memSwapLimit: containerInfo.HostConfig.MemorySwap === -1
+          ? '-1'
+          : formatBytes(containerInfo.HostConfig.MemorySwap),
+        memReservation: formatBytes(containerInfo.HostConfig.MemoryReservation),
         cpus: containerInfo.HostConfig.NanoCpus
           ? containerInfo.HostConfig.NanoCpus / 1e9
           : 0,
@@ -199,9 +210,27 @@ const DockerContainerSetup = ({
       }
       // A limit the server cannot parse (e.g. "512x") must not be saved: it
       // would be sent as 0, which means unlimited, so the limit silently does
-      // nothing. parseBytes returns -1 for anything unparseable.
-      if (parseBytes(values.memLimit) < 0) {
+      // nothing. parseBytes returns -1 for anything unparseable, parseSwapBytes
+      // returns null (accepting docker's "-1" for unlimited swap).
+      const mem = parseBytes(values.memLimit);
+      const swap = parseSwapBytes(values.memSwapLimit);
+      const res = parseBytes(values.memReservation);
+      if (mem < 0) {
         errors.memLimit = t('mgmt.servapps.newContainer.memoryLimitInvalid');
+      }
+      if (swap === null) {
+        errors.memSwapLimit = t('mgmt.servapps.newContainer.memoryLimitInvalid');
+      }
+      if (res < 0) {
+        errors.memReservation = t('mgmt.servapps.newContainer.memoryLimitInvalid');
+      }
+      // The same pair rules the docker daemon enforces, checked here so a
+      // typo is an inline field error rather than a failed save.
+      if (mem > 0 && swap > 0 && swap < mem) {
+        errors.memSwapLimit = t('mgmt.servapps.newContainer.swapBelowMemoryError');
+      }
+      if (mem > 0 && res > 0 && res > mem) {
+        errors.memReservation = t('mgmt.servapps.newContainer.reservationAboveMemoryError');
       }
       OnChange && OnChange(containerInfoFrom(values));
       return errors;
@@ -500,6 +529,18 @@ const DockerContainerSetup = ({
                           name="memLimit"
                           label={t('mgmt.servapps.newContainer.memoryLimit')}
                           placeholder="e.g. 512m, 1g, or leave empty for unlimited"
+                          formik={formik}
+                        />
+                        <CosmosInputText
+                          name="memSwapLimit"
+                          label={t('mgmt.servapps.newContainer.memorySwapLimit')}
+                          placeholder="e.g. 1g total (memory + swap), -1 for unlimited swap, empty for unlimited"
+                          formik={formik}
+                        />
+                        <CosmosInputText
+                          name="memReservation"
+                          label={t('mgmt.servapps.newContainer.memoryReservation')}
+                          placeholder="e.g. 256m, soft limit, empty for none"
                           formik={formik}
                         />
                         <CosmosInputText

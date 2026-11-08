@@ -1,4 +1,5 @@
 ## Version 0.24.0
+ - Add Memory + Swap limit and Memory soft limit (reservation) to the servapp editor, editable from the UI and via the update API
  - Fix servapp memory/CPU limits: the new-servapp wizard now applies them, and an unrelated update no longer wipes them
  - Surface docker's "kernel does not support swap limit capabilities" style warnings in the servapp create log
  - Per-route search engine indexing policy (robots.txt + X-Robots-Tag), overriding the server-wide setting
