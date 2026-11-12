@@ -66,7 +66,7 @@ func parseMD5File(content string) string {
 func GetLatestVersion(includeBeta bool) (*VersionInfo, error) {
     // Fetch releases from GitHub API
 
-    updateURL := "https://api.github.com/repos/azukaar/cosmos-server/releases"
+    updateURL := "https://api.github.com/repos/aseracorp/cosmos-server/releases"
     if utils.IsPro() {
         updateURL = "https://api.cosmos-cloud.io/proupdates"
     }
