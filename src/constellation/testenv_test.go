@@ -116,7 +116,7 @@ func chdirWithCertBinary(t *testing.T) string {
 	root := repoRootDir(t)
 	work := t.TempDir()
 
-	for _, bin := range []string{"nebula-cert", "nebula", "nebula-arm-cert", "nebula-arm"} {
+	for _, bin := range []string{"nebula-cert", "nebula"} {
 		src := filepath.Join(root, bin)
 		if _, err := os.Stat(src); err != nil {
 			continue
