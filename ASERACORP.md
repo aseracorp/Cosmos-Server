@@ -29,7 +29,7 @@ Do **not** replay old fork commits with `git cherry-pick` — see [History](#his
 | F5 | `shm_size` support (create + export + compose import) | `src/docker/api_blueprint.go`, `src/docker/export.go`, `client/.../docker-compose.jsx`, `go-sdk/client.gen.go` | **not upstream** |
 | F6 | OIDC discovery + ID-token issuer from `req.Host` (+ tests) | `src/authorizationserver/oauth2.go`, `oauth2_auth.go`, `oauth2_discover.go`, `oauth2_discover_test.go`, `oauth2_session_test.go` | **not upstream** |
 | F7 | Update check points at `aseracorp` | `src/update.go` | **not upstream** |
-| F8 | Cosmetic demo-data cleanup | `client/src/api/backup.demo.ts` | n/a (drops 2 `nebula-arm` sample entries, F3 fallout) |
+| F8 | Cosmetic demo-data cleanup | `client/src/api/backup.demo.ts` | n/a — drops 2 `nebula-arm` sample entries (F3 fallout) + one indentation glitch |
 
 ## Feature details + verification anchors
 
@@ -65,6 +65,9 @@ In `populateIPTableMasquerade()`, third FORWARD rule:
 - `docker-compose.jsx`: converts string `shm_size` (e.g. `"256m"`) to bytes on import via `parse()`. Coexists cleanly with upstream's newer `rootProtocol` state.
 - ⚠️ `api-docs/*` **never** documented `shm_size` (adjacent `isolation`/`sysctls` are), so `go-sdk/client.gen.go`'s `ShmSize` fields (2 of them) are a **hand-patch**. `scripts/generate-api.sh` (run by the pre-commit hook) **overwrites** `client.gen.go` and will drop it.
   - anchors: `grep -c shm_size go-sdk/client.gen.go` = **2** · `grep -c shm_size api-docs/openapi.json` = **0**
+
+### F8 — demo data (`3fdce7ee`)
+`client/src/api/backup.demo.ts`: deletes the two sample file entries named `nebula-arm` / `nebula-arm-cert` (they no longer exist after F3) and re-indents the following entry. **Zero functional effect** — pure noise in the diff; safe to drop the hunk on a rebase (it keeps upstream's newer `repoStats`/`unlockRepository`/`subfolderRestoreSize` demo fns intact, which is the part that matters).
   - Proper fix (upstream-able): add the swagger annotation so codegen emits it, then the hand-patch disappears.
 
 ### F6 — OIDC issuer from request Host (`ae58aecb`)
@@ -112,3 +115,5 @@ Upstream **force-pushed a squashed history**: `upstream/master` is only 42 commi
 The 25 old fork commits (`a9a7099b`, `48afe423`, `f337db0f`, `e7e5fa81`, `e183377b`, `ef626eae`, `fa06e09f`, `3519a679`, `4d3284ff`, `703c5e3d`, `a6f1295f`, `7041daa8`, `e7455e39`, `f78707c6`, `cb2a88a4`, `7f353d9f`, `81aeb33f`, `529b26d2`, `af638a53`, `bbb0e50a`, `c25c12a0`, `8a26d051`, `cc01138a`, `14536ac4`, `3011b41e`) are superseded by the 6 commits in the table.
 
 *Update this file in the same PR/commit as every rebase — the ledger is only useful if it stays true.*
+
+**Pushing to `master` publishes a release.** `build.yml` triggers on `push: [master, unstable]` and has **no `concurrency` group**, so two pushes in a row run in parallel and both touch the release. The release step uses `ncipollo/release-action` with `allowUpdates: true` + `tag: v${VERSION}` (from `package.json`), so a second push of the same version **overwrites** the existing release/tag instead of failing. Docs-only commits (like this one) should carry `[skip ci]` to avoid republishing.
