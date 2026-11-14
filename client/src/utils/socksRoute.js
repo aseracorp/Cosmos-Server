@@ -109,11 +109,22 @@ export const isSocksRelayRoute = (route) => {
 };
 
 const SOCKS_FIELDS = [
-  'socks_auth_mode',
-  'socks_allow_destinations',
-  'socks_deny_destinations',
-  'socks_udp',
+  'SocksAuthMode',
+  'SocksAllowDestinations',
+  'SocksDenyDestinations',
+  'SocksUDP',
 ];
+
+// Wire keys are the Go field names, not the YAML keys: route config is
+// marshalled through encoding/json, which is case-insensitive but does NOT
+// ignore underscores. Sending socks_auth_mode would decode into nothing and the
+// relay would silently run with defaults.
+//
+// SocksAuthMode and SocksUDP are strings on the server (SocksUDP is a tri-state
+// string precisely so 'unset' and 'false' stay distinguishable), so they are
+// emitted as strings -- a JSON boolean would fail to unmarshal into a string
+// field and reject the entire route save.
+export const SOCKS_JSON_KEYS = ['SocksAuthMode', 'SocksAllowDestinations', 'SocksDenyDestinations', 'SocksUDP'];
 
 /**
  * Normalise SOCKS fields before a save and strip them from routes that are not
@@ -131,20 +142,20 @@ export const sanitizeSocksFields = (route) => {
     return out;
   }
 
-  if (out.socks_auth_mode === 'none' || out.socks_auth_mode === 'password') {
-    out.socks_auth_mode = out.socks_auth_mode;
+  if (out.SocksAuthMode === 'none' || out.SocksAuthMode === 'password') {
+    out.SocksAuthMode = out.SocksAuthMode;
   } else {
-    delete out.socks_auth_mode;
+    delete out.SocksAuthMode;
   }
 
-  out.socks_allow_destinations = normalizeDestinationList(out.socks_allow_destinations);
-  out.socks_deny_destinations = normalizeDestinationList(out.socks_deny_destinations);
-  if (out.socks_allow_destinations.length === 0) delete out.socks_allow_destinations;
-  if (out.socks_deny_destinations.length === 0) delete out.socks_deny_destinations;
+  out.SocksAllowDestinations = normalizeDestinationList(out.SocksAllowDestinations);
+  out.SocksDenyDestinations = normalizeDestinationList(out.SocksDenyDestinations);
+  if (out.SocksAllowDestinations.length === 0) delete out.SocksAllowDestinations;
+  if (out.SocksDenyDestinations.length === 0) delete out.SocksDenyDestinations;
 
-  if (out.socks_udp === true || out.socks_udp === 'true') out.socks_udp = true;
-  else if (out.socks_udp === false || out.socks_udp === 'false') out.socks_udp = false;
-  else delete out.socks_udp;
+  if (out.SocksUDP === true || out.SocksUDP === 'true') out.SocksUDP = 'true';
+  else if (out.SocksUDP === false || out.SocksUDP === 'false') out.SocksUDP = 'false';
+  else delete out.SocksUDP;
 
   return out;
 };

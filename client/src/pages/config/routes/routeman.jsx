@@ -106,12 +106,12 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
           AdditionalTargets: routeConfig.AdditionalTargets || [],
           // SOCKS relay options. Lists are kept as comma-separated strings while
           // editing (same convention as WhitelistInboundIPs) and parsed on submit.
-          socks_auth_mode: routeConfig.socks_auth_mode || '',
-          socks_allow_destinations: routeConfig.socks_allow_destinations
-            ? routeConfig.socks_allow_destinations.join(', ') : '',
-          socks_deny_destinations: routeConfig.socks_deny_destinations
-            ? routeConfig.socks_deny_destinations.join(', ') : '',
-          socks_udp: routeConfig.socks_udp === true ? 'true' : routeConfig.socks_udp === false ? 'false' : '',
+          SocksAuthMode: routeConfig.SocksAuthMode || '',
+          SocksAllowDestinations: routeConfig.SocksAllowDestinations
+            ? routeConfig.SocksAllowDestinations.join(', ') : '',
+          SocksDenyDestinations: routeConfig.SocksDenyDestinations
+            ? routeConfig.SocksDenyDestinations.join(', ') : '',
+          SocksUDP: routeConfig.SocksUDP === true ? 'true' : routeConfig.SocksUDP === false ? 'false' : (routeConfig.SocksUDP || ''),
           _ExtraHeaders: routeConfig.ExtraHeaders
             ? Object.entries(routeConfig.ExtraHeaders).map(([key, value]) => ({ key, value }))
             : [],
@@ -349,7 +349,7 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                     })()}
 
                     <CosmosSelect
-                      name="socks_auth_mode"
+                      name="SocksAuthMode"
                       label={t('mgmt.urls.edit.socksSettings.authMode.authModeLabel')}
                       formik={formik}
                       options={[
@@ -360,7 +360,7 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                     />
 
                     <CosmosSelect
-                      name="socks_udp"
+                      name="SocksUDP"
                       label={t('mgmt.urls.edit.socksSettings.udp.udpLabel')}
                       formik={formik}
                       options={[
@@ -371,13 +371,13 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                     />
 
                     <CosmosInputText
-                      name="socks_allow_destinations"
+                      name="SocksAllowDestinations"
                       label={t('mgmt.urls.edit.socksSettings.allow.destinationsLabel')}
                       placeholder="example.com, *.example.com, 10.0.0.0/8"
                       formik={formik}
                     />
                     {(() => {
-                      const bad = invalidDestinationEntries(formik.values.socks_allow_destinations);
+                      const bad = invalidDestinationEntries(formik.values.SocksAllowDestinations);
                       return bad.length > 0 ? <Grid item xs={12}>
                         <Alert severity='warning'>
                           {t('mgmt.urls.edit.socksSettings.invalidEntries', { entries: bad.join(', ') })}
@@ -386,13 +386,13 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                     })()}
 
                     <CosmosInputText
-                      name="socks_deny_destinations"
+                      name="SocksDenyDestinations"
                       label={t('mgmt.urls.edit.socksSettings.deny.destinationsLabel')}
                       placeholder="127.0.0.0/8, 10.0.0.0/8, metadata.google.internal"
                       formik={formik}
                     />
                     {(() => {
-                      const bad = invalidDestinationEntries(formik.values.socks_deny_destinations);
+                      const bad = invalidDestinationEntries(formik.values.SocksDenyDestinations);
                       return bad.length > 0 ? <Grid item xs={12}>
                         <Alert severity='warning'>
                           {t('mgmt.urls.edit.socksSettings.invalidEntries', { entries: bad.join(', ') })}

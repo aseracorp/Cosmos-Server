@@ -19372,6 +19372,27 @@
             "description": "ManagedByVersion is the owner's spec version this copy was rendered from (deployments only; see the routes-only apply in scheduler_node.go).",
             "type": "integer"
           },
+          "SocksAllowDestinations": {
+            "description": "SocksAllowDestinations / SocksDenyDestinations restrict where a relay may\nconnect: CIDRs, IPs, hostnames, or \"*.example.com\" wildcards. Deny wins\nover allow; an empty allow list means \"allow everything\".",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "SocksAuthMode": {
+            "description": "SocksAuthMode gates the SOCKS relay's username/password subnegotiation:\n\"\" or \"none\" is anonymous, \"password\" requires a Cosmos account\n(utils.CheckPassword) on every connection. Ignored by non-socks targets.",
+            "type": "string"
+          },
+          "SocksDenyDestinations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "SocksUDP": {
+            "description": "SocksUDP is a tri-state override for UDP ASSOCIATE: \"\" inherits the\nscheme's default (socks5t offers UDP, socks5/socks5h do not), \"true\" and\n\"false\" force it. Tri-state as a string because a plain bool cannot tell\n\"unset\" from \"explicitly false\", and rebinds must be able to tell.",
+            "type": "string"
+          },
           "acceptInsecureHTTPSTarget": {
             "type": "boolean"
           },

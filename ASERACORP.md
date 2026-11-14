@@ -75,6 +75,7 @@ Verified by **patch-id** (`git show <fork commit> | git patch-id`) matched again
 | `c15b1b2c` | `fix(build)`: correct Pro-leak guard regex in `scripts/pre-commit` | **none** — upstream's own hook, see **Traps** | — |
 | `3e6e4093` | `chore(update)`: check updates on `aseracorp` (fork #44) | **none** — deliberate fork identity, keep out of upstream | — |
 | `fe1f2d1d` | `chore`: regenerate `api-docs/` + Go SDK (follows #590/#599) | — (chore) | — |
+| branch `feat/socks5-relay-routes` (`1eb395f2` + `f05e2de1`) | `feat(proxy)`: SOCKS5 relay routes — `socks5`/`socks5h`/`socks5t` target schemes, RFC 1928/1929, account-backed auth, destination allow/deny, UDP ASSOCIATE; editor section + wire contract tests | **none** — fork-only, needs a PR | — (on branch, not landed on `unstable` yet) |
 
 Fork contributions **already merged** upstream: [#569](https://github.com/azukaar/Cosmos-Server/pull/569) (fix zram/swap shown under disks).
 

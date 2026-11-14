@@ -2336,7 +2336,7 @@
   "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
   "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)",
   "mgmt.urls.edit.socksSettings.socksTitle": "Relais SOCKS",
-  "mgmt.urls.edit.socksSettings.socksInfo": "Cette route est un relais SOCKS5 sortant, pas un proxy web. Les clients se connectent au port d'écoute ci-dessous et demandent à Cosmos de contacter les destinations pour leur compte. L'authentification utilise les comptes Cosmos : ce relais n'est privé que des comptes que vous autorisez à se connecter.",
+  "mgmt.urls.edit.socksSettings.socksInfo": "Cette route est un relais SOCKS5 sortant, pas un proxy web. Les clients se connectent au port d'écoute ci-dessus et demandent à Cosmos de contacter les destinations pour leur compte. L'authentification utilise les comptes Cosmos : ce relais n'est privé que des comptes que vous autorisez à se connecter.",
   "mgmt.urls.edit.socksSettings.capabilities": "Schéma {{scheme}} : {{resolve}} ; datagrammes {{udp}}.",
   "mgmt.urls.edit.socksSettings.resolvesCosmos": "Cosmos résout les noms d'hôte",
   "mgmt.urls.edit.socksSettings.resolvesClient": "le client résout les noms d'hôte",

@@ -2373,7 +2373,7 @@
   "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
   "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)",
   "mgmt.urls.edit.socksSettings.socksTitle": "SOCKS relay",
-  "mgmt.urls.edit.socksSettings.socksInfo": "This route is an outbound SOCKS5 relay, not a web proxy. Clients connect to the listening port below and ask Cosmos to dial destinations on their behalf. Authentication uses Cosmos accounts, so this relay is only as private as the accounts you allow to log in.",
+  "mgmt.urls.edit.socksSettings.socksInfo": "This route is an outbound SOCKS5 relay, not a web proxy. Clients connect to the listening port above and ask Cosmos to dial destinations on their behalf. Authentication uses Cosmos accounts, so this relay is only as private as the accounts you allow to log in.",
   "mgmt.urls.edit.socksSettings.capabilities": "Scheme {{scheme}}: {{resolve}}; datagrams {{udp}}.",
   "mgmt.urls.edit.socksSettings.resolvesCosmos": "Cosmos resolves host names",
   "mgmt.urls.edit.socksSettings.resolvesClient": "the client resolves host names",
