@@ -103,22 +103,32 @@ func readGreeting(r io.Reader) ([]byte, error) {
 }
 
 // readRequest parses a CONNECT / UDP ASSOCIATE / BIND request.
+//
+// RFC 1928's request is VER, CMD, RESV(0x00), ATYP, ADDR, PORT. The version byte
+// is read first and checked: a client that sends 0x05 (every real one does) is
+// accepted, and a client that sends anything else is refused. Reading CMD first
+// and tolerating any leading byte is how a server ends up accepting a SOCKS4
+// request as if it were SOCKS5.
 func readRequest(r io.Reader) (socksRequest, error) {
 	var req socksRequest
 
+	ver, err := readByte(r)
+	if err != nil {
+		return req, err
+	}
+	if ver != socksVersion {
+		return req, fmt.Errorf("unsupported socks version %d in request", ver)
+	}
+	cmd, err := readByte(r)
+	if err != nil {
+		return req, err
+	}
 	reserved, err := readByte(r)
 	if err != nil {
 		return req, err
 	}
 	if reserved != 0x00 {
 		return req, fmt.Errorf("invalid socks reserved byte %d", reserved)
-	}
-	cmd, err := readByte(r)
-	if err != nil {
-		return req, err
-	}
-	if _, err := readByte(r); err != nil { // second reserved byte
-		return req, err
 	}
 	atyp, err := readByte(r)
 	if err != nil {

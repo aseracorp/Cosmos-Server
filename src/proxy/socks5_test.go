@@ -41,9 +41,9 @@ func TestReadRequestAddressTypes(t *testing.T) {
 		wantIP   string
 		wantPort string
 	}{
-		{"ipv4", []byte{0x00, 0x01, 0x00, 0x01, 127, 0, 0, 1, 0x31, 0xD1}, "", "127.0.0.1", "12753"},
-		{"ipv6", append(append([]byte{0x00, 0x01, 0x00, 0x04}, net.ParseIP("::1").To16()...), 0x00, 0x50), "", "::1", "80"},
-		{"domain", []byte{0x00, 0x01, 0x00, 0x03, 6, 'e', 'x', '.', 'c', 'o', 'm', 0x01, 0xBB}, "ex.com", "", "443"},
+		{"ipv4", []byte{socksVersion, 0x01, 0x00, 0x01, 127, 0, 0, 1, 0x31, 0xD1}, "", "127.0.0.1", "12753"},
+		{"ipv6", append(append([]byte{socksVersion, 0x01, 0x00, 0x04}, net.ParseIP("::1").To16()...), 0x00, 0x50), "", "::1", "80"},
+		{"domain", []byte{socksVersion, 0x01, 0x00, 0x03, 6, 'e', 'x', '.', 'c', 'o', 'm', 0x01, 0xBB}, "ex.com", "", "443"},
 	}
 	for _, tt := range tests {
 		req, err := readRequest(bytes.NewReader(tt.in))
@@ -63,7 +63,7 @@ func TestReadRequestAddressTypes(t *testing.T) {
 }
 
 func TestReadRequestRejectsUnknownAddressType(t *testing.T) {
-	if _, err := readRequest(bytes.NewReader([]byte{0x00, 0x01, 0x00, 0x09, 1, 2, 3, 4, 0, 80})); err == nil {
+	if _, err := readRequest(bytes.NewReader([]byte{socksVersion, 0x01, 0x00, 0x09, 1, 2, 3, 4, 0, 80})); err == nil {
 		t.Fatal("expected an error for address type 9")
 	}
 }
@@ -224,7 +224,7 @@ func greet(t *testing.T, conn net.Conn, methods []byte) byte {
 func sendRequest(t *testing.T, conn net.Conn, cmd byte, atyp byte, addr []byte, port uint16) []byte {
 	t.Helper()
 	var buf bytes.Buffer
-	buf.WriteByte(0x00)
+	buf.WriteByte(socksVersion)
 	buf.WriteByte(cmd)
 	buf.WriteByte(0x00)
 	buf.WriteByte(atyp)
@@ -642,5 +642,22 @@ func TestValidateSocksRouteRejectsMeaninglessConfigs(t *testing.T) {
 		if !strings.Contains(msg, tt.want) {
 			t.Errorf("%s: message %q should mention %q", tt.name, msg, tt.want)
 		}
+	}
+}
+
+func TestReadRequestRejectsNonSocks5Version(t *testing.T) {
+	// The request's first byte is VER. A SOCKS4 request (version 4, then a port
+	// and a user) must be refused rather than parsed as SOCKS5 -- that is how a
+	// relay ends up accepting a protocol it never advertised.
+	for _, ver := range []byte{0x00, 0x04, 0x06} {
+		if _, err := readRequest(bytes.NewReader([]byte{ver, 0x01, 0x00, 0x01, 1, 2, 3, 4, 0, 80})); err == nil {
+			t.Errorf("request with version %d accepted, want rejection", ver)
+		}
+	}
+}
+
+func TestReadRequestRejectsNonZeroReserved(t *testing.T) {
+	if _, err := readRequest(bytes.NewReader([]byte{socksVersion, 0x01, 0x01, 0x01, 1, 2, 3, 4, 0, 80})); err == nil {
+		t.Fatal("RESV byte 1 accepted, RFC 1928 requires 0x00")
 	}
 }
