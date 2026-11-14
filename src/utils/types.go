@@ -491,6 +491,20 @@ type ProxyRouteConfig struct {
 	LBMode                     string                      `yaml:"lb_mode" json:"LBMode,omitempty"`
 	LBStickyMode               bool                        `yaml:"lb_sticky_mode" json:"LBStickyMode,omitempty"`
 	AdditionalTargets          []string                    `yaml:"additional_targets,omitempty" json:"AdditionalTargets,omitempty"`
+	// SocksAuthMode gates the SOCKS relay's username/password subnegotiation:
+	// "" or "none" is anonymous, "password" requires a Cosmos account
+	// (utils.CheckPassword) on every connection. Ignored by non-socks targets.
+	SocksAuthMode string `yaml:"socks_auth_mode,omitempty" json:"SocksAuthMode,omitempty"`
+	// SocksUDP is a tri-state override for UDP ASSOCIATE: "" inherits the
+	// scheme's default (socks5t offers UDP, socks5/socks5h do not), "true" and
+	// "false" force it. Tri-state as a string because a plain bool cannot tell
+	// "unset" from "explicitly false", and rebinds must be able to tell.
+	SocksUDP string `yaml:"socks_udp,omitempty" json:"SocksUDP,omitempty"`
+	// SocksAllowDestinations / SocksDenyDestinations restrict where a relay may
+	// connect: CIDRs, IPs, hostnames, or "*.example.com" wildcards. Deny wins
+	// over allow; an empty allow list means "allow everything".
+	SocksAllowDestinations []string `yaml:"socks_allow_destinations,omitempty" json:"SocksAllowDestinations,omitempty"`
+	SocksDenyDestinations  []string `yaml:"socks_deny_destinations,omitempty" json:"SocksDenyDestinations,omitempty"`
 	// ManagedByKind / ManagedByName identify the feature that owns this route (see ManagedByKinds); both empty for a user-created route.
 	ManagedByKind              string                      `yaml:"managed_by_kind,omitempty" json:"ManagedByKind,omitempty"`
 	ManagedByName              string                      `yaml:"managed_by_name,omitempty" json:"ManagedByName,omitempty"`

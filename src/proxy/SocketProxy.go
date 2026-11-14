@@ -119,6 +119,15 @@ func startProxy(pair PortsPair, proxyInfo *ProxyInfo) {
     listenAddr := pair.From
     listenProtocol, target := targetProtocol(pair.To)
 
+    // A socks route is a relay, not a forwarder: it has no upstream to dial, so
+    // it gets its own listener type and its own lifetime below. Checked before
+    // the protocol switch because mapToTCPUDP has no entry for the socks
+    // schemes, and falling through would report "Unsupported protocol".
+    if IsSocksScheme(listenProtocol) {
+        startSocksProxy(pair, proxyInfo, listenAddr)
+        return
+    }
+
     var err error
     var listener net.Listener
     var packetConn net.PacketConn
@@ -560,4 +569,52 @@ func ResolvePortClaims(claims []PortClaim) (accepted []PortsPair, shadowed []str
 	}
 
 	return accepted, shadowed, conflicts
+}
+// startSocksProxy binds a SOCKS5 relay for one route and runs it until the
+// registry asks it to stop.
+//
+// It participates in the same lifecycle as the tcp/udp forwarders on purpose:
+// activeProxies[port] is what StopAllProxies drains on config change, and the
+// "stopped" signal is what makes a rebind deterministic. A relay that bypassed
+// this registry would keep its ports bound after a route was deleted, and the
+// next bind would fail with "address already in use" while the UI showed the
+// route as gone.
+//
+// pair.From carries the listen host:port. The relay listens on TCP (greetings,
+// CONNECT) and UDP (UDP ASSOCIATE) on that same number, mirroring how udp
+// routes occupy their port.
+func startSocksProxy(pair PortsPair, proxyInfo *ProxyInfo, listenAddr string) {
+    host, portStr, err := net.SplitHostPort(listenAddr)
+    if err != nil {
+        utils.Error("[SocketProxy] Invalid socks listen address "+listenAddr, err)
+        close(proxyInfo.stopped)
+        return
+    }
+    port, err := strconv.Atoi(portStr)
+    if err != nil || port < 1 || port > 65535 {
+        utils.Error("[SocketProxy] Invalid socks listen port "+portStr, nil)
+        close(proxyInfo.stopped)
+        return
+    }
+
+    route := pair.route
+    server, err := bindSocksServer(host, port, &route)
+    if err != nil {
+        // A policy error (bad scheme, malformed destination list) means the
+        // route config is invalid, not that the port is busy. Reported as an
+        // error so the operator sees it in the log and the UI's route list
+        // rather than discovering it through a client's failed connection.
+        utils.Error("[SocketProxy] Failed to start socks relay on "+listenAddr, err)
+        close(proxyInfo.stopped)
+        return
+    }
+
+    utils.Log("[SocketProxy] SOCKS relay listening on " + listenAddr + " (" + socksSchemeOf(route.Target) + ")")
+
+    // The registry's stop signal is the only teardown path; Close() releases the
+    // TCP listener, the UDP socket and every open association.
+    <-proxyInfo.stop
+    server.Close()
+    close(proxyInfo.stopped)
+    utils.Log("[SocketProxy] Stopping SOCKS relay on " + listenAddr)
 }

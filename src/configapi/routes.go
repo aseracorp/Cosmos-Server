@@ -34,6 +34,11 @@ func validateRoute(route utils.ProxyRouteConfig) string {
 		return "Unsupported search engine indexing policy \"" + route.RobotsPolicy + "\" on route \"" + route.Name +
 			"\". Supported values are \"allow\", \"block\" and \"\" (empty: inherit the server-wide setting)"
 	}
+	// SOCKS relay routes carry extra policy fields; a rejected value here means
+	// the relay never binds with a silently-open policy.
+	if socksErr := proxy.ValidateSocksRoute(route); socksErr != "" {
+		return socksErr
+	}
 	return ""
 }
 
