@@ -20,6 +20,7 @@ import { CosmosCheckbox, CosmosCollapse, CosmosFormDivider, CosmosInputText, Cos
 import { CosmosContainerPicker } from '../users/containerPicker';
 import { snackit } from '../../../api/wrap';
 import { IsRouteSocketProxy, ValidateRouteSchema, getHostnameFromName, sanitizeRoute } from '../../../utils/routes';
+import { invalidDestinationEntries, isSocksRelayRoute, sanitizeSocksFields, socksCapabilities } from '../../../utils/socksRoute';
 import { isDomain } from '../../../utils/indexs';
 import { useTranslation } from 'react-i18next';
 import { FilePickerButton } from '../../../components/filePicker';
@@ -103,6 +104,14 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
           LBMode: routeConfig.LBMode || '',
           LBStickyMode: routeConfig.LBStickyMode === true,
           AdditionalTargets: routeConfig.AdditionalTargets || [],
+          // SOCKS relay options. Lists are kept as comma-separated strings while
+          // editing (same convention as WhitelistInboundIPs) and parsed on submit.
+          socks_auth_mode: routeConfig.socks_auth_mode || '',
+          socks_allow_destinations: routeConfig.socks_allow_destinations
+            ? routeConfig.socks_allow_destinations.join(', ') : '',
+          socks_deny_destinations: routeConfig.socks_deny_destinations
+            ? routeConfig.socks_deny_destinations.join(', ') : '',
+          socks_udp: routeConfig.socks_udp === true ? 'true' : routeConfig.socks_udp === false ? 'false' : '',
           _ExtraHeaders: routeConfig.ExtraHeaders
             ? Object.entries(routeConfig.ExtraHeaders).map(([key, value]) => ({ key, value }))
             : [],
@@ -136,6 +145,7 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
             delete fullValues._ExtraHeaders;
 
             fullValues = sanitizeRoute(fullValues);
+            fullValues = sanitizeSocksFields(fullValues);
 
             if(IsRouteSocketProxy(fullValues)) {
               if(!fullValues.Host.includes(':')) {
@@ -194,6 +204,8 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
           if (newRoute && routeNames.includes(fullValues.Name)) {
             return { Name: t('navigation.market.sources.nameNotUniqueValidation')  }
           }
+
+          fullValues = sanitizeSocksFields(fullValues);
 
           if(IsRouteSocketProxy(fullValues)) {
             if(!fullValues.Host.includes(':')) {
@@ -309,6 +321,84 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                       onChange={(e) => {
                       }}
                     />
+                    </>}
+
+                  {isSocksRelayRoute(formik.values) && <>
+                    <CosmosFormDivider title={t('mgmt.urls.edit.socksSettings.socksTitle')} />
+                    <Grid item xs={12}>
+                      <Alert severity='info'>
+                        {t('mgmt.urls.edit.socksSettings.socksInfo')}
+                      </Alert>
+                    </Grid>
+
+                    {(() => {
+                      const caps = socksCapabilities(formik.values.Target);
+                      return <Grid item xs={12}>
+                        <Alert color='info'>
+                          {t('mgmt.urls.edit.socksSettings.capabilities', {
+                            scheme: formik.values.Target,
+                            resolve: t(caps.resolvesOnCosmos
+                              ? 'mgmt.urls.edit.socksSettings.resolvesCosmos'
+                              : 'mgmt.urls.edit.socksSettings.resolvesClient'),
+                            udp: t(caps.udp
+                              ? 'mgmt.urls.edit.socksSettings.udpOn'
+                              : 'mgmt.urls.edit.socksSettings.udpOff'),
+                          })}
+                        </Alert>
+                      </Grid>;
+                    })()}
+
+                    <CosmosSelect
+                      name="socks_auth_mode"
+                      label={t('mgmt.urls.edit.socksSettings.authMode.authModeLabel')}
+                      formik={formik}
+                      options={[
+                        ['', t('mgmt.urls.edit.socksSettings.authMode.auto')],
+                        ['none', t('mgmt.urls.edit.socksSettings.authMode.noneChoice')],
+                        ['password', t('mgmt.urls.edit.socksSettings.authMode.passwordChoice')],
+                      ]}
+                    />
+
+                    <CosmosSelect
+                      name="socks_udp"
+                      label={t('mgmt.urls.edit.socksSettings.udp.udpLabel')}
+                      formik={formik}
+                      options={[
+                        ['', t('mgmt.urls.edit.socksSettings.udp.auto')],
+                        ['true', t('mgmt.urls.edit.socksSettings.udp.enabled')],
+                        ['false', t('mgmt.urls.edit.socksSettings.udp.disabled')],
+                      ]}
+                    />
+
+                    <CosmosInputText
+                      name="socks_allow_destinations"
+                      label={t('mgmt.urls.edit.socksSettings.allow.destinationsLabel')}
+                      placeholder="example.com, *.example.com, 10.0.0.0/8"
+                      formik={formik}
+                    />
+                    {(() => {
+                      const bad = invalidDestinationEntries(formik.values.socks_allow_destinations);
+                      return bad.length > 0 ? <Grid item xs={12}>
+                        <Alert severity='warning'>
+                          {t('mgmt.urls.edit.socksSettings.invalidEntries', { entries: bad.join(', ') })}
+                        </Alert>
+                      </Grid> : null;
+                    })()}
+
+                    <CosmosInputText
+                      name="socks_deny_destinations"
+                      label={t('mgmt.urls.edit.socksSettings.deny.destinationsLabel')}
+                      placeholder="127.0.0.0/8, 10.0.0.0/8, metadata.google.internal"
+                      formik={formik}
+                    />
+                    {(() => {
+                      const bad = invalidDestinationEntries(formik.values.socks_deny_destinations);
+                      return bad.length > 0 ? <Grid item xs={12}>
+                        <Alert severity='warning'>
+                          {t('mgmt.urls.edit.socksSettings.invalidEntries', { entries: bad.join(', ') })}
+                        </Alert>
+                      </Grid> : null;
+                    })()}
                     </>}
 
                   {!IsRouteSocketProxy(formik.values) && <>
