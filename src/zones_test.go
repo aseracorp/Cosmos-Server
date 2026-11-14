@@ -166,20 +166,46 @@ func TestGetCertificateProvidedAndHTTPOnly(t *testing.T) {
 		}
 	}
 
-	// the HTTP port serves the HTTP-only zone, and nothing else
+	// The HTTP port serves the HTTP-only zones, and redirects everything else to
+	// HTTPS. Upstream answers 404 here; the fork restores the HTTP→HTTPS redirect
+	// that commit 748302d ("[skip ci] Constellation work") dropped, so this is a
+	// deliberate fork-owned divergence, tracked as azukaar/Cosmos-Server#576 and
+	// ledgered in ASERACORP.md. Rationale: a bookmark, an app pinned to port 80
+	// or a LAN health check that receives 404 has no way to discover that the
+	// hostname lives on HTTPS, so the HTTP port is not a dead end by design.
+	config.HTTPConfig.AllowHTTPLocalIPAccess = true
+	utils.LoadBaseMainConfig(config)
 	router := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	for host, want := range map[string]int{
-		"app.plain.net":      http.StatusTeapot,
-		"app.plain.net:8080": http.StatusTeapot,
-		"www.own.org":        http.StatusNotFound,
-		"other.net":          http.StatusNotFound,
-		"192.168.1.10":       http.StatusNotFound,
+	for _, tt := range []struct {
+		host   string
+		remote string // client address; empty leaves httptest's default 1.2.3.4
+		want   int
+	}{
+		// an HTTP-only zone is served over plain HTTP, whatever the client address
+		{host: "app.plain.net", want: http.StatusTeapot},
+		{host: "app.plain.net:8080", want: http.StatusTeapot},
+		// #576: a hostname of an HTTPS zone arriving on the HTTP port is redirected
+		{host: "www.own.org", remote: "1.2.3.4:5678", want: http.StatusMovedPermanently},
+		{host: "other.net", remote: "1.2.3.4:5678", want: http.StatusMovedPermanently},
+		// #576: a bare IP redirects only for a remote client. From a local address
+		// it is served directly (AllowHTTPLocalIPAccess), which is what keeps LAN
+		// access and Constellation tunneling working without a redirect loop.
+		// Upstream expects 404 for this host, and reaches the same answer the fork
+		// gives for the remote case only because the fixture never set RemoteAddr:
+		// httptest's default 1.2.3.4 is not loopback, not private and not CGNAT, so
+		// IsLocalIP is false and the passthrough path is never taken.
+		{host: "192.168.1.10", remote: "1.2.3.4:5678", want: http.StatusMovedPermanently},
+		{host: "192.168.1.10", remote: "192.168.1.10:5678", want: http.StatusTeapot},
+		{host: "100.64.5.6", remote: "100.64.5.6:5678", want: http.StatusTeapot}, // CGNAT: Tailscale/Constellation range
 	} {
-		request := httptest.NewRequest("GET", "http://"+host+"/", nil)
+		request := httptest.NewRequest("GET", "http://"+tt.host+"/", nil)
+		if tt.remote != "" {
+			request.RemoteAddr = tt.remote
+		}
 		response := httptest.NewRecorder()
 		plainHTTPHandler(router).ServeHTTP(response, request)
-		if response.Code != want {
-			t.Errorf("http://%s answered %d, want %d", host, response.Code, want)
+		if response.Code != tt.want {
+			t.Errorf("http://%s from %s answered %d, want %d", tt.host, tt.remote, response.Code, tt.want)
 		}
 	}
 

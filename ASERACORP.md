@@ -46,7 +46,7 @@ Verified by **patch-id** (`git show <fork commit> | git patch-id`) matched again
 | `b419e076` | `fix(ui)`: decode URL-encoded segments in breadcrumbs | [#600](https://github.com/azukaar/Cosmos-Server/pull/600) | open |
 | `8fc5e1ff` | `fix(ui)`: web terminal ghost key names (AltGraph, Process, Unidentified) | [#598](https://github.com/azukaar/Cosmos-Server/pull/598) | open |
 | `f5241489` | `fix(ui)`: guard market detail render when app not found | [#597](https://github.com/azukaar/Cosmos-Server/pull/597) | open |
-| `dd395ed2` | `fix(http)`: restore HTTP→HTTPS redirect handler ⚠️ **breaks upstream's `zones_test.go` — see Conflicts** | [#576](https://github.com/azukaar/Cosmos-Server/pull/576) | open |
+| `dd395ed2` | `fix(http)`: restore HTTP→HTTPS redirect handler ⚠️ **fork-owned divergence vs upstream's `zones_test.go` — decided, see Conflicts** | [#576](https://github.com/azukaar/Cosmos-Server/pull/576) | open |
 | `61703829` | `fix(docker)`: healthcheck durations as compose-style strings | [#585](https://github.com/azukaar/Cosmos-Server/pull/585) | open |
 | `f1547c0b` | `fix(docker)`: accept string-form healthcheck `test:` in compose imports | [#595](https://github.com/azukaar/Cosmos-Server/pull/595) | open |
 | `c0059e5e` | `shm_size`: support + compose import + byte-size string form — **one commit** (was 3: `34d247d8`/`e2c8431b`/`db6171c5`) | [#567](https://github.com/azukaar/Cosmos-Server/pull/567) | open |
@@ -80,8 +80,9 @@ Fork contributions **already merged** upstream: [#569](https://github.com/azukaa
 
 ## Conflicts the fork introduces (not rebase damage — decide on purpose)
 
-### `TestGetCertificateProvidedAndHTTPOnly` fails: fork 301 vs upstream 404
-`go test ./src/...` on this rebased tree fails **one** test:
+### `plainHTTPHandler`: fork 301 vs upstream 404 — **decided, fork keeps the redirect**
+
+This was the one test failing on the rebased tree:
 
 ```
 zones_test.go:182: http://www.own.org answered 301, want 404
@@ -89,10 +90,14 @@ zones_test.go:182: http://other.net answered 301, want 404
 zones_test.go:182: http://192.168.1.10 answered 301, want 404
 ```
 
-- **Not a rebase regression.** It fails identically at the old fork tip `0d1620ff`, and **passes** on clean `upstream/unstable` (`5ee16623`).
-- **Cause:** upstream added `src/zones_test.go` in `63e5a243` (v0.24.0-unstable021) asserting `plainHTTPHandler` answers **404** for non-HTTP-only hosts. The fork's `dd395ed2` (**PR #576**, open) restores the classic HTTP→HTTPS **301**, plus a local-IP/Constellation passthrough. Two intentional behaviours for the same function; the test encodes upstream's choice.
-- **Not "fixed" here on purpose:** the redirect is security-relevant (HSTS-ish transport, and the passthrough branch decides when plain HTTP is served at all). Silently editing the assertion would launder a security decision into a rebase fixup. **Needs a deliberate call:** either upstream takes #576 (then the test moves with it — propose the test update in #576), or the fork drops the redirect and follows upstream's 404. Tracked as the open question in this PR.
-- Everything else: `go test ./src/...` → **10/10 packages ok** (incl. fork-only `oauth2_discover_test.go`, `oauth2_session_test.go`).
+- **Not a rebase regression.** It failed identically at the old fork tip `0d1620ff`, and **passes** on clean `upstream/unstable` (`5ee16623`).
+- **Cause:** upstream added `src/zones_test.go` in `63e5a243` (v0.24.0-unstable021) asserting `plainHTTPHandler` answers **404** for non-HTTP-only hosts. The fork's `dd395ed2` (**PR #576**, open) restores the classic HTTP→HTTPS **301**, plus a local-IP/Constellation passthrough. Two intentional behaviours for the same function; the test encoded upstream's choice.
+- **Resolution (2026-11-14): fork-owned divergence, decided deliberately.** #576 stays **open** upstream — closing it "in favour of" upstream's 404 would be a false record, since upstream never had the redirect to fix; commit 748302d ("[skip ci] Constellation work") removed it and nothing replaced it. The fork's vendored `src/zones_test.go` now asserts **301** for the two hostnames, each line commented with #576. `go test ./src/...` is **green**.
+- **The `192.168.1.10` case was a broken fixture, not a behaviour difference.** The test never set `RemoteAddr`, so `httptest`'s default **`1.2.3.4`** applied — not loopback, not private, not CGNAT — making `IsLocalIP` false and the passthrough branch unreachable. In a real deployment `http://192.168.1.10` from a LAN client has a private `RemoteAddr` and **is served directly, no redirect**, in both the fork's and upstream's code. The fixture now sets `RemoteAddr` explicitly and covers both directions (remote → 301, local/CGNAT → served), so it tests the passthrough instead of accidentally bypassing it.
+- **Assertion is load-bearing, verified by mutation:** replacing the fork's `http.Redirect(...StatusMovedPermanently)` line with upstream's `http.NotFound(w, r)` (passthrough untouched) fails exactly the three redirect cases. Reverting the whole handler fails all five. The test cannot pass by accident.
+- **Why the redirect is the right call:** plain-HTTP mode is untouched — `plainHTTPHandler` gates on `HostIsHTTPOnly` (zone mode `DISABLED`) **first** and serves the router, so a zone configured for plain HTTP never sees a redirect. `IsLocalIP` covers loopback, private, CGNAT `100.64/10` and `192.0.0/24`, so localhost/LAN and Constellation peers are served directly (no redirect loop), and Cosmos issues certs via **DNS-01** — there is no ACME http-01 listener on the HTTP port, so the usual "redirect breaks cert issuance" objection does not apply.
+- **Not verified / open:** whether upstream's 404 is a deliberate hostname-confirmation guard (a cacheable redirect reveals which hosts a server fronts) — argued, not established. If upstream says yes, #576 closes and this divergence reverts.
+- **Known latent bug in the fork's own line, not fixed here:** `"https://"+r.Host+r.URL.String()` concatenates, so an **absolute-form** request target (`GET http://host/`, legal HTTP/1.1, sent by some proxies) yields `Location: https://hosthttp://host/`. Browsers send origin-form, so normal traffic is fine; the assertion scope above is status codes, which is unaffected. Clean fix is `r.URL.Scheme = "https"; r.URL.Host = r.Host; http.Redirect(w, r, r.URL.String(), code)`.
 
 ## Rebase checklist (this tree, all green)
 
@@ -102,12 +107,12 @@ cp src/update.go src/launcher/update.go          # gitignored; build.sh does thi
 env CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/b/cosmos src/*.go
 env CGO_ENABLED=0 GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o /tmp/b/arm64 src/*.go
 env CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/b/launcher ./src/launcher/launcher.go ./src/launcher/update.go
-env CGO_ENABLED=0 go test ./src/...              # 10/11 pkgs ok, 1 known failure above
+env CGO_ENABLED=0 go test ./src/...              # all packages ok (needs the update.go copy above)
 npm install && npm run client-build              # vite build, OK
 cd go-sdk && go build ./...                      # shm_size hand-patch compiles
 ```
 
-Results for this rebase: `cosmos` ✅ (137 MB), `cosmos-arm64` ✅, `cosmos-launcher` ✅, `npm run client-build` ✅ (`✓ built in 24.35s`), `go test ./src/...` 10/11 (1 known conflict above).
+Results for this rebase: `cosmos` ✅ (137 MB), `cosmos-arm64` ✅, `cosmos-launcher` ✅, `npm run client-build` ✅ (`✓ built in 24.35s`), `go test ./src/...` **all packages ok** (the #576 divergence is now asserted, not tolerated).
 
 **Anchors** (scope `src client go-sdk`; old fork tip = new rebased tree, verified equal):
 
