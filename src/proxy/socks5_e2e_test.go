@@ -418,6 +418,45 @@ func TestE2EUDPAssociateIsRefused(t *testing.T) {
 	}
 }
 
+// A client that sends ATYP=0x03 is asking for remote resolution, which this
+// relay does not implement. The refusal must arrive as a reply, not as a closed
+// socket: a client that gets nothing hangs until its own timeout, which reads to
+// a user as "the proxy is broken". This is the production path, over a socket.
+func TestE2EDomainDestinationIsAnsweredWithATYPNotSupported(t *testing.T) {
+	port := socksE2EPort(t)
+	addr := socksE2EListen(t, socksRouteOnPort("socks5", port))
+
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	socksE2EHandshake(t, conn, []byte{socksMethodNoAuth})
+
+	var buf bytes.Buffer
+	buf.WriteByte(socksVersion)
+	buf.WriteByte(socksCmdConnect)
+	buf.WriteByte(0x00)
+	buf.WriteByte(socksATYPDomain)
+	buf.WriteByte(byte(len("example.com")))
+	buf.WriteString("example.com")
+	if err := binary.Write(&buf, binary.BigEndian, uint16(443)); err != nil {
+		t.Fatalf("encode port: %v", err)
+	}
+	if _, err := conn.Write(buf.Bytes()); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+
+	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	reply := make([]byte, 10)
+	if _, err := io.ReadFull(conn, reply); err != nil {
+		t.Fatalf("no reply to a domain request (a silent close hangs clients): %v", err)
+	}
+	if reply[1] != socksRepATYPNotSupport {
+		t.Fatalf("CONNECT(domain) status = %d, want address-type-not-supported (%d); reply % x", reply[1], socksRepATYPNotSupport, reply)
+	}
+}
+
 func TestE2EOpenTunnelDoesNotBlockTeardown(t *testing.T) {
 	port := socksE2EPort(t)
 	addr := socksE2EListen(t, socksRouteOnPort("socks5", port))

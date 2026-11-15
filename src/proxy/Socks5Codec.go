@@ -184,7 +184,10 @@ func encodeAddr(buf []byte, addr socksAddr) ([]byte, error) {
 		if v4 := ip.To4(); v4 != nil {
 			ip = v4
 		} else {
-			ip = net.IPv4zero
+			// net.IPv4zero is the16-byte form; appending it un-truncated
+			// writes a22-byte reply for an ATYP=IPv4 field, and a client
+			// parsing fixed offsets reads10. Truncate to the4-byte form.
+			ip = net.IPv4zero.To4()
 		}
 		buf = append(buf, socksATYPIPv4)
 		buf = append(buf, ip...)
