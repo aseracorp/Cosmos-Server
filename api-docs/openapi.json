@@ -19389,10 +19389,6 @@
               "type": "string"
             }
           },
-          "SocksUDP": {
-            "description": "SocksUDP is a tri-state override for UDP ASSOCIATE: \"\" inherits the\nscheme's default (socks5t offers UDP, socks5/socks5h do not), \"true\" and\n\"false\" force it. Tri-state as a string because a plain bool cannot tell\n\"unset\" from \"explicitly false\", and rebinds must be able to tell.",
-            "type": "string"
-          },
           "acceptInsecureHTTPSTarget": {
             "type": "boolean"
           },

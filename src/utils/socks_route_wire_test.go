@@ -23,12 +23,11 @@ import (
 const uiSocksPayload = `{
   "name": "socks-out",
   "mode": "PROXY",
-  "target": "socks5t://",
+  "target": "socks5h://",
   "host": "0.0.0.0:1080",
   "useHost": true,
   "SocksAuthMode": "password",
-  "SocksDenyDestinations": ["127.0.0.0/8", "10.0.0.0/8"],
-  "SocksUDP": "false"
+  "SocksDenyDestinations": ["127.0.0.0/8", "10.0.0.0/8"]
 }`
 
 func TestRouteDecodesUICamelCaseSocksPayload(t *testing.T) {
@@ -42,48 +41,8 @@ func TestRouteDecodesUICamelCaseSocksPayload(t *testing.T) {
 	if len(r.SocksDenyDestinations) != 2 {
 		t.Errorf("SocksDenyDestinations = %v, want 2 entries", r.SocksDenyDestinations)
 	}
-	if r.SocksUDP != "false" {
-		t.Errorf("SocksUDP = %q, want \"false\"", r.SocksUDP)
-	}
-	if r.Target != "socks5t://" {
-		t.Errorf("Target = %q, want socks5t://", r.Target)
-	}
-}
-
-func TestSocksUDPStaysTriStateOverTheWire(t *testing.T) {
-	// The whole point of the string tri-state: an omitted override and an
-	// explicit false are different instructions (inherit the scheme, versus
-	// refuse UDP on a socks5t route). A bool field cannot represent that.
-	var absent, off, on ProxyRouteConfig
-
-	if err := json.Unmarshal([]byte(`{"target":"socks5t://"}`), &absent); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(`{"target":"socks5t://","SocksUDP":"false"}`), &off); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(`{"target":"socks5t://","SocksUDP":"true"}`), &on); err != nil {
-		t.Fatal(err)
-	}
-
-	if absent.SocksUDP != "" {
-		t.Errorf("unset SocksUDP = %q, want \"\" (inherit the scheme default)", absent.SocksUDP)
-	}
-	if off.SocksUDP != "false" {
-		t.Errorf("explicit SocksUDP = %q, want \"false\"", off.SocksUDP)
-	}
-	if absent.SocksUDP == off.SocksUDP {
-		t.Error("unset and explicit-false decode to the same value: rebinds cannot tell them apart")
-	}
-	if on.SocksUDP != "true" {
-		t.Errorf("SocksUDP \"true\" = %q, want \"true\"", on.SocksUDP)
-	}
-
-	// A JSON boolean is what a sloppy client sends; the decoder must reject it
-	// loudly rather than coerce it into a "false"-looking string.
-	var bad ProxyRouteConfig
-	if err := json.Unmarshal([]byte(`{"SocksUDP":false}`), &bad); err == nil {
-		t.Error("a JSON boolean decoded into the SocksUDP string field; want a rejection")
+	if r.Target != "socks5h://" {
+		t.Errorf("Target = %q, want socks5h://", r.Target)
 	}
 }
 
@@ -95,7 +54,6 @@ func TestSocksFieldsMarshalUnderGoFieldNames(t *testing.T) {
 		Target:                "socks5h://",
 		SocksAuthMode:         "password",
 		SocksDenyDestinations: []string{"127.0.0.0/8"},
-		SocksUDP:              "true",
 	}
 	b, err := json.Marshal(r)
 	if err != nil {
@@ -105,7 +63,7 @@ func TestSocksFieldsMarshalUnderGoFieldNames(t *testing.T) {
 	if err := json.Unmarshal(b, &back); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"SocksAuthMode", "SocksDenyDestinations", "SocksUDP"} {
+	for _, key := range []string{"SocksAuthMode", "SocksDenyDestinations"} {
 		if !slices.Contains(keysOf(back), key) {
 			t.Errorf("marshalled route is missing %q; keys = %v", key, keysOf(back))
 		}
@@ -118,7 +76,7 @@ func TestSocksFieldsMarshalUnderGoFieldNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(b); strings.Contains(got, "SocksAuthMode") || strings.Contains(got, "SocksUDP") {
+	if got := string(b); strings.Contains(got, "SocksAuthMode") {
 		t.Errorf("unset socks fields were marshalled: %s", got)
 	}
 }

@@ -7,7 +7,11 @@
 // The server is the source of truth; this module exists to show the same rules
 // before a save, not to enforce them.
 
-const SCHEMES = ['socks5://', 'socks5h://', 'socks5t://'];
+// The two schemes SOCKS clients actually speak. socks5t is deliberately
+// absent: no URL parser, curl, browser or library accepts it (curl has
+// --socks5 and --socks5-hostname, not socks5t), and the relay is TCP-only, so
+// there is no UDP capability for a third scheme to signal.
+const SCHEMES = ['socks5://', 'socks5h://'];
 
 /** True when this route is a SOCKS relay (target scheme selects the feature). */
 export const isSocksTarget = (target) => {
@@ -17,18 +21,16 @@ export const isSocksTarget = (target) => {
 };
 
 /**
- * Capability signals encoded by the scheme. socks5 / socks5h / socks5t are
- * capability labels over one implementation: socks5t = socks5h + UDP.
+ * Capability signals encoded by the scheme. socks5 vs socks5h says who
+ * resolves the hostname; that is the whole split.
  */
 export const socksCapabilities = (target) => {
   const lower = (target || '').toLowerCase();
-  const udp = lower.startsWith('socks5t://');
   return {
-    udp,
-    // socks5 asks the client to resolve; socks5h/socks5t ask Cosmos to resolve.
-    // Cosmos resolves both, so socks5 here is a client-side hint, not a
-    // behavioural switch -- the editor says so rather than pretending.
-    resolvesOnCosmos: lower.startsWith('socks5h://') || udp,
+    // socks5 asks the client to resolve; socks5h asks Cosmos to. Cosmos
+    // resolves both, so socks5 here is a client-side hint, not a behavioural
+    // switch -- the editor says so rather than pretending.
+    resolvesOnCosmos: lower.startsWith('socks5h://'),
   };
 };
 
@@ -112,7 +114,6 @@ const SOCKS_FIELDS = [
   'SocksAuthMode',
   'SocksAllowDestinations',
   'SocksDenyDestinations',
-  'SocksUDP',
 ];
 
 // Wire keys are the Go field names, not the YAML keys: route config is
@@ -120,11 +121,10 @@ const SOCKS_FIELDS = [
 // ignore underscores. Sending socks_auth_mode would decode into nothing and the
 // relay would silently run with defaults.
 //
-// SocksAuthMode and SocksUDP are strings on the server (SocksUDP is a tri-state
-// string precisely so 'unset' and 'false' stay distinguishable), so they are
-// emitted as strings -- a JSON boolean would fail to unmarshal into a string
-// field and reject the entire route save.
-export const SOCKS_JSON_KEYS = ['SocksAuthMode', 'SocksAllowDestinations', 'SocksDenyDestinations', 'SocksUDP'];
+// SocksAuthMode is a string on the server, so it is emitted as a string -- a
+// JSON boolean would fail to unmarshal into a string field and reject the
+// entire route save.
+export const SOCKS_JSON_KEYS = ['SocksAuthMode', 'SocksAllowDestinations', 'SocksDenyDestinations'];
 
 /**
  * Normalise SOCKS fields before a save and strip them from routes that are not
@@ -152,10 +152,6 @@ export const sanitizeSocksFields = (route) => {
   out.SocksDenyDestinations = normalizeDestinationList(out.SocksDenyDestinations);
   if (out.SocksAllowDestinations.length === 0) delete out.SocksAllowDestinations;
   if (out.SocksDenyDestinations.length === 0) delete out.SocksDenyDestinations;
-
-  if (out.SocksUDP === true || out.SocksUDP === 'true') out.SocksUDP = 'true';
-  else if (out.SocksUDP === false || out.SocksUDP === 'false') out.SocksUDP = 'false';
-  else delete out.SocksUDP;
 
   return out;
 };

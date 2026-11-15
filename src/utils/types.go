@@ -495,11 +495,6 @@ type ProxyRouteConfig struct {
 	// "" or "none" is anonymous, "password" requires a Cosmos account
 	// (utils.CheckPassword) on every connection. Ignored by non-socks targets.
 	SocksAuthMode string `yaml:"socks_auth_mode,omitempty" json:"SocksAuthMode,omitempty"`
-	// SocksUDP is a tri-state override for UDP ASSOCIATE: "" inherits the
-	// scheme's default (socks5t offers UDP, socks5/socks5h do not), "true" and
-	// "false" force it. Tri-state as a string because a plain bool cannot tell
-	// "unset" from "explicitly false", and rebinds must be able to tell.
-	SocksUDP string `yaml:"socks_udp,omitempty" json:"SocksUDP,omitempty"`
 	// SocksAllowDestinations / SocksDenyDestinations restrict where a relay may
 	// connect: CIDRs, IPs, hostnames, or "*.example.com" wildcards. Deny wins
 	// over allow; an empty allow list means "allow everything".

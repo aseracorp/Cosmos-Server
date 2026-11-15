@@ -2268,13 +2268,8 @@ type UtilsProxyRouteConfig struct {
 	// SocksAuthMode SocksAuthMode gates the SOCKS relay's username/password subnegotiation:
 	// "" or "none" is anonymous, "password" requires a Cosmos account
 	// (utils.CheckPassword) on every connection. Ignored by non-socks targets.
-	SocksAuthMode         *string   `json:"SocksAuthMode,omitempty"`
-	SocksDenyDestinations *[]string `json:"SocksDenyDestinations,omitempty"`
-	// SocksUDP SocksUDP is a tri-state override for UDP ASSOCIATE: "" inherits the
-	// scheme's default (socks5t offers UDP, socks5/socks5h do not), "true" and
-	// "false" force it. Tri-state as a string because a plain bool cannot tell
-	// "unset" from "explicitly false", and rebinds must be able to tell.
-	SocksUDP                  *string                       `json:"SocksUDP,omitempty"`
+	SocksAuthMode             *string                       `json:"SocksAuthMode,omitempty"`
+	SocksDenyDestinations     *[]string                     `json:"SocksDenyDestinations,omitempty"`
 	AcceptInsecureHTTPSTarget *bool                         `json:"acceptInsecureHTTPSTarget,omitempty"`
 	AddionalFilters           *[]UtilsAddionalFiltersConfig `json:"addionalFilters,omitempty"`
 	AdminOnly                 *bool                         `json:"adminOnly,omitempty"`

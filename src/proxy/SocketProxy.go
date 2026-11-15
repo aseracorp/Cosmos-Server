@@ -580,9 +580,10 @@ func ResolvePortClaims(claims []PortClaim) (accepted []PortsPair, shadowed []str
 // next bind would fail with "address already in use" while the UI showed the
 // route as gone.
 //
-// pair.From carries the listen host:port. The relay listens on TCP (greetings,
-// CONNECT) and UDP (UDP ASSOCIATE) on that same number, mirroring how udp
-// routes occupy their port.
+// pair.From carries the listen host:port. The relay binds TCP only: greetings,
+// auth and CONNECT. UDP traffic in Cosmos is served by udp routes, which expose
+// a specific listener, so a relay has no business squatting the UDP half of its
+// port number.
 func startSocksProxy(pair PortsPair, proxyInfo *ProxyInfo, listenAddr string) {
     host, portStr, err := net.SplitHostPort(listenAddr)
     if err != nil {
@@ -612,7 +613,7 @@ func startSocksProxy(pair PortsPair, proxyInfo *ProxyInfo, listenAddr string) {
     utils.Log("[SocketProxy] SOCKS relay listening on " + listenAddr + " (" + socksSchemeOf(route.Target) + ")")
 
     // The registry's stop signal is the only teardown path; Close() releases the
-    // TCP listener, the UDP socket and every open association.
+    // listener and every open tunnel.
     <-proxyInfo.stop
     server.Close()
     close(proxyInfo.stopped)

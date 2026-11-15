@@ -40,8 +40,6 @@ type socksAddr struct {
 	port string
 }
 
-func zeroAddr() socksAddr { return socksAddr{ip: net.IPv4zero, port: "0"} }
-
 func socksAddrFrom(req socksRequest) socksAddr {
 	if req.host != "" {
 		return socksAddr{host: req.host, port: req.port}
@@ -251,86 +249,6 @@ func socksRepForError(err error) byte {
 	default:
 		return socksRepGeneralError
 	}
-}
-
-// socksFrame encodes the address header of a SOCKS UDP datagram payload. The
-// RSVD/FRAG prefix is prepended by the caller.
-func socksFrame(req socksRequest) []byte {
-	out, err := encodeAddr(make([]byte, 0, 20), socksAddr{ip: req.ip, host: req.host, port: req.port})
-	if err != nil {
-		return nil
-	}
-	return out
-}
-
-// socksFrameLen is the byte length of an encoded address header. It must match
-// what socksFrame produces, which is why both go through encodeAddr.
-func socksFrameLen(req socksRequest) int { return len(socksFrame(req)) }
-
-// socksFrameFromAddr encodes the address header for a datagram arriving from a
-// peer, which is always numeric.
-func socksFrameFromAddr(addr net.Addr) []byte {
-	udpAddr, ok := addr.(*net.UDPAddr)
-	if !ok {
-		return nil
-	}
-	out, err := encodeAddr(make([]byte, 0, 20), socksAddr{ip: udpAddr.IP, port: strconv.Itoa(udpAddr.Port)})
-	if err != nil {
-		return nil
-	}
-	return out
-}
-
-// socksUDPFrameHeader is the fixed prefix of a SOCKS UDP datagram: the RSVD byte
-// and the FRAG byte. RFC 1928 puts ATYP at offset 2, so anything wider makes a
-// compliant client read the destination out of the wrong byte.
-const socksUDPFrameHeader = 2
-
-// parseUDPFrame decodes a client datagram: it skips the RSVD/FRAG prefix and
-// reads the destination the datagram is addressed to.
-//
-// A datagram with FRAG set is refused. Cosmos does not reassemble fragments: a
-// client handed half a datagram treats it as whole, so forwarding a fragment
-// silently corrupts a stream, while dropping it is a clean failure.
-func parseUDPFrame(data []byte) (socksRequest, error) {
-	var req socksRequest
-	if len(data) < socksUDPFrameHeader+4 {
-		return req, fmt.Errorf("short udp frame (%d bytes)", len(data))
-	}
-	req.command = socksCmdUDPAssociate
-
-	if data[1] != 0x00 {
-		return req, fmt.Errorf("fragmented udp datagram (FRAG=%d) is not relayed", data[1])
-	}
-
-	atyp := data[socksUDPFrameHeader]
-	i := socksUDPFrameHeader + 1
-	switch atyp {
-	case socksATYPIPv4:
-		if len(data) < i+4+2 {
-			return req, fmt.Errorf("short udp frame (ipv4)")
-		}
-		req.ip = net.IP(data[i : i+4])
-		i += 4
-	case socksATYPIPv6:
-		if len(data) < i+16+2 {
-			return req, fmt.Errorf("short udp frame (ipv6)")
-		}
-		req.ip = net.IP(data[i : i+16])
-		i += 16
-	case socksATYPDomain:
-		n := int(data[i])
-		i++
-		if n == 0 || len(data) < i+n+2 {
-			return req, fmt.Errorf("short udp frame (domain)")
-		}
-		req.host = string(data[i : i+n])
-		i += n
-	default:
-		return req, fmt.Errorf("unsupported udp address type %d", atyp)
-	}
-	req.port = strconv.Itoa(int(binary.BigEndian.Uint16(data[i : i+2])))
-	return req, nil
 }
 
 // pump copies one direction and half-closes on EOF, so a relayed tunnel

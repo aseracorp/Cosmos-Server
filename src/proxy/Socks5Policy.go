@@ -9,10 +9,14 @@ import (
 	"github.com/azukaar/cosmos-server/src/utils"
 )
 
-// The schemes a SOCKS relay route can be declared with. They are not three
-// implementations: they are the three things a SOCKS client is described as
-// wanting, and each one decides who resolves the hostname and whether UDP is
-// offered.
+// The schemes a SOCKS relay route can be declared with.
+//
+// These are the two schemes real clients speak. RFC 1928 defines one protocol;
+// the scheme split is a URL convention (curl's --socks5 vs --socks5-hostname,
+// git-lfs, chisel, miniflux, the xray/v2ray ecosystem) that says who resolves
+// the hostname. There is no socks5t: no client, library or URL parser accepts
+// that scheme, and the UDP it promised is not part of what a SOCKS target is
+// for here -- this relay is TCP-only.
 const (
 	// Socks5Scheme: the client resolved the name and sends an address. Cosmos
 	// dials exactly what it was given.
@@ -20,16 +24,13 @@ const (
 	// Socks5hScheme: the client sends a hostname and Cosmos resolves it, which
 	// is what makes the relay useful to a client with no DNS of its own.
 	Socks5hScheme = "socks5h"
-	// Socks5tScheme: resolve locally (as socks5h) and offer UDP ASSOCIATE too,
-	// so DNS / QUIC clients can use the relay.
-	Socks5tScheme = "socks5t"
 )
 
 // IsSocksScheme reports whether a target scheme is served by the SOCKS relay
 // rather than by the plain tcp/udp port forwarders.
 func IsSocksScheme(scheme string) bool {
 	s := strings.ToLower(scheme)
-	return s == Socks5Scheme || s == Socks5hScheme || s == Socks5tScheme
+	return s == Socks5Scheme || s == Socks5hScheme
 }
 
 // IsValidSocksAuthMode is the configapi-side check for socks_auth_mode. Empty
@@ -39,8 +40,8 @@ func IsValidSocksAuthMode(mode string) bool {
 }
 
 // socksSchemeOf pulls the relay scheme out of a route target. A relay route is
-// written as "socks5://", "socks5h://" or "socks5t://" — the scheme is the whole
-// target, because a relay has no upstream to name.
+// written as "socks5://" or "socks5h://" — the scheme is the whole target,
+// because a relay has no upstream to name.
 func socksSchemeOf(target string) string {
 	parts := strings.Split(target, "://")
 	if len(parts) == 1 {
@@ -146,26 +147,25 @@ func plausibleHostname(h string) bool {
 }
 
 // socksPolicy is the compiled route policy behind one relay: authentication,
-// destination filtering, and the dial/UDP mode implied by the scheme.
+// destination filtering, and the resolution mode implied by the scheme.
 //
 // It is compiled once when the listener binds, because a route config is a
 // policy document and not a per-request config: a malformed deny entry must
 // fail the bind loudly rather than be quietly ignored when a client happens to
 // hit it.
 type socksPolicy struct {
-	mode         string // one of Socks5Scheme / Socks5hScheme / Socks5tScheme
+	mode         string // one of Socks5Scheme / Socks5hScheme
 	needPassword bool
 	allowDest    []socksDestination
 	denyDest     []socksDestination
-	udpEnabled   bool
 }
 
-func newSocksPolicy(mode, authMode string, allow, deny []string, udpOverride *bool) (*socksPolicy, error) {
+func newSocksPolicy(mode, authMode string, allow, deny []string) (*socksPolicy, error) {
 	p := &socksPolicy{mode: strings.ToLower(mode)}
 	switch p.mode {
-	case Socks5Scheme, Socks5hScheme, Socks5tScheme:
+	case Socks5Scheme, Socks5hScheme:
 	default:
-		return nil, fmt.Errorf("unsupported socks scheme %q (use socks5, socks5h, socks5t)", mode)
+		return nil, fmt.Errorf("unsupported socks scheme %q (use socks5 or socks5h)", mode)
 	}
 
 	// "password" is the only auth mode that does anything; "none"/"" are
@@ -180,29 +180,16 @@ func newSocksPolicy(mode, authMode string, allow, deny []string, udpOverride *bo
 	if p.denyDest, err = parseSocksDestinations(deny); err != nil {
 		return nil, fmt.Errorf("socks_deny_destinations: %w", err)
 	}
-
-	// UDP ASSOCIATE is a capability of the scheme (socks5t offers it); socks_udp
-	// lets a route turn it off, or turn it on for a scheme that does not offer
-	// it by default.
-	p.udpEnabled = p.mode == Socks5tScheme
-	if udpOverride != nil {
-		p.udpEnabled = *udpOverride
-	}
 	return p, nil
 }
 
 // policyFromRoute compiles the policy for a SOCKS relay route.
 func policyFromRoute(rtr *utils.ProxyRouteConfig) (*socksPolicy, error) {
-	var udpOverride *bool
-	if rtr.SocksUDP != "" {
-		v := strings.EqualFold(rtr.SocksUDP, "true")
-		udpOverride = &v
-	}
 	scheme := socksSchemeOf(rtr.Target)
 	if scheme == "" {
 		return nil, fmt.Errorf("socks route %s has no scheme in target %q", rtr.Name, rtr.Target)
 	}
-	return newSocksPolicy(scheme, rtr.SocksAuthMode, rtr.SocksAllowDestinations, rtr.SocksDenyDestinations, udpOverride)
+	return newSocksPolicy(scheme, rtr.SocksAuthMode, rtr.SocksAllowDestinations, rtr.SocksDenyDestinations)
 }
 
 // allowDestination decides whether a destination may be relayed.
@@ -231,7 +218,7 @@ func (p *socksPolicy) allowDestination(host string, ip net.IP) bool {
 
 // dialTarget resolves a destination into a host to dial. Numeric addresses dial
 // directly; names go through the box's resolver, which is the whole point of
-// socks5h/socks5t.
+// socks5h.
 func (p *socksPolicy) dialTarget(host string, port string, ip net.IP) (string, error) {
 	if ip != nil {
 		return ip.String(), nil
@@ -279,19 +266,6 @@ func (p *socksPolicy) resolveAndDial(host string, port string, ip net.IP) (net.C
 	return net.Dial("tcp", net.JoinHostPort(target, port))
 }
 
-// resolveUDP applies the same policy as resolveAndDial and returns the address
-// to send datagrams to, for UDP ASSOCIATE.
-func (p *socksPolicy) resolveUDP(host string, port string, ip net.IP) (*net.UDPAddr, error) {
-	if !p.allowDestination(host, ip) {
-		return nil, fmt.Errorf("destination not allowed")
-	}
-	target, err := p.dialTarget(host, port, ip)
-	if err != nil {
-		return nil, err
-	}
-	return net.ResolveUDPAddr("udp", net.JoinHostPort(target, port))
-}
-
 // checkCredentials verifies a client against Cosmos's own user store.
 //
 // This is deliberately the same primitive the dashboard login uses
@@ -329,16 +303,26 @@ func (p *socksPolicy) checkCredentials(user, password string) error {
 // "the relay is broken" rather than "my config is wrong".
 //
 // Two combinations are rejected outright:
-//   - socks_udp with a value that is not true/false/"": read as a plain bool,
-//     "0" silently becomes false and "no" becomes true, so an operator gets UDP
-//     behaviour they did not ask for.
+//   - socks options on a route whose target is not a socks scheme: the operator
+//     thinks they configured a relay and configured nothing.
 //   - a relay with additional targets: pool members are dial targets for a
 //     forwarder, and a relay's destinations come from client requests, so the
 //     load balancer has nothing to choose between.
 func ValidateSocksRoute(route utils.ProxyRouteConfig) string {
+	// A target naming a SOCKS scheme we do not serve is refused here, not only
+	// at bind time. Without this the route saves cleanly, startProxy logs
+	// "Unsupported protocol" in a log nobody reads, and the operator is left
+	// with a route that does nothing. socks5t is the usual case: the scheme
+	// every SOCKS client rejects.
+	if scheme := socksSchemeOf(route.Target); scheme != "" &&
+		strings.HasPrefix(scheme, "socks") && !IsSocksScheme(scheme) {
+		return "Route \"" + route.Name + "\" uses unsupported SOCKS scheme \"" + scheme +
+			"\": supported targets are socks5:// and socks5h://"
+	}
+
 	if !IsSocksScheme(socksSchemeOf(route.Target)) {
-		if route.SocksAuthMode != "" || route.SocksUDP != "" || len(route.SocksAllowDestinations) > 0 || len(route.SocksDenyDestinations) > 0 {
-			return "Route \"" + route.Name + "\" sets SOCKS relay options but its target is not socks5/socks5h/socks5t"
+		if route.SocksAuthMode != "" || len(route.SocksAllowDestinations) > 0 || len(route.SocksDenyDestinations) > 0 {
+			return "Route \"" + route.Name + "\" sets SOCKS relay options but its target is not socks5/socks5h"
 		}
 		return ""
 	}
@@ -346,13 +330,6 @@ func ValidateSocksRoute(route utils.ProxyRouteConfig) string {
 	if !IsValidSocksAuthMode(route.SocksAuthMode) {
 		return "Unsupported SOCKS auth mode \"" + route.SocksAuthMode + "\" on route \"" + route.Name +
 			"\". Supported values are \"password\" (require a Cosmos account) and \"\"/\"none\" (anonymous)"
-	}
-
-	switch strings.ToLower(route.SocksUDP) {
-	case "", "true", "false":
-	default:
-		return "Unsupported SOCKS udp value \"" + route.SocksUDP + "\" on route \"" + route.Name +
-			"\". Supported values are \"true\", \"false\" and \"\" (empty: use the scheme's default)"
 	}
 
 	if len(route.AdditionalTargets) > 0 {

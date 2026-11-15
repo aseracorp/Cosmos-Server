@@ -3120,13 +3120,6 @@ definitions:
         items:
           type: string
         type: array
-      SocksUDP:
-        description: |-
-          SocksUDP is a tri-state override for UDP ASSOCIATE: "" inherits the
-          scheme's default (socks5t offers UDP, socks5/socks5h do not), "true" and
-          "false" force it. Tri-state as a string because a plain bool cannot tell
-          "unset" from "explicitly false", and rebinds must be able to tell.
-        type: string
       acceptInsecureHTTPSTarget:
         type: boolean
       addionalFilters:

@@ -111,7 +111,6 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
             ? routeConfig.SocksAllowDestinations.join(', ') : '',
           SocksDenyDestinations: routeConfig.SocksDenyDestinations
             ? routeConfig.SocksDenyDestinations.join(', ') : '',
-          SocksUDP: routeConfig.SocksUDP === true ? 'true' : routeConfig.SocksUDP === false ? 'false' : (routeConfig.SocksUDP || ''),
           _ExtraHeaders: routeConfig.ExtraHeaders
             ? Object.entries(routeConfig.ExtraHeaders).map(([key, value]) => ({ key, value }))
             : [],
@@ -340,9 +339,6 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                             resolve: t(caps.resolvesOnCosmos
                               ? 'mgmt.urls.edit.socksSettings.resolvesCosmos'
                               : 'mgmt.urls.edit.socksSettings.resolvesClient'),
-                            udp: t(caps.udp
-                              ? 'mgmt.urls.edit.socksSettings.udpOn'
-                              : 'mgmt.urls.edit.socksSettings.udpOff'),
                           })}
                         </Alert>
                       </Grid>;
@@ -356,17 +352,6 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                         ['', t('mgmt.urls.edit.socksSettings.authMode.auto')],
                         ['none', t('mgmt.urls.edit.socksSettings.authMode.noneChoice')],
                         ['password', t('mgmt.urls.edit.socksSettings.authMode.passwordChoice')],
-                      ]}
-                    />
-
-                    <CosmosSelect
-                      name="SocksUDP"
-                      label={t('mgmt.urls.edit.socksSettings.udp.udpLabel')}
-                      formik={formik}
-                      options={[
-                        ['', t('mgmt.urls.edit.socksSettings.udp.auto')],
-                        ['true', t('mgmt.urls.edit.socksSettings.udp.enabled')],
-                        ['false', t('mgmt.urls.edit.socksSettings.udp.disabled')],
                       ]}
                     />
 

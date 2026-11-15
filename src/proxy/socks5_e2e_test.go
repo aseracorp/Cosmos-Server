@@ -345,7 +345,7 @@ func TestE2EPasswordRouteRefusesAnonymousAndTunnelsForAnAccount(t *testing.T) {
 
 func TestE2EBadCredentialsAreRefused(t *testing.T) {
 	port := socksE2EPort(t)
-	route := socksRouteOnPort("socks5t", port)
+	route := socksRouteOnPort("socks5h", port)
 	route.SocksAuthMode = "password"
 	addr := socksE2EListen(t, route)
 
@@ -377,101 +377,47 @@ func TestE2EBadCredentialsAreRefused(t *testing.T) {
 	}
 }
 
-// socksE2EUDPEcho answers datagrams on a loopback UDP socket.
-func socksE2EUDPEcho(t *testing.T) *net.UDPAddr {
-	t.Helper()
-	l, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	if err != nil {
-		t.Fatalf("udp echo: %v", err)
-	}
-	t.Cleanup(func() { l.Close() })
-	go func() {
-		b := make([]byte, 2048)
-		for {
-			n, from, err := l.ReadFrom(b)
-			if err != nil {
-				return
-			}
-			l.WriteTo(b[:n], from)
+// A socks route occupies a TCP port only. UDP ASSOCIATE is refused, and the
+// refusal has to come from the production wiring: a route that bound a UDP
+// socket it never answers would squat a port a udp route needs.
+func TestE2EUDPAssociateIsRefusedOnBothSchemes(t *testing.T) {
+	for _, scheme := range []string{"socks5", "socks5h"} {
+		port := socksE2EPort(t)
+		addr := socksE2EListen(t, socksRouteOnPort(scheme, port))
+
+		conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err != nil {
+			t.Fatalf("%s dial: %v", scheme, err)
 		}
-	}()
-	return l.LocalAddr().(*net.UDPAddr)
-}
+		socksE2EHandshake(t, conn, []byte{socksMethodNoAuth})
+		reply := socksE2ERequest(t, conn, socksCmdUDPAssociate, "127.0.0.1", 0)
+		if reply[1] != socksRepCmdNotSupport {
+			t.Fatalf("%s: UDP ASSOCIATE = %d, want command-not-supported", scheme, reply[1])
+		}
+		conn.Close()
 
-func TestE2EUDPAssociateCarriesDatagrams(t *testing.T) {
-	port := socksE2EPort(t)
-	addr := socksE2EListen(t, socksRouteOnPort("socks5t", port))
-	echo := socksE2EUDPEcho(t)
+		// The refusal is a reply, not a shutdown: CONNECT still works on the
+		// same route, which is what a UDP-probing client does next.
+		echo := socksE2EEcho(t, "after-udp-refusal")
+		conn2, err := net.DialTimeout("tcp", addr, 2*time.Second)
+		if err != nil {
+			t.Fatalf("%s redial: %v", scheme, err)
+		}
+		socksE2EHandshake(t, conn2, []byte{socksMethodNoAuth})
+		if r := socksE2ERequest(t, conn2, socksCmdConnect, "127.0.0.1", socksPortOf(t, echo)); r[1] != socksRepSuccess {
+			t.Fatalf("%s: CONNECT after a UDP refusal = %d, want success", scheme, r[1])
+		}
+		conn2.Close()
 
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
-	socksE2EHandshake(t, conn, []byte{socksMethodNoAuth})
-
-	reply := socksE2ERequest(t, conn, socksCmdUDPAssociate, "127.0.0.1", 0)
-	if reply[1] != socksRepSuccess {
-		t.Fatalf("UDP ASSOCIATE = %d, want success (socks5t offers UDP)", reply[1])
-	}
-	bndPort := int(binary.BigEndian.Uint16(reply[8:10]))
-
-	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	if err != nil {
-		t.Fatalf("client udp: %v", err)
-	}
-	defer client.Close()
-
-	frame := []byte{0x00, 0x00, socksATYPIPv4, 127, 0, 0, 1,
-		byte(echo.Port >> 8), byte(echo.Port & 0xFF)}
-	frame = append(frame, []byte("dns-query")...)
-	if _, err := client.WriteTo(frame, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: bndPort}); err != nil {
-		t.Fatalf("datagram to relay: %v", err)
-	}
-
-	client.SetReadDeadline(time.Now().Add(5 * time.Second))
-	b := make([]byte, 2048)
-	n, from, err := client.ReadFrom(b)
-	if err != nil {
-		t.Fatalf("no reply to the association: %v", err)
-	}
-	req, err := parseUDPFrame(b[:n])
-	if err != nil {
-		t.Fatalf("reply frame: %v", err)
-	}
-	if req.String() != echo.String() {
-		t.Fatalf("reply destination = %s, want the echo server %s", req, echo)
-	}
-	payload := b[socksUDPFrameHeader+socksFrameLen(req) : n]
-	if string(payload) != "dns-query" {
-		t.Fatalf("payload = %q, want dns-query", payload)
-	}
-	// Replies come back on the client's own socket, from the advertised BND port.
-	if from.String() != "127.0.0.1:"+fmt.Sprint(bndPort) {
-		t.Fatalf("reply source = %s, want 127.0.0.1:%d", from, bndPort)
+		// No UDP socket on the relay's port: a udp route can use that number.
+		udp, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
+		if err != nil {
+			t.Fatalf("%s: relay squatted udp/%d: %v", scheme, port, err)
+		}
+		udp.Close()
 	}
 }
 
-func TestE2EUDPRefusedOnSocks5h(t *testing.T) {
-	port := socksE2EPort(t)
-	addr := socksE2EListen(t, socksRouteOnPort("socks5h", port))
-
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.Close()
-	socksE2EHandshake(t, conn, []byte{socksMethodNoAuth})
-	reply := socksE2ERequest(t, conn, socksCmdUDPAssociate, "127.0.0.1", 0)
-	if reply[1] != socksRepCmdNotSupport {
-		t.Fatalf("UDP ASSOCIATE on socks5h = %d, want command-not-supported", reply[1])
-	}
-}
-
-// A live tunnel must not hold the teardown hostage. StopAllProxies waits on each
-// proxy's "stopped" signal; a relay that ignored its stop channel would sit there
-// for the registry's full 30s timeout on every config change that touches the
-// route, and the port would stay bound after the route was deleted.
 func TestE2EOpenTunnelDoesNotBlockTeardown(t *testing.T) {
 	port := socksE2EPort(t)
 	addr := socksE2EListen(t, socksRouteOnPort("socks5h", port))

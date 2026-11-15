@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/azukaar/cosmos-server/src/utils"
 )
@@ -104,44 +103,6 @@ func TestWriteReplyRejectsUnencodableDomain(t *testing.T) {
 	}
 }
 
-func TestParseUDPFrameDestinations(t *testing.T) {
-	// RSVD, FRAG, RSVD, then the address header.
-	v4 := []byte{0x00, 0x00, 0x01, 8, 8, 8, 8, 0x00, 0x35, 'h', 'i'}
-	req, err := parseUDPFrame(v4)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if req.ip.String() != "8.8.8.8" || req.port != "53" {
-		t.Errorf("got %s", req)
-	}
-
-	domain := append([]byte{0x00, 0x00, 0x03, 8, 'd', 'n', 's', '.', 'o', 'p', 'e', 'n'}, 0x00, 0x35)
-	req, err = parseUDPFrame(domain)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if req.host != "dns.open" || req.port != "53" {
-		t.Errorf("got %s", req)
-	}
-}
-
-func TestParseUDPFrameRejectsFragments(t *testing.T) {
-	// FRAG != 0 means a fragmented datagram. Relay one and a client treats a
-	// fragment as a whole datagram: silent corruption. Dropping is a clean fail.
-	frag := []byte{0x00, 0x01, 0x01, 8, 8, 8, 8, 0x00, 0x35, 'p'}
-	if _, err := parseUDPFrame(frag); err == nil || !strings.Contains(err.Error(), "fragment") {
-		t.Fatalf("expected a fragment refusal, got %v", err)
-	}
-}
-
-func TestParseUDPFrameRejectsTruncated(t *testing.T) {
-	for _, in := range [][]byte{{0x00, 0x00}, {0x00, 0x00, 0x01, 8, 8}, nil} {
-		if _, err := parseUDPFrame(in); err == nil {
-			t.Errorf("expected an error for %x", in)
-		}
-	}
-}
-
 func TestSocksRepForErrorDistinguishesPermanent(t *testing.T) {
 	// A client retries "host unreachable" and stops on "not allowed by ruleset".
 	// Reporting a policy refusal as a transient error makes a client hammer a
@@ -165,12 +126,11 @@ func TestSocksRepForErrorDistinguishesPermanent(t *testing.T) {
 
 // --- helpers -----------------------------------------------------------------
 
-func socksRoute(target, authMode, udp string, allow, deny []string) utils.ProxyRouteConfig {
+func socksRoute(target, authMode string, allow, deny []string) utils.ProxyRouteConfig {
 	return utils.ProxyRouteConfig{
 		Name:                   "socks-test",
 		Target:                 target,
 		SocksAuthMode:          authMode,
-		SocksUDP:               udp,
 		SocksAllowDestinations: allow,
 		SocksDenyDestinations:  deny,
 	}
@@ -279,7 +239,7 @@ func echoPort(t *testing.T, hostport string) uint16 {
 
 func TestAnonymousConnectRelaysBytes(t *testing.T) {
 	echo := startEchoTCP(t)
-	s := startTestRelay(t, socksRoute("socks5://", "", "", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5://", "", nil, nil))
 
 	conn := dialRelay(t, s)
 	if m := greet(t, conn, []byte{socksMethodNoAuth}); m != socksMethodNoAuth {
@@ -307,7 +267,7 @@ func TestAnonymousConnectRelaysBytes(t *testing.T) {
 // A relay configured for password auth must never hand out anonymous access.
 // This is the security property the auth mode exists to guarantee.
 func TestPasswordRequiredRefusesNoAuthClient(t *testing.T) {
-	s := startTestRelay(t, socksRoute("socks5h://", "password", "", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5h://", "password", nil, nil))
 	conn := dialRelay(t, s)
 
 	if m := greet(t, conn, []byte{socksMethodNoAuth}); m != socksMethodNoAccept {
@@ -326,7 +286,7 @@ func TestPasswordAuthAcceptsValidCredentials(t *testing.T) {
 	t.Cleanup(func() { socksCheckPassword = orig })
 
 	echo := startEchoTCP(t)
-	s := startTestRelay(t, socksRoute("socks5h://", "password", "", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5h://", "password", nil, nil))
 	conn := dialRelay(t, s)
 
 	if m := greet(t, conn, []byte{socksMethodPassword}); m != socksMethodPassword {
@@ -362,7 +322,7 @@ func TestPasswordAuthRejectsBadCredentials(t *testing.T) {
 	socksCheckPassword = func(user, pass string) error { return errors.New("nope") }
 	t.Cleanup(func() { socksCheckPassword = orig })
 
-	s := startTestRelay(t, socksRoute("socks5h://", "password", "", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5h://", "password", nil, nil))
 	conn := dialRelay(t, s)
 	greet(t, conn, []byte{socksMethodPassword})
 
@@ -384,10 +344,37 @@ func TestPasswordAuthRejectsBadCredentials(t *testing.T) {
 	}
 }
 
+// UDP ASSOCIATE is refused, not implemented: the relay is TCP-only. A client
+// probing it must get "command not supported" so it falls back to CONNECT --
+// replying success and then dropping every datagram is the failure that reads
+// to a user as "the proxy is broken".
+func TestUDPAssociateIsRefused(t *testing.T) {
+	for _, target := range []string{"socks5://", "socks5h://"} {
+		s := startTestRelay(t, socksRoute(target, "", nil, nil))
+		conn := dialRelay(t, s)
+		greet(t, conn, []byte{socksMethodNoAuth})
+
+		// sendRequest reads the full 10-byte reply: a client that gets a
+		// truncated reply hangs. RFC 1928 closes the connection after a refused
+		// request (one request per connection), so the assertion here is that the
+		// answer arrived and the relay goes on accepting clients.
+		reply := sendRequest(t, conn, socksCmdUDPAssociate, socksATYPIPv4, net.IPv4zero, 0)
+		if reply[1] != socksRepCmdNotSupport {
+			t.Fatalf("%s: rep = %d, want command-not-supported", target, reply[1])
+		}
+		conn.Close()
+
+		again := dialRelay(t, s)
+		if m := greet(t, again, []byte{socksMethodNoAuth}); m != socksMethodNoAuth {
+			t.Errorf("%s: relay stopped accepting clients after a refusal (method %d)", target, m)
+		}
+	}
+}
+
 func TestBindCommandIsRefused(t *testing.T) {
 	// BIND is the reverse-connect command: it makes the relay open a listening
 	// socket and invite a third party to connect to it.
-	s := startTestRelay(t, socksRoute("socks5://", "", "", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5://", "", nil, nil))
 	conn := dialRelay(t, s)
 	greet(t, conn, []byte{socksMethodNoAuth})
 
@@ -399,7 +386,7 @@ func TestBindCommandIsRefused(t *testing.T) {
 
 func TestDenyListBlocksConnect(t *testing.T) {
 	echo := startEchoTCP(t)
-	s := startTestRelay(t, socksRoute("socks5://", "", "", nil, []string{"127.0.0.0/8"}))
+	s := startTestRelay(t, socksRoute("socks5://", "", nil, []string{"127.0.0.0/8"}))
 	conn := dialRelay(t, s)
 	greet(t, conn, []byte{socksMethodNoAuth})
 
@@ -411,98 +398,21 @@ func TestDenyListBlocksConnect(t *testing.T) {
 	}
 }
 
-func TestUDPAssociateRefusedWhenUDPDisabled(t *testing.T) {
-	s := startTestRelay(t, socksRoute("socks5h://", "", "false", nil, nil))
-	conn := dialRelay(t, s)
-	greet(t, conn, []byte{socksMethodNoAuth})
-
-	reply := sendRequest(t, conn, socksCmdUDPAssociate, socksATYPIPv4, net.IPv4zero, 0)
-	if reply[1] != socksRepCmdNotSupport {
-		t.Fatalf("rep = %d, want command-not-supported", reply[1])
-	}
-}
-
-func TestUDPAssociateRelaysDatagramRoundTrip(t *testing.T) {
-	// A UDP echo server stands in for the destination.
-	echoUDP, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { echoUDP.Close() })
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, from, err := echoUDP.ReadFrom(buf)
-			if err != nil {
-				return
-			}
-			echoUDP.WriteTo(buf[:n], from)
+// The scheme list is exactly what clients speak. socks5t is the scheme no
+// client can send: no URL parser, curl, browser or library accepts it, so
+// accepting it here would offer a route target nothing can use.
+func TestSchemesAccepted(t *testing.T) {
+	for _, scheme := range []string{"socks5", "socks5h"} {
+		if _, err := newSocksPolicy(scheme, "", nil, nil); err != nil {
+			t.Errorf("%s: %v", scheme, err)
 		}
-	}()
-	echoAddr := echoUDP.LocalAddr().(*net.UDPAddr)
-
-	s := startTestRelay(t, socksRoute("socks5t://", "", "", nil, nil))
-	conn := dialRelay(t, s)
-	greet(t, conn, []byte{socksMethodNoAuth})
-
-	reply := sendRequest(t, conn, socksCmdUDPAssociate, socksATYPIPv4, net.IPv4zero, 0)
-	if reply[1] != socksRepSuccess {
-		t.Fatalf("associate rep = %d, want success", reply[1])
 	}
-	// The reply advertises the server's UDP address: that is where datagrams go.
-	bndPort := int(binary.BigEndian.Uint16(reply[8:10]))
-	if bndPort != s.udp.LocalAddr().(*net.UDPAddr).Port {
-		t.Fatalf("advertised bnd port %d, relay listens on %d", bndPort, s.udp.LocalAddr().(*net.UDPAddr).Port)
-	}
-
-	// A real client sends datagrams from its own socket, on a port the server is
-	// never told about. This is the path that a TCP-address-keyed association
-	// drops.
-	clientUDP, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { clientUDP.Close() })
-
-	frame := []byte{0x00, 0x00, socksATYPIPv4, 127, 0, 0, 1, byte(echoAddr.Port >> 8), byte(echoAddr.Port & 0xFF)}
-	frame = append(frame, []byte("ping")...)
-	if _, err := clientUDP.WriteTo(frame, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: bndPort}); err != nil {
-		t.Fatal(err)
-	}
-
-	clientUDP.SetReadDeadline(time.Now().Add(3 * time.Second))
-	resp := make([]byte, 1024)
-	n, from, err := clientUDP.ReadFrom(resp)
-	if err != nil {
-		t.Fatalf("no response datagram: %v", err)
-	}
-	// Replies arrive on the client's own UDP socket (the association is keyed by
-	// client IP, not by the TCP control connection) and carry the relay's
-	// advertised BND.ADDR/BND.PORT as their source.
-	if from.String() != "127.0.0.1:"+strconv.Itoa(bndPort) {
-		t.Fatalf("reply source = %s, want the advertised %s:%d", from, "127.0.0.1", bndPort)
-	}
-	// Parse the reply the way a client does: RSVD + FRAG + ATYP + ADDR + PORT,
-	// then the payload. Hand-counting offsets here would hide exactly the kind
-	// of framing bug this suite exists to catch.
-	parsed, err := parseUDPFrame(resp[:n])
-	if err != nil {
-		t.Fatalf("reply is not a valid socks udp frame: %v", err)
-	}
-	if resp[1] != 0x00 {
-		t.Fatalf("reply FRAG = %d, want 0 (the relay never fragments)", resp[1])
-	}
-	if parsed.String() != echoAddr.String() {
-		t.Fatalf("reply destination = %s, want the echo server %s", parsed, echoAddr)
-	}
-
-	payload := resp[socksUDPFrameHeader+socksFrameLen(parsed) : n]
-	if string(payload) != "ping" {
-		t.Fatalf("payload = %q, want %q", payload, "ping")
+	for _, scheme := range []string{"socks5t", "socks4", "socks5s", ""} {
+		if _, err := newSocksPolicy(scheme, "", nil, nil); err == nil {
+			t.Errorf("%s: accepted, want rejection", scheme)
+		}
 	}
 }
-
-// --- policy & validation -----------------------------------------------------
 
 func TestAllowDestinationPrecedence(t *testing.T) {
 	tests := []struct {
@@ -525,7 +435,7 @@ func TestAllowDestinationPrecedence(t *testing.T) {
 		{"bare ip allow", []string{"8.8.8.8"}, nil, "", "8.8.8.8", true},
 	}
 	for _, tt := range tests {
-		p, err := newSocksPolicy(Socks5hScheme, "", tt.allow, tt.deny, nil)
+		p, err := newSocksPolicy(Socks5hScheme, "", tt.allow, tt.deny)
 		if err != nil {
 			t.Fatalf("%s: %v", tt.name, err)
 		}
@@ -542,42 +452,18 @@ func TestAllowDestinationPrecedence(t *testing.T) {
 func TestPolicyRejectsMalformedDenyList(t *testing.T) {
 	// A typo in a deny list is a hole, not a cosmetic problem: bind must fail
 	// loudly rather than accept a rule set that matches nothing.
-	if _, err := newSocksPolicy(Socks5hScheme, "", nil, []string{"not an address"}, nil); err == nil {
+	if _, err := newSocksPolicy(Socks5hScheme, "", nil, []string{"not an address"}); err == nil {
 		t.Fatal("expected an error for a malformed deny entry")
 	}
-	if _, err := newSocksPolicy(Socks5hScheme, "", []string{"10.0.0.0/33"}, nil, nil); err == nil {
+	if _, err := newSocksPolicy(Socks5hScheme, "", []string{"10.0.0.0/33"}, nil); err == nil {
 		t.Fatal("expected an error for an invalid CIDR")
-	}
-}
-
-func TestUDPEnablementFollowsScheme(t *testing.T) {
-	trueVal, falseVal := true, false
-	tests := []struct {
-		scheme   string
-		override *bool
-		want     bool
-	}{
-		{Socks5Scheme, nil, false},
-		{Socks5hScheme, nil, false},
-		{Socks5tScheme, nil, true},
-		{Socks5tScheme, &falseVal, false},
-		{Socks5Scheme, &trueVal, true},
-	}
-	for _, tt := range tests {
-		p, err := newSocksPolicy(tt.scheme, "", nil, nil, tt.override)
-		if err != nil {
-			t.Fatalf("%s: %v", tt.scheme, err)
-		}
-		if p.udpEnabled != tt.want {
-			t.Errorf("%s override=%v: udpEnabled = %v, want %v", tt.scheme, tt.override, p.udpEnabled, tt.want)
-		}
 	}
 }
 
 func TestDenyListAppliesToResolvedAddress(t *testing.T) {
 	// A name that resolves to loopback must not bypass "deny 127.0.0.0/8". This
 	// is the DNS-rebinding-shaped hole in destination filters.
-	p, err := newSocksPolicy(Socks5hScheme, "", nil, []string{"127.0.0.0/8"}, nil)
+	p, err := newSocksPolicy(Socks5hScheme, "", nil, []string{"127.0.0.0/8"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +475,7 @@ func TestDenyListAppliesToResolvedAddress(t *testing.T) {
 }
 
 func TestRejectsInvalidDestinationPort(t *testing.T) {
-	p, err := newSocksPolicy(Socks5Scheme, "", nil, nil, nil)
+	p, err := newSocksPolicy(Socks5Scheme, "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,9 +488,8 @@ func TestRejectsInvalidDestinationPort(t *testing.T) {
 
 func TestValidateSocksRouteAcceptsValidConfigs(t *testing.T) {
 	valid := []utils.ProxyRouteConfig{
-		socksRoute("socks5://", "", "", nil, nil),
-		socksRoute("socks5h://", "password", "", []string{"*.example.com"}, nil),
-		socksRoute("socks5t://", "none", "false", nil, []string{"127.0.0.0/8"}),
+		socksRoute("socks5://", "", nil, nil),
+		socksRoute("socks5h://", "password", []string{"*.example.com"}, nil),
 		{Name: "http", Target: "http://localhost:8080"},
 	}
 	for _, r := range valid {
@@ -620,10 +505,12 @@ func TestValidateSocksRouteRejectsMeaninglessConfigs(t *testing.T) {
 		route utils.ProxyRouteConfig
 		want  string
 	}{
-		{"bad auth mode", socksRoute("socks5h://", "basic", "", nil, nil), "auth mode"},
-		{"bad udp value", socksRoute("socks5t://", "", "yes", nil, nil), "udp value"},
+		{"bad auth mode", socksRoute("socks5h://", "basic", nil, nil), "auth mode"},
+		{"socks5t is not a scheme", socksRoute("socks5t://", "", nil, nil), "unsupported SOCKS scheme"},
+		{"socks4a is not a scheme", socksRoute("socks4a://", "", nil, nil), "unsupported SOCKS scheme"},
+		{"socks5t with options", socksRoute("socks5t://", "password", nil, nil), "unsupported SOCKS scheme"},
 		{"relay with pool targets", func() utils.ProxyRouteConfig {
-			r := socksRoute("socks5h://", "", "", nil, nil)
+			r := socksRoute("socks5h://", "", nil, nil)
 			r.AdditionalTargets = []string{"socks5h://"}
 			return r
 		}(), "additional targets"},
@@ -631,7 +518,7 @@ func TestValidateSocksRouteRejectsMeaninglessConfigs(t *testing.T) {
 			r := utils.ProxyRouteConfig{Name: "http", Target: "http://localhost:8080", SocksAuthMode: "password"}
 			return r
 		}(), "sets SOCKS relay options"},
-		{"malformed deny", socksRoute("socks5h://", "", "", nil, []string{"@@@"}), "socks_deny_destinations"},
+		{"malformed deny", socksRoute("socks5h://", "", nil, []string{"@@@"}), "socks_deny_destinations"},
 	}
 	for _, tt := range bad {
 		msg := ValidateSocksRoute(tt.route)

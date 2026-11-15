@@ -4381,7 +4381,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Creates the function as a handler of a function deployment (\"fn\u003cname\u003e\" unless\ndeployment names one) and deploys source.version (empty = the registry's latest).\nServer-owned fields (rev, releases, status, siblings, dates) are ignored (Pro feature).",
+                "description": "Creates the function as a handler of a function deployment (\"fn<name>\" unless\ndeployment names one) and deploys source.version (empty = the registry's latest).\nServer-owned fields (rev, releases, status, siblings, dates) are ignored (Pro feature).",
                 "consumes": [
                     "application/json"
                 ],
@@ -7611,7 +7611,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns all custom role groups (role ID \u003e= 3)",
+                "description": "Returns all custom role groups (role ID >= 3)",
                 "produces": [
                     "application/json"
                 ],
@@ -11044,7 +11044,7 @@
         },
         "/api/setup-join": {
             "post": {
-                "description": "Replaces the whole setup for a server added to a cluster: the constellation file gives the server its identity and its hostname (\u003cdevice\u003e.\u003ccluster domain\u003e, or the one given), users, zones and certificates are then replicated from the cluster. The server restarts once done. Only available when the server is in NewInstall mode.",
+                "description": "Replaces the whole setup for a server added to a cluster: the constellation file gives the server its identity and its hostname (<device>.<cluster domain>, or the one given), users, zones and certificates are then replicated from the cluster. The server restarts once done. Only available when the server is in NewInstall mode.",
                 "consumes": [
                     "application/json"
                 ],
@@ -12233,7 +12233,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lists the choices for HTTPConfig.AdvertisedAddress, the address the managed DNS records of this server point at: the detected public IP (empty value, the default), each network interface (iface:\u003cname\u003e, for a server published on its LAN), with the address each one currently resolves to.",
+                "description": "Lists the choices for HTTPConfig.AdvertisedAddress, the address the managed DNS records of this server point at: the detected public IP (empty value, the default), each network interface (iface:<name>, for a server published on its LAN), with the address each one currently resolves to.",
                 "produces": [
                     "application/json"
                 ],
@@ -14407,7 +14407,7 @@
                     "type": "string"
                 },
                 "hostname": {
-                    "description": "Hostname overrides the one derived from the cluster domain (\u003cdevice\u003e.\u003ccluster domain\u003e)",
+                    "description": "Hostname overrides the one derived from the cluster domain (<device>.<cluster domain>)",
                     "type": "string"
                 },
                 "preview": {
@@ -14512,7 +14512,7 @@
                     "type": "boolean"
                 },
                 "environments": {
-                    "description": "Environments: branch glob -\u003e environment. A branch matching no entry is\nbuilt but not deployed.",
+                    "description": "Environments: branch glob -> environment. A branch matching no entry is\nbuilt but not deployed.",
                     "type": "object",
                     "additionalProperties": {
                         "$ref": "#/definitions/pro.CIEnvironment"
@@ -14530,7 +14530,7 @@
                     "type": "string"
                 },
                 "pullRequests": {
-                    "description": "PullRequests enables preview deployments, one per open PR, named\n\u003cname\u003epr\u003cnumber\u003e, removed when the PR closes or after PreviewTTL.",
+                    "description": "PullRequests enables preview deployments, one per open PR, named\n<name>pr<number>, removed when the PR closes or after PreviewTTL.",
                     "type": "boolean"
                 },
                 "template": {
@@ -14955,7 +14955,7 @@
                     "minLength": 3
                 },
                 "owner": {
-                    "description": "Owner marks a deployment as system-owned (e.g. \"seaweedfs:\u003cinstance\u003e\").\nOwned deployments are created and mutated exclusively by the owning Go\nfeature: the HTTP API refuses user create/update/delete on them so a UI\naction can't desync the owner's record from the deployed spec. Empty for\nevery user-created deployment.",
+                    "description": "Owner marks a deployment as system-owned (e.g. \"seaweedfs:<instance>\").\nOwned deployments are created and mutated exclusively by the owning Go\nfeature: the HTTP API refuses user create/update/delete on them so a UI\naction can't desync the owner's record from the deployed spec. Empty for\nevery user-created deployment.",
                     "type": "string"
                 },
                 "preserveVolumesOnRemove": {
@@ -15064,7 +15064,7 @@
                     "type": "string"
                 },
                 "deployment": {
-                    "description": "Deployment is the deployment carrying the handler; on create, empty\nmeans \"fn\u003cname\u003e\".",
+                    "description": "Deployment is the deployment carrying the handler; on create, empty\nmeans \"fn<name>\".",
                     "type": "string"
                 },
                 "entry": {
@@ -15289,7 +15289,7 @@
                     "minLength": 3
                 },
                 "token": {
-                    "description": "Token is the read-only registry token minted for this function on the\nregistry (named \"function-\u003cname\u003e\"). Persisted, redacted in API output.",
+                    "description": "Token is the read-only registry token minted for this function on the\nregistry (named \"function-<name>\"). Persisted, redacted in API output.",
                     "type": "string"
                 },
                 "version": {
@@ -16349,7 +16349,7 @@
             "type": "object",
             "properties": {
                 "ClusterDomain": {
-                    "description": "ClusterDomain is the domain servers joining with a constellation file get\ntheir hostname under (\u003cdevice\u003e.\u003cdomain\u003e). Empty: the zone of this server's hostname.",
+                    "description": "ClusterDomain is the domain servers joining with a constellation file get\ntheir hostname under (<device>.<domain>). Empty: the zone of this server's hostname.",
                     "type": "string"
                 },
                 "DoNotUseConstellationDNSOnHost": {
@@ -16558,7 +16558,7 @@
             ],
             "properties": {
                 "AdvertisedAddress": {
-                    "description": "AdvertisedAddress is what the DNS records of this node point at: empty for\nthe detected public IP, \"iface:\u003cname\u003e\" for a network interface, or an IPv4",
+                    "description": "AdvertisedAddress is what the DNS records of this node point at: empty for\nthe detected public IP, \"iface:<name>\" for a network interface, or an IPv4",
                     "type": "string"
                 },
                 "DNSChallengeConfig": {
@@ -16948,10 +16948,6 @@
                     "items": {
                         "type": "string"
                     }
-                },
-                "SocksUDP": {
-                    "description": "SocksUDP is a tri-state override for UDP ASSOCIATE: \"\" inherits the\nscheme's default (socks5t offers UDP, socks5/socks5h do not), \"true\" and\n\"false\" force it. Tri-state as a string because a plain bool cannot tell\n\"unset\" from \"explicitly false\", and rebinds must be able to tell.",
-                    "type": "string"
                 },
                 "acceptInsecureHTTPSTarget": {
                     "type": "boolean"
