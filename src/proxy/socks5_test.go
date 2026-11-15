@@ -33,26 +33,23 @@ func TestReadGreetingRejectsEmptyMethodList(t *testing.T) {
 }
 
 func TestReadRequestAddressTypes(t *testing.T) {
+	// A socks5 request carries a numeric address. ATYP=0x03 (domain) is refused
+	// outright, so the parser has exactly two address forms.
 	tests := []struct {
 		name     string
 		in       []byte
-		wantHost string
 		wantIP   string
 		wantPort string
 	}{
-		{"ipv4", []byte{socksVersion, 0x01, 0x00, 0x01, 127, 0, 0, 1, 0x31, 0xD1}, "", "127.0.0.1", "12753"},
-		{"ipv6", append(append([]byte{socksVersion, 0x01, 0x00, 0x04}, net.ParseIP("::1").To16()...), 0x00, 0x50), "", "::1", "80"},
-		{"domain", []byte{socksVersion, 0x01, 0x00, 0x03, 6, 'e', 'x', '.', 'c', 'o', 'm', 0x01, 0xBB}, "ex.com", "", "443"},
+		{"ipv4", []byte{socksVersion, 0x01, 0x00, 0x01, 127, 0, 0, 1, 0x31, 0xD1}, "127.0.0.1", "12753"},
+		{"ipv6", append(append([]byte{socksVersion, 0x01, 0x00, 0x04}, net.ParseIP("::1").To16()...), 0x00, 0x50), "::1", "80"},
 	}
 	for _, tt := range tests {
 		req, err := readRequest(bytes.NewReader(tt.in))
 		if err != nil {
 			t.Fatalf("%s: %v", tt.name, err)
 		}
-		if req.host != tt.wantHost {
-			t.Errorf("%s: host = %q, want %q", tt.name, req.host, tt.wantHost)
-		}
-		if tt.wantIP != "" && req.ip.String() != tt.wantIP {
+		if req.ip.String() != tt.wantIP {
 			t.Errorf("%s: ip = %s, want %s", tt.name, req.ip, tt.wantIP)
 		}
 		if req.port != tt.wantPort {
@@ -67,9 +64,24 @@ func TestReadRequestRejectsUnknownAddressType(t *testing.T) {
 	}
 }
 
+func TestReadRequestRejectsDomainAddressType(t *testing.T) {
+	// ATYP=0x03 asks the relay to resolve the name -- the remote-resolution mode
+	// of a forward proxy. This relay dials addresses, so the request is refused
+	// rather than resolved, and the wording is the one the client needs.
+	req := []byte{socksVersion, socksCmdConnect, 0x00, socksATYPDomain, 3}
+	req = append(req, []byte("www")...)
+	req = append(req, 0, 80)
+	if _, err := readRequest(bytes.NewReader(req)); err == nil {
+		t.Fatal("domain destination accepted, want refusal")
+	} else if !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("expected an unsupported-address-type refusal, got %v", err)
+	}
+}
+
 func TestWriteReplyLengths(t *testing.T) {
 	// Reply framing is fixed-offset parsing on the client side: v4 is 10 bytes,
-	// v6 is 22, domain is 7+len(name).
+	// v6 is 22. The reply echoes the client's address, and a request carrying a
+	// domain is refused before a reply is composed, so there is no domain form.
 	tests := []struct {
 		name string
 		addr socksAddr
@@ -77,7 +89,7 @@ func TestWriteReplyLengths(t *testing.T) {
 	}{
 		{"ipv4", socksAddr{ip: net.IPv4(10, 0, 0, 1), port: "8080"}, 10},
 		{"ipv6", socksAddr{ip: net.ParseIP("2001:db8::1"), port: "80"}, 22},
-		{"domain", socksAddr{host: "example.com", port: "443"}, 7 + 11},
+		{"zero address for an unanswered request", socksAddr{}, 10},
 	}
 	for _, tt := range tests {
 		var buf bytes.Buffer
@@ -93,16 +105,6 @@ func TestWriteReplyLengths(t *testing.T) {
 	}
 }
 
-func TestWriteReplyRejectsUnencodableDomain(t *testing.T) {
-	// A truncated reply makes a client wait forever, so an over-long domain must
-	// surface as an error.
-	long := strings.Repeat("a", 256)
-	var buf bytes.Buffer
-	if err := writeReply(&buf, socksRepSuccess, socksAddr{host: long, port: "80"}); err == nil {
-		t.Fatal("expected an error for a domain longer than 255 bytes")
-	}
-}
-
 func TestSocksRepForErrorDistinguishesPermanent(t *testing.T) {
 	// A client retries "host unreachable" and stops on "not allowed by ruleset".
 	// Reporting a policy refusal as a transient error makes a client hammer a
@@ -112,7 +114,8 @@ func TestSocksRepForErrorDistinguishesPermanent(t *testing.T) {
 		want byte
 	}{
 		{"destination not allowed", socksRepNotAllowed},
-		{"resolve example.com: no addresses", socksRepHostUnreach},
+		{"domain destinations are not supported", socksRepATYPNotSupport},
+		{"address type 9 is not supported", socksRepATYPNotSupport},
 		{"dial tcp: connection refused", socksRepConnRefused},
 		{"i/o timeout", socksRepTTLExpired},
 		{"something else", socksRepGeneralError},
@@ -267,7 +270,7 @@ func TestAnonymousConnectRelaysBytes(t *testing.T) {
 // A relay configured for password auth must never hand out anonymous access.
 // This is the security property the auth mode exists to guarantee.
 func TestPasswordRequiredRefusesNoAuthClient(t *testing.T) {
-	s := startTestRelay(t, socksRoute("socks5h://", "password", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5://", "password", nil, nil))
 	conn := dialRelay(t, s)
 
 	if m := greet(t, conn, []byte{socksMethodNoAuth}); m != socksMethodNoAccept {
@@ -286,7 +289,7 @@ func TestPasswordAuthAcceptsValidCredentials(t *testing.T) {
 	t.Cleanup(func() { socksCheckPassword = orig })
 
 	echo := startEchoTCP(t)
-	s := startTestRelay(t, socksRoute("socks5h://", "password", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5://", "password", nil, nil))
 	conn := dialRelay(t, s)
 
 	if m := greet(t, conn, []byte{socksMethodPassword}); m != socksMethodPassword {
@@ -322,7 +325,7 @@ func TestPasswordAuthRejectsBadCredentials(t *testing.T) {
 	socksCheckPassword = func(user, pass string) error { return errors.New("nope") }
 	t.Cleanup(func() { socksCheckPassword = orig })
 
-	s := startTestRelay(t, socksRoute("socks5h://", "password", nil, nil))
+	s := startTestRelay(t, socksRoute("socks5://", "password", nil, nil))
 	conn := dialRelay(t, s)
 	greet(t, conn, []byte{socksMethodPassword})
 
@@ -349,7 +352,7 @@ func TestPasswordAuthRejectsBadCredentials(t *testing.T) {
 // replying success and then dropping every datagram is the failure that reads
 // to a user as "the proxy is broken".
 func TestUDPAssociateIsRefused(t *testing.T) {
-	for _, target := range []string{"socks5://", "socks5h://"} {
+	for _, target := range []string{"socks5://"} {
 		s := startTestRelay(t, socksRoute(target, "", nil, nil))
 		conn := dialRelay(t, s)
 		greet(t, conn, []byte{socksMethodNoAuth})
@@ -398,16 +401,15 @@ func TestDenyListBlocksConnect(t *testing.T) {
 	}
 }
 
-// The scheme list is exactly what clients speak. socks5t is the scheme no
-// client can send: no URL parser, curl, browser or library accepts it, so
-// accepting it here would offer a route target nothing can use.
+// socks5 is the only scheme. socks5h is refused deliberately: it asks Cosmos to
+// resolve destination hostnames, which is a forward-proxy feature and the
+// opposite of what a reverse proxy does. socks5t/socks4/socks5s are schemes no
+// client can send, so accepting them would offer a target nothing can use.
 func TestSchemesAccepted(t *testing.T) {
-	for _, scheme := range []string{"socks5", "socks5h"} {
-		if _, err := newSocksPolicy(scheme, "", nil, nil); err != nil {
-			t.Errorf("%s: %v", scheme, err)
-		}
+	if _, err := newSocksPolicy(Socks5Scheme, "", nil, nil); err != nil {
+		t.Errorf("socks5: %v", err)
 	}
-	for _, scheme := range []string{"socks5t", "socks4", "socks5s", ""} {
+	for _, scheme := range []string{"socks5h", "socks5t", "socks4", "socks5s", ""} {
 		if _, err := newSocksPolicy(scheme, "", nil, nil); err == nil {
 			t.Errorf("%s: accepted, want rejection", scheme)
 		}
@@ -419,23 +421,22 @@ func TestAllowDestinationPrecedence(t *testing.T) {
 		name  string
 		allow []string
 		deny  []string
-		host  string
 		ip    string
 		want  bool
 	}{
-		{"empty allow means all", nil, nil, "example.com", "", true},
-		{"deny beats allow", []string{"example.com"}, []string{"example.com"}, "example.com", "", false},
-		{"allow list restricts", []string{"example.com"}, nil, "other.com", "", false},
-		{"wildcard covers apex and labels", []string{"*.example.com"}, nil, "deep.example.com", "", true},
-		{"wildcard covers apex", []string{"*.example.com"}, nil, "example.com", "", true},
-		{"wildcard does not cross boundaries", []string{"*.example.com"}, nil, "evil.example.com.attacker.net", "", false},
-		{"cidr matches", []string{"10.0.0.0/8"}, nil, "", "10.1.2.3", true},
-		{"cidr excludes", []string{"10.0.0.0/8"}, nil, "", "11.1.2.3", false},
-		{"deny cidr blocks ip", nil, []string{"127.0.0.0/8"}, "", "127.0.0.1", false},
-		{"bare ip allow", []string{"8.8.8.8"}, nil, "", "8.8.8.8", true},
+		{"empty allow means all", nil, nil, "10.1.2.3", true},
+		{"deny beats allow", []string{"10.0.0.0/8"}, []string{"10.1.2.3"}, "10.1.2.3", false},
+		{"allow list restricts", []string{"10.0.0.0/8"}, nil, "11.1.2.3", false},
+		{"cidr matches", []string{"10.0.0.0/8"}, nil, "10.1.2.3", true},
+		{"cidr excludes", []string{"10.0.0.0/8"}, nil, "11.1.2.3", false},
+		{"deny cidr blocks ip", nil, []string{"127.0.0.0/8"}, "127.0.0.1", false},
+		{"bare ip allow", []string{"8.8.8.8"}, nil, "8.8.8.8", true},
+		{"ipv6 deny cidr", nil, []string{"::1/128"}, "::1", false},
+		{"ipv4 deny does not match ipv6", nil, []string{"127.0.0.0/8"}, "::1", true},
+		{"no address cannot be judged", nil, nil, "", false},
 	}
 	for _, tt := range tests {
-		p, err := newSocksPolicy(Socks5hScheme, "", tt.allow, tt.deny)
+		p, err := newSocksPolicy(Socks5Scheme, "", tt.allow, tt.deny)
 		if err != nil {
 			t.Fatalf("%s: %v", tt.name, err)
 		}
@@ -443,8 +444,8 @@ func TestAllowDestinationPrecedence(t *testing.T) {
 		if tt.ip != "" {
 			ip = net.ParseIP(tt.ip)
 		}
-		if got := p.allowDestination(tt.host, ip); got != tt.want {
-			t.Errorf("%s: allowDestination(%q,%q) = %v, want %v", tt.name, tt.host, tt.ip, got, tt.want)
+		if got := p.allowDestination(ip); got != tt.want {
+			t.Errorf("%s: allowDestination(%q) = %v, want %v", tt.name, tt.ip, got, tt.want)
 		}
 	}
 }
@@ -452,25 +453,58 @@ func TestAllowDestinationPrecedence(t *testing.T) {
 func TestPolicyRejectsMalformedDenyList(t *testing.T) {
 	// A typo in a deny list is a hole, not a cosmetic problem: bind must fail
 	// loudly rather than accept a rule set that matches nothing.
-	if _, err := newSocksPolicy(Socks5hScheme, "", nil, []string{"not an address"}); err == nil {
+	if _, err := newSocksPolicy(Socks5Scheme, "", nil, []string{"not an address"}); err == nil {
 		t.Fatal("expected an error for a malformed deny entry")
 	}
-	if _, err := newSocksPolicy(Socks5hScheme, "", []string{"10.0.0.0/33"}, nil); err == nil {
+	if _, err := newSocksPolicy(Socks5Scheme, "", []string{"10.0.0.0/33"}, nil); err == nil {
 		t.Fatal("expected an error for an invalid CIDR")
 	}
 }
 
-func TestDenyListAppliesToResolvedAddress(t *testing.T) {
-	// A name that resolves to loopback must not bypass "deny 127.0.0.0/8". This
-	// is the DNS-rebinding-shaped hole in destination filters.
-	p, err := newSocksPolicy(Socks5hScheme, "", nil, []string{"127.0.0.0/8"})
+func TestPolicyRejectsHostnameDestinations(t *testing.T) {
+	// A hostname in a destination list would read as protection to the operator
+	// and match nothing at runtime, because the relay never resolves. The
+	// dangerous outcome is a deny list the operator believes is enforced, so the
+	// entry is rejected with an explanation, not silently dropped.
+	for _, spec := range []string{"example.com", "*.example.com", "internal.local:8080"} {
+		_, err := newSocksPolicy(Socks5Scheme, "", nil, []string{spec})
+		if err == nil {
+			t.Fatalf("%q accepted as a destination, want rejection", spec)
+		}
+		if !strings.Contains(err.Error(), "hostname") {
+			t.Errorf("%q: rejection does not mention hostnames: %v", spec, err)
+		}
+	}
+	_, err := newSocksPolicy(Socks5Scheme, "", []string{"evil.example.com"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "hostname") {
+		t.Errorf("hostname in allow list accepted, want a hostname rejection: %v", err)
+	}
+}
+
+func TestDenyListAppliesToTheAddressTheClientSent(t *testing.T) {
+	// The deny list is judged on the address in the request, and that is the
+	// whole decision -- there is no resolution step where a name could be
+	// swapped for an address the policy would not have allowed.
+	p, err := newSocksPolicy(Socks5Scheme, "", nil, []string{"127.0.0.0/8"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.resolveAndDial("localhost", "9", nil); err == nil {
-		t.Fatal("expected the resolved loopback address to be refused")
+	if _, err := p.dialDestination("9", net.ParseIP("127.0.0.1")); err == nil {
+		t.Fatal("expected the loopback address to be refused")
 	} else if !strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("expected a policy refusal, got %v", err)
+	}
+}
+
+func TestDialRequiresAnAddress(t *testing.T) {
+	// A request with no address cannot be dialled. With no resolver, "no
+	// destination address" is a hard error, not a fallback to guessing.
+	p, err := newSocksPolicy(Socks5Scheme, "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.dialDestination("80", nil); err == nil {
+		t.Fatal("dialling with no address succeeded, want an error")
 	}
 }
 
@@ -480,7 +514,7 @@ func TestRejectsInvalidDestinationPort(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, port := range []string{"0", "65536", "abc", ""} {
-		if _, err := p.resolveAndDial("127.0.0.1", port, nil); err == nil {
+		if _, err := p.dialDestination(port, net.ParseIP("127.0.0.1")); err == nil {
 			t.Errorf("port %q accepted, want rejection", port)
 		}
 	}
@@ -489,7 +523,7 @@ func TestRejectsInvalidDestinationPort(t *testing.T) {
 func TestValidateSocksRouteAcceptsValidConfigs(t *testing.T) {
 	valid := []utils.ProxyRouteConfig{
 		socksRoute("socks5://", "", nil, nil),
-		socksRoute("socks5h://", "password", []string{"*.example.com"}, nil),
+		socksRoute("socks5://", "password", []string{"10.0.0.0/8"}, nil),
 		{Name: "http", Target: "http://localhost:8080"},
 	}
 	for _, r := range valid {
@@ -505,20 +539,22 @@ func TestValidateSocksRouteRejectsMeaninglessConfigs(t *testing.T) {
 		route utils.ProxyRouteConfig
 		want  string
 	}{
-		{"bad auth mode", socksRoute("socks5h://", "basic", nil, nil), "auth mode"},
+		{"bad auth mode", socksRoute("socks5://", "basic", nil, nil), "auth mode"},
+		{"socks5h asks for outbound resolution", socksRoute("socks5h://", "", nil, nil), "socks5h"},
 		{"socks5t is not a scheme", socksRoute("socks5t://", "", nil, nil), "unsupported SOCKS scheme"},
 		{"socks4a is not a scheme", socksRoute("socks4a://", "", nil, nil), "unsupported SOCKS scheme"},
 		{"socks5t with options", socksRoute("socks5t://", "password", nil, nil), "unsupported SOCKS scheme"},
+		{"hostname destination cannot be enforced", socksRoute("socks5://", "", []string{"example.com"}, nil), "hostname"},
 		{"relay with pool targets", func() utils.ProxyRouteConfig {
-			r := socksRoute("socks5h://", "", nil, nil)
-			r.AdditionalTargets = []string{"socks5h://"}
+			r := socksRoute("socks5://", "", nil, nil)
+			r.AdditionalTargets = []string{"socks5://"}
 			return r
 		}(), "additional targets"},
 		{"socks options on non-relay", func() utils.ProxyRouteConfig {
 			r := utils.ProxyRouteConfig{Name: "http", Target: "http://localhost:8080", SocksAuthMode: "password"}
 			return r
 		}(), "sets SOCKS relay options"},
-		{"malformed deny", socksRoute("socks5h://", "", nil, []string{"@@@"}), "socks_deny_destinations"},
+		{"malformed deny", socksRoute("socks5://", "", nil, []string{"@@@"}), "socks_deny_destinations"},
 	}
 	for _, tt := range bad {
 		msg := ValidateSocksRoute(tt.route)

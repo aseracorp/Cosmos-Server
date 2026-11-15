@@ -11,8 +11,8 @@ import (
 )
 
 // Socks5.go implements a TCP-only SOCKS5 relay (RFC 1928 CONNECT) with
-// username/password authentication (RFC 1929), exposed as a route target scheme
-// ("socks5", "socks5h").
+// username/password authentication (RFC 1929), exposed as the route target
+// scheme "socks5".
 //
 // Design notes, in the order the constraints matter:
 //
@@ -29,8 +29,8 @@ import (
 //     semantics that differ from the rest of the proxy.
 //  4. Destination filtering is applied before dialing and re-checked against the
 //     resolved address. Deny always beats allow.
-//  5. socks5 vs socks5h decides who resolves the name. That is the whole scheme
-//     split, and it is the only one clients speak.
+//  5. The relay dials the address the client sent and never resolves a name.
+//     Remote resolution (socks5h) is a forward-proxy feature; see Socks5Policy.go.
 //
 // Deliberate limits, each enforced in code rather than only documented:
 //   - No TLS, no GSSAPI. Methods offered are "no auth" and "password" only.
@@ -44,6 +44,9 @@ import (
 //   - Command 0x02 (BIND) is refused. It is the server-side reverse-connect
 //     command, which turns a relay into a listener on someone else's schedule.
 //   - CONNECT is the only command handled.
+//   - ATYP=0x03 (domain) is refused. Resolving a client's destination is the
+//     remote-resolution mode, which this relay does not implement: a socks5
+//     client resolves the name and sends the address.
 
 const (
 	socksVersion      = 0x05
@@ -61,6 +64,9 @@ const (
 	socksATYPDomain = 0x03
 	socksATYPIPv6   = 0x04
 
+	// The full RFC 1928 reply-code table, kept complete as protocol
+	// documentation. This relay never emits 0x03/0x04: it does not resolve, so
+	// there is no "network/host unreachable" state to report.
 	socksRepSuccess        = 0x00
 	socksRepGeneralError   = 0x01
 	socksRepNotAllowed     = 0x02
@@ -195,6 +201,13 @@ func (s *socksServer) handleTCP(client net.Conn) {
 	req, err := readRequest(client)
 	if err != nil {
 		utils.Debug("[Socks5] bad request from " + client.RemoteAddr().String() + ": " + err.Error())
+		// An address type this relay cannot serve is answered rather than
+		// dropped: a client that sent a domain gets "ATYP not supported" and
+		// resolves the name itself, which is the socks5 contract. A malformed
+		// request gets no reply -- there is nothing coherent to echo back.
+		if rep := socksRepForError(err); rep == socksRepATYPNotSupport {
+			writeReply(client, rep, socksAddr{})
+		}
 		return
 	}
 
@@ -290,7 +303,7 @@ func (s *socksServer) authenticate(client net.Conn) error {
 // address itself; echoing the request is the same value and avoids a second name
 // resolution.
 func (s *socksServer) handleConnect(client net.Conn, req socksRequest) {
-	upstream, err := s.policy.resolveAndDial(req.host, req.port, req.ip)
+	upstream, err := s.policy.dialDestination(req.port, req.ip)
 	if err != nil {
 		writeReply(client, socksRepForError(err), socksAddrFrom(req))
 		utils.Debug("[Socks5] connect from " + client.RemoteAddr().String() + " to " + req.String() + " refused: " + err.Error())

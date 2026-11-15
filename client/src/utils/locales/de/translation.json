@@ -2336,15 +2336,13 @@
   "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
   "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)",
   "mgmt.urls.edit.socksSettings.socksTitle": "SOCKS-Relay",
-  "mgmt.urls.edit.socksSettings.socksInfo": "Diese Route ist ein ausgehender SOCKS5-Relay, kein Web-Proxy. Clients verbinden sich mit dem lauschenden Port weiter oben und bitten Cosmos, Ziele in ihrem Auftrag zu kontaktieren. Die Authentifizierung nutzt Cosmos-Konten - der Relay ist nur so privat wie die Konten, denen du den Login erlaubst.",
-  "mgmt.urls.edit.socksSettings.capabilities": "Schema {{scheme}}: {{resolve}}. UDP-Datagramme werden nicht weitergeleitet.",
-  "mgmt.urls.edit.socksSettings.resolvesCosmos": "Cosmos löst Hostnamen auf",
-  "mgmt.urls.edit.socksSettings.resolvesClient": "der Client löst Hostnamen auf",
+  "mgmt.urls.edit.socksSettings.socksInfo": "Diese Route ist ein ausgehender SOCKS5-Relay, kein Web-Proxy. Clients verbinden sich mit dem lauschenden Port weiter oben und bitten Cosmos, Ziele in ihrem Auftrag zu kontaktieren. Cosmos verbindet die Adresse, die der Client sendet, und löst keine Hostnamen auf - der Client löst den Namen also selbst auf. Die Authentifizierung nutzt Cosmos-Konten - der Relay ist nur so privat wie die Konten, denen du den Login erlaubst.",
+  "mgmt.urls.edit.socksSettings.capabilities": "socks5: der Client löst Hostnamen auf, Cosmos verbindet die Adresse, die er bekommt. UDP-Datagramme werden nicht weitergeleitet.",
   "mgmt.urls.edit.socksSettings.authMode.authModeLabel": "Client-Authentifizierung",
   "mgmt.urls.edit.socksSettings.authMode.auto": "Automatisch (anonyme Clients zulassen)",
   "mgmt.urls.edit.socksSettings.authMode.noneChoice": "Anonyme Clients erlauben",
   "mgmt.urls.edit.socksSettings.authMode.passwordChoice": "Cosmos-Konto verlangen (Benutzer + Passwort)",
-  "mgmt.urls.edit.socksSettings.allow.destinationsLabel": "Erlaubte Ziele (leer = alle). Hosts, *.Domains, IPs oder CIDRs, kommagetrennt",
-  "mgmt.urls.edit.socksSettings.deny.destinationsLabel": "Verbotene Ziele (deny gewinnt gegenüber allow). IPs, CIDRs oder Hosts, kommagetrennt",
-  "mgmt.urls.edit.socksSettings.invalidEntries": "Ungültige Ziel-Einträge: {{entries}}. Cosmos startet keinen Relay, dessen Filter Tippfehler enthält."
+  "mgmt.urls.edit.socksSettings.allow.destinationsLabel": "Erlaubte Ziele (leer = alle). IP-Adressen oder CIDRs, kommagetrennt",
+  "mgmt.urls.edit.socksSettings.deny.destinationsLabel": "Verbotene Ziele (deny gewinnt gegenüber allow). IP-Adressen oder CIDRs, kommagetrennt",
+  "mgmt.urls.edit.socksSettings.invalidEntries": "Ungültige Ziel-Einträge: {{entries}}. Nur IP-Adressen und CIDRs sind erlaubt - Hostnamen kann ein Relay nicht durchsetzen, der sie nicht auflöst, und Cosmos startet keinen Relay, dessen Filter Tippfehler enthält."
 }

@@ -9,28 +9,28 @@ import (
 	"github.com/azukaar/cosmos-server/src/utils"
 )
 
-// The schemes a SOCKS relay route can be declared with.
+// The only scheme a SOCKS relay route can be declared with.
 //
-// These are the two schemes real clients speak. RFC 1928 defines one protocol;
-// the scheme split is a URL convention (curl's --socks5 vs --socks5-hostname,
-// git-lfs, chisel, miniflux, the xray/v2ray ecosystem) that says who resolves
-// the hostname. There is no socks5t: no client, library or URL parser accepts
-// that scheme, and the UDP it promised is not part of what a SOCKS target is
-// for here -- this relay is TCP-only.
+// socks5 means the client resolves the name and hands Cosmos an address, and
+// Cosmos dials exactly that. Remote resolution (socks5h / --socks5-hostname) is
+// deliberately absent: it is a forward-proxy feature. Its purpose is to serve a
+// client that has no DNS of its own -- an anonymizer, a tunnel, a device behind
+// a captive network -- which is the opposite of what Cosmos does. Cosmos is a
+// reverse proxy: routes expose listeners and forward inbound traffic to
+// services, and every client that reaches one has already resolved the name.
+// Accepting socks5h would make Cosmos a recursive resolver for outbound
+// connections, publish a capability a reverse proxy has no reason to have, and
+// give clients a way to reach hosts by name through a deployment whose policy
+// model is addresses.
 const (
-	// Socks5Scheme: the client resolved the name and sends an address. Cosmos
-	// dials exactly what it was given.
+	// Socks5Scheme: the client resolved the name and sends an address.
 	Socks5Scheme = "socks5"
-	// Socks5hScheme: the client sends a hostname and Cosmos resolves it, which
-	// is what makes the relay useful to a client with no DNS of its own.
-	Socks5hScheme = "socks5h"
 )
 
 // IsSocksScheme reports whether a target scheme is served by the SOCKS relay
 // rather than by the plain tcp/udp port forwarders.
 func IsSocksScheme(scheme string) bool {
-	s := strings.ToLower(scheme)
-	return s == Socks5Scheme || s == Socks5hScheme
+	return strings.ToLower(scheme) == Socks5Scheme
 }
 
 // IsValidSocksAuthMode is the configapi-side check for socks_auth_mode. Empty
@@ -40,8 +40,8 @@ func IsValidSocksAuthMode(mode string) bool {
 }
 
 // socksSchemeOf pulls the relay scheme out of a route target. A relay route is
-// written as "socks5://" or "socks5h://" — the scheme is the whole target,
-// because a relay has no upstream to name.
+// written as "socks5://" — the scheme is the whole target, because a relay has
+// no upstream to name.
 func socksSchemeOf(target string) string {
 	parts := strings.Split(target, "://")
 	if len(parts) == 1 {
@@ -50,13 +50,16 @@ func socksSchemeOf(target string) string {
 	return strings.ToLower(parts[0])
 }
 
-// socksDestination is one entry of an allow/deny list: a CIDR, a bare IP, a
-// hostname, or a "*.example.com" wildcard.
+// socksDestination is one entry of an allow/deny list: a CIDR or a bare IP.
+//
+// Names are not entries. Matching a destination against a hostname needs the
+// relay to resolve it, and this relay does not resolve anything (see
+// Socks5Scheme). A hostname entry would look like protection to the operator
+// and match nothing at runtime -- the dangerous shape of a policy bug, so it is
+// rejected at the API and at bind time rather than silently ignored.
 type socksDestination struct {
-	net      *net.IPNet
-	ip       net.IP
-	host     string
-	wildcard string // for "*.example.com": the suffix after the dot
+	net *net.IPNet
+	ip  net.IP
 }
 
 func (d socksDestination) matchesIP(candidate net.IP) bool {
@@ -72,26 +75,11 @@ func (d socksDestination) matchesIP(candidate net.IP) bool {
 	return false
 }
 
-func (d socksDestination) matchesHost(candidate string) bool {
-	if candidate == "" {
-		return false
-	}
-	c := strings.ToLower(candidate)
-	if d.host != "" {
-		return c == d.host
-	}
-	if d.wildcard != "" {
-		// "*.example.com" matches example.com itself as well as any label
-		// under it, which is what operators mean by a domain wildcard.
-		return c == d.wildcard || strings.HasSuffix(c, "."+d.wildcard)
-	}
-	return false
-}
-
-// parseSocksDestinations compiles a destination list. An entry that is neither
-// an address nor a plausible hostname is an error rather than a silent
-// no-match: a typo in a deny list is a hole, so failing loudly is the safe
-// direction.
+// parseSocksDestinations compiles a destination list. Anything that is not an
+// address is an error rather than a silent no-match: a typo in a deny list is a
+// hole, so failing loudly is the safe direction. Names, including "*.domain"
+// wildcards, are rejected with a message that says why -- they cannot be
+// enforced by a relay that does not resolve.
 func parseSocksDestinations(specs []string) ([]socksDestination, error) {
 	out := make([]socksDestination, 0, len(specs))
 	for _, raw := range specs {
@@ -114,36 +102,12 @@ func parseSocksDestinations(specs []string) ([]socksDestination, error) {
 			continue
 		}
 
-		lower := strings.ToLower(spec)
-		if strings.HasPrefix(lower, "*.") {
-			suffix := lower[2:]
-			if suffix == "" || !plausibleHostname(suffix) {
-				return nil, fmt.Errorf("invalid socks destination %q", spec)
-			}
-			out = append(out, socksDestination{wildcard: suffix})
-			continue
+		if strings.Contains(spec, ".") || strings.Contains(spec, ":") {
+			return nil, fmt.Errorf("invalid socks destination %q: hostnames are not supported, use an IP or a CIDR (this relay dials addresses, it does not resolve names)", spec)
 		}
-
-		if !plausibleHostname(lower) {
-			return nil, fmt.Errorf("invalid socks destination %q (not an address, host or *.domain)", spec)
-		}
-		out = append(out, socksDestination{host: lower})
+		return nil, fmt.Errorf("invalid socks destination %q (not an IP or a CIDR)", spec)
 	}
 	return out, nil
-}
-
-func plausibleHostname(h string) bool {
-	if h == "" || len(h) > 253 {
-		return false
-	}
-	for i := 0; i < len(h); i++ {
-		c := h[i]
-		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_' {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 // socksPolicy is the compiled route policy behind one relay: authentication,
@@ -163,9 +127,9 @@ type socksPolicy struct {
 func newSocksPolicy(mode, authMode string, allow, deny []string) (*socksPolicy, error) {
 	p := &socksPolicy{mode: strings.ToLower(mode)}
 	switch p.mode {
-	case Socks5Scheme, Socks5hScheme:
+	case Socks5Scheme:
 	default:
-		return nil, fmt.Errorf("unsupported socks scheme %q (use socks5 or socks5h)", mode)
+		return nil, fmt.Errorf("unsupported socks scheme %q (the only supported target scheme is socks5)", mode)
 	}
 
 	// "password" is the only auth mode that does anything; "none"/"" are
@@ -194,14 +158,20 @@ func policyFromRoute(rtr *utils.ProxyRouteConfig) (*socksPolicy, error) {
 
 // allowDestination decides whether a destination may be relayed.
 //
-// Order matters: explicit deny beats explicit allow; a hostname is judged on
-// the name alone (no DNS here, so policy cannot be bypassed by a name that
-// resolves to a filtered address); an IP is judged on the address; a hostname
-// that is not an address is allowed when the allow list is empty, i.e. "allow
-// everything".
-func (p *socksPolicy) allowDestination(host string, ip net.IP) bool {
+// Order matters: explicit deny beats explicit allow; an empty allow list means
+// "allow everything" (minus the deny list). The address the client sent is the
+// whole decision -- there is no name to judge and nothing to re-check after a
+// resolution, because this relay does not resolve.
+func (p *socksPolicy) allowDestination(ip net.IP) bool {
+	if ip == nil {
+		// Fail closed: an address the policy cannot judge is not a destination
+		// the relay may dial, even when the allow list is empty. "Allow
+		// everything" means every address the client identified, not "dial
+		// whatever turns up".
+		return false
+	}
 	for _, d := range p.denyDest {
-		if d.matchesHost(host) || d.matchesIP(ip) {
+		if d.matchesIP(ip) {
 			return false
 		}
 	}
@@ -209,57 +179,42 @@ func (p *socksPolicy) allowDestination(host string, ip net.IP) bool {
 		return true
 	}
 	for _, d := range p.allowDest {
-		if d.matchesHost(host) || d.matchesIP(ip) {
+		if d.matchesIP(ip) {
 			return true
 		}
 	}
 	return false
 }
 
-// dialTarget resolves a destination into a host to dial. Numeric addresses dial
-// directly; names go through the box's resolver, which is the whole point of
-// socks5h.
-func (p *socksPolicy) dialTarget(host string, port string, ip net.IP) (string, error) {
-	if ip != nil {
-		return ip.String(), nil
-	}
-	if host == "" {
-		return "", fmt.Errorf("no destination")
+// dialAddress validates the destination port and returns the address to dial.
+//
+// The address is the one the client put in its request, and it is dialled as
+// given. There is no name to resolve: a socks5 request carries an address, and
+// a request carrying a domain is refused in readRequest before it gets here.
+// That is what keeps this relay a dialer rather than a resolver.
+func (p *socksPolicy) dialAddress(port string, ip net.IP) (string, error) {
+	if ip == nil {
+		return "", fmt.Errorf("no destination address")
 	}
 	n, err := strconv.Atoi(port)
 	if err != nil || n < 1 || n > 65535 {
 		return "", fmt.Errorf("invalid destination port %q", port)
 	}
-	if p.mode == Socks5Scheme {
-		// socks5 means the client resolved already; a name in a socks5 request
-		// is a client bug, and resolving it is the forgiving reading of the
-		// protocol (curl and Chrome effectively do this).
-		return host, nil
-	}
-
-	ips, err := net.LookupHost(host)
-	if err != nil {
-		return "", fmt.Errorf("resolve %s: %w", host, err)
-	}
-	if len(ips) == 0 {
-		return "", fmt.Errorf("resolve %s: no addresses", host)
-	}
-	// The policy was checked against the name; check the resolved address too,
-	// so "deny 127.0.0.0/8" cannot be bypassed by a name pointing at loopback.
-	for _, s := range ips {
-		if !p.allowDestination("", net.ParseIP(s)) {
-			return "", fmt.Errorf("destination not allowed (resolved %s -> %s)", host, s)
-		}
-	}
-	return ips[0], nil
+	return ip.String(), nil
 }
 
-// resolveAndDial applies the destination policy before dialing anything.
-func (p *socksPolicy) resolveAndDial(host string, port string, ip net.IP) (net.Conn, error) {
-	if !p.allowDestination(host, ip) {
+// dialDestination applies the destination policy before dialing anything.
+func (p *socksPolicy) dialDestination(port string, ip net.IP) (net.Conn, error) {
+	if ip == nil {
+		// Checked before the policy so the operator sees "no destination
+		// address" rather than a filter refusal. allowDestination rejects a nil
+		// address as well, so this is not the only line of defence.
+		return nil, fmt.Errorf("no destination address")
+	}
+	if !p.allowDestination(ip) {
 		return nil, fmt.Errorf("destination not allowed")
 	}
-	target, err := p.dialTarget(host, port, ip)
+	target, err := p.dialAddress(port, ip)
 	if err != nil {
 		return nil, err
 	}
@@ -317,12 +272,19 @@ func ValidateSocksRoute(route utils.ProxyRouteConfig) string {
 	if scheme := socksSchemeOf(route.Target); scheme != "" &&
 		strings.HasPrefix(scheme, "socks") && !IsSocksScheme(scheme) {
 		return "Route \"" + route.Name + "\" uses unsupported SOCKS scheme \"" + scheme +
-			"\": supported targets are socks5:// and socks5h://"
+			"\": the only supported target is socks5://"
+	}
+
+	// socks5h is refused by name, not folded into the generic scheme error: an
+	// operator who wrote it means "resolve for me", and the useful answer is
+	// that Cosmos does not do outbound resolution, not a list of schemes.
+	if scheme := socksSchemeOf(route.Target); scheme == "socks5h" {
+		return "Route \"" + route.Name + "\" uses socks5h, which asks Cosmos to resolve destination hostnames. Cosmos is a reverse proxy and does not resolve outbound names: use socks5://, where the client sends the address"
 	}
 
 	if !IsSocksScheme(socksSchemeOf(route.Target)) {
 		if route.SocksAuthMode != "" || len(route.SocksAllowDestinations) > 0 || len(route.SocksDenyDestinations) > 0 {
-			return "Route \"" + route.Name + "\" sets SOCKS relay options but its target is not socks5/socks5h"
+			return "Route \"" + route.Name + "\" sets SOCKS relay options but its target is not socks5"
 		}
 		return ""
 	}

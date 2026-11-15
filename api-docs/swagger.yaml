@@ -3105,8 +3105,10 @@ definitions:
       SocksAllowDestinations:
         description: |-
           SocksAllowDestinations / SocksDenyDestinations restrict where a relay may
-          connect: CIDRs, IPs, hostnames, or "*.example.com" wildcards. Deny wins
-          over allow; an empty allow list means "allow everything".
+          connect: IP addresses and CIDRs only. Deny wins over allow; an empty allow
+          list means "allow everything". Hostnames are rejected: the relay dials the
+          address the client sends and does not resolve names, so a hostname rule
+          cannot be enforced.
         items:
           type: string
         type: array

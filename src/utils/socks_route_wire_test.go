@@ -23,7 +23,7 @@ import (
 const uiSocksPayload = `{
   "name": "socks-out",
   "mode": "PROXY",
-  "target": "socks5h://",
+  "target": "socks5://",
   "host": "0.0.0.0:1080",
   "useHost": true,
   "SocksAuthMode": "password",
@@ -41,8 +41,8 @@ func TestRouteDecodesUICamelCaseSocksPayload(t *testing.T) {
 	if len(r.SocksDenyDestinations) != 2 {
 		t.Errorf("SocksDenyDestinations = %v, want 2 entries", r.SocksDenyDestinations)
 	}
-	if r.Target != "socks5h://" {
-		t.Errorf("Target = %q, want socks5h://", r.Target)
+	if r.Target != "socks5://" {
+		t.Errorf("Target = %q, want socks5://", r.Target)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestSocksFieldsMarshalUnderGoFieldNames(t *testing.T) {
 	// any client that reads the config back (SDK, CLI, tests).
 	r := ProxyRouteConfig{
 		Name:                  "socks-out",
-		Target:                "socks5h://",
+		Target:                "socks5://",
 		SocksAuthMode:         "password",
 		SocksDenyDestinations: []string{"127.0.0.0/8"},
 	}

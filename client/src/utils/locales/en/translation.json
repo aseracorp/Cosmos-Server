@@ -2373,15 +2373,13 @@
   "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
   "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)",
   "mgmt.urls.edit.socksSettings.socksTitle": "SOCKS relay",
-  "mgmt.urls.edit.socksSettings.socksInfo": "This route is an outbound SOCKS5 relay, not a web proxy. Clients connect to the listening port above and ask Cosmos to dial destinations on their behalf. Authentication uses Cosmos accounts, so this relay is only as private as the accounts you allow to log in.",
-  "mgmt.urls.edit.socksSettings.capabilities": "Scheme {{scheme}}: {{resolve}}. UDP datagrams are not relayed.",
-  "mgmt.urls.edit.socksSettings.resolvesCosmos": "Cosmos resolves host names",
-  "mgmt.urls.edit.socksSettings.resolvesClient": "the client resolves host names",
+  "mgmt.urls.edit.socksSettings.socksInfo": "This route is an outbound SOCKS5 relay, not a web proxy. Clients connect to the listening port above and ask Cosmos to dial destinations on their behalf. Cosmos dials the address the client sends and never resolves host names, so clients resolve the name first. Authentication uses Cosmos accounts, so this relay is only as private as the accounts you allow to log in.",
+  "mgmt.urls.edit.socksSettings.capabilities": "socks5: the client resolves host names and Cosmos dials the address it is given. UDP datagrams are not relayed.",
   "mgmt.urls.edit.socksSettings.authMode.authModeLabel": "Client authentication",
   "mgmt.urls.edit.socksSettings.authMode.auto": "Automatic (allow anonymous clients)",
   "mgmt.urls.edit.socksSettings.authMode.noneChoice": "Allow anonymous clients",
   "mgmt.urls.edit.socksSettings.authMode.passwordChoice": "Require a Cosmos account (username + password)",
-  "mgmt.urls.edit.socksSettings.allow.destinationsLabel": "Allowed destinations (empty = any). Hosts, *.domains, IPs or CIDRs, comma separated",
-  "mgmt.urls.edit.socksSettings.deny.destinationsLabel": "Denied destinations (deny wins over allow). IPs, CIDRs or hosts, comma separated",
-  "mgmt.urls.edit.socksSettings.invalidEntries": "Not valid destination entries: {{entries}}. Cosmos refuses to start a relay whose filter contains a typo."
+  "mgmt.urls.edit.socksSettings.allow.destinationsLabel": "Allowed destinations (empty = any). IP addresses or CIDRs, comma separated",
+  "mgmt.urls.edit.socksSettings.deny.destinationsLabel": "Denied destinations (deny wins over allow). IP addresses or CIDRs, comma separated",
+  "mgmt.urls.edit.socksSettings.invalidEntries": "Not valid destination entries: {{entries}}. Only IP addresses and CIDRs are accepted \u2014 host names cannot be enforced by a relay that does not resolve them, and Cosmos refuses to start a relay whose filter contains a typo."
 }

@@ -249,7 +249,7 @@ func socksRouteOnPort(scheme string, port int) utils.ProxyRouteConfig {
 
 func TestE2ERouteStartsRelayAndTunnelsARealRequest(t *testing.T) {
 	port := socksE2EPort(t)
-	addr := socksE2EListen(t, socksRouteOnPort("socks5h", port))
+	addr := socksE2EListen(t, socksRouteOnPort("socks5", port))
 	echo := socksE2EEcho(t, "upstream-body")
 
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
@@ -259,7 +259,7 @@ func TestE2ERouteStartsRelayAndTunnelsARealRequest(t *testing.T) {
 	defer conn.Close()
 
 	if m := socksE2EHandshake(t, conn, []byte{socksMethodNoAuth}); m != socksMethodNoAuth {
-		t.Fatalf("relay selected method %d, want no-auth (scheme default for socks5h)", m)
+		t.Fatalf("relay selected method %d, want no-auth (the scheme default for socks5)", m)
 	}
 
 	reply := socksE2ERequest(t, conn, socksCmdConnect, "127.0.0.1", socksPortOf(t, echo))
@@ -299,7 +299,7 @@ func socksPortOf(t *testing.T, hostPort string) int {
 
 func TestE2EPasswordRouteRefusesAnonymousAndTunnelsForAnAccount(t *testing.T) {
 	port := socksE2EPort(t)
-	route := socksRouteOnPort("socks5h", port)
+	route := socksRouteOnPort("socks5", port)
 	route.SocksAuthMode = "password"
 	addr := socksE2EListen(t, route)
 	echo := socksE2EEcho(t, "authenticated-body")
@@ -345,7 +345,7 @@ func TestE2EPasswordRouteRefusesAnonymousAndTunnelsForAnAccount(t *testing.T) {
 
 func TestE2EBadCredentialsAreRefused(t *testing.T) {
 	port := socksE2EPort(t)
-	route := socksRouteOnPort("socks5h", port)
+	route := socksRouteOnPort("socks5", port)
 	route.SocksAuthMode = "password"
 	addr := socksE2EListen(t, route)
 
@@ -380,8 +380,8 @@ func TestE2EBadCredentialsAreRefused(t *testing.T) {
 // A socks route occupies a TCP port only. UDP ASSOCIATE is refused, and the
 // refusal has to come from the production wiring: a route that bound a UDP
 // socket it never answers would squat a port a udp route needs.
-func TestE2EUDPAssociateIsRefusedOnBothSchemes(t *testing.T) {
-	for _, scheme := range []string{"socks5", "socks5h"} {
+func TestE2EUDPAssociateIsRefused(t *testing.T) {
+	for _, scheme := range []string{"socks5"} {
 		port := socksE2EPort(t)
 		addr := socksE2EListen(t, socksRouteOnPort(scheme, port))
 
@@ -420,7 +420,7 @@ func TestE2EUDPAssociateIsRefusedOnBothSchemes(t *testing.T) {
 
 func TestE2EOpenTunnelDoesNotBlockTeardown(t *testing.T) {
 	port := socksE2EPort(t)
-	addr := socksE2EListen(t, socksRouteOnPort("socks5h", port))
+	addr := socksE2EListen(t, socksRouteOnPort("socks5", port))
 	echo := socksE2EEcho(t, "held-open")
 
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
@@ -457,7 +457,7 @@ func TestE2EOpenTunnelDoesNotBlockTeardown(t *testing.T) {
 
 func TestE2EDeletedRouteReleasesPortForANewRoute(t *testing.T) {
 	port := socksE2EPort(t)
-	first := socksRouteOnPort("socks5h", port)
+	first := socksRouteOnPort("socks5", port)
 	addr := socksE2EListen(t, first)
 
 	// A second route claims the same port. ResolvePortClaims reports the clash
@@ -483,7 +483,7 @@ func TestE2EDeletedRouteReleasesPortForANewRoute(t *testing.T) {
 
 func TestE2EConfigChangeRebindsRelayWithNewPolicy(t *testing.T) {
 	port := socksE2EPort(t)
-	route := socksRouteOnPort("socks5h", port)
+	route := socksRouteOnPort("socks5", port)
 	addr := socksE2EListen(t, route)
 
 	// Anonymous to start.
@@ -525,7 +525,7 @@ func TestE2EConfigChangeRebindsRelayWithNewPolicy(t *testing.T) {
 
 func TestE2EDenyListBlocksConnectThroughProductionPath(t *testing.T) {
 	port := socksE2EPort(t)
-	route := socksRouteOnPort("socks5h", port)
+	route := socksRouteOnPort("socks5", port)
 	route.SocksDenyDestinations = []string{"127.0.0.0/8"}
 	addr := socksE2EListen(t, route)
 	echo := socksE2EEcho(t, "must-not-reach")

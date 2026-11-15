@@ -2336,15 +2336,13 @@
   "mgmt.urls.edit.basicSecurity.robotsPolicy.allow": "Allow indexing (serves robots.txt, no X-Robots-Tag)",
   "mgmt.urls.edit.basicSecurity.robotsPolicy.block": "Ask search engines not to index (X-Robots-Tag: noindex)",
   "mgmt.urls.edit.socksSettings.socksTitle": "Relais SOCKS",
-  "mgmt.urls.edit.socksSettings.socksInfo": "Cette route est un relais SOCKS5 sortant, pas un proxy web. Les clients se connectent au port d'écoute ci-dessus et demandent à Cosmos de contacter les destinations pour leur compte. L'authentification utilise les comptes Cosmos : ce relais n'est privé que des comptes que vous autorisez à se connecter.",
-  "mgmt.urls.edit.socksSettings.capabilities": "Schéma {{scheme}} : {{resolve}}. Les datagrammes UDP ne sont pas relayés.",
-  "mgmt.urls.edit.socksSettings.resolvesCosmos": "Cosmos résout les noms d'hôte",
-  "mgmt.urls.edit.socksSettings.resolvesClient": "le client résout les noms d'hôte",
+  "mgmt.urls.edit.socksSettings.socksInfo": "Cette route est un relais SOCKS5 sortant, pas un proxy web. Les clients se connectent au port d'écoute ci-dessus et demandent à Cosmos de contacter les destinations pour leur compte. Cosmos contacte l'adresse envoyée par le client et ne résout pas les noms d'hôte : le client résout donc le nom lui-même. L'authentification utilise les comptes Cosmos : ce relais n'est privé que des comptes que vous autorisez à se connecter.",
+  "mgmt.urls.edit.socksSettings.capabilities": "socks5 : le client résout les noms d'hôte et Cosmos contacte l'adresse qu'il reçoit. Les datagrammes UDP ne sont pas relayés.",
   "mgmt.urls.edit.socksSettings.authMode.authModeLabel": "Authentification du client",
   "mgmt.urls.edit.socksSettings.authMode.auto": "Automatique (autoriser les clients anonymes)",
   "mgmt.urls.edit.socksSettings.authMode.noneChoice": "Autoriser les clients anonymes",
   "mgmt.urls.edit.socksSettings.authMode.passwordChoice": "Exiger un compte Cosmos (identifiant + mot de passe)",
-  "mgmt.urls.edit.socksSettings.allow.destinationsLabel": "Destinations autorisées (vide = toutes). Hôtes, *.domaines, IP ou CIDR, séparés par des virgules",
-  "mgmt.urls.edit.socksSettings.deny.destinationsLabel": "Destinations refusées (deny l'emporte sur allow). IP, CIDR ou hôtes, séparés par des virgules",
-  "mgmt.urls.edit.socksSettings.invalidEntries": "Entrées de destination invalides : {{entries}}. Cosmos refuse de démarrer un relais dont le filtre contient une faute de frappe."
+  "mgmt.urls.edit.socksSettings.allow.destinationsLabel": "Destinations autorisées (vide = toutes). Adresses IP ou CIDR, séparées par des virgules",
+  "mgmt.urls.edit.socksSettings.deny.destinationsLabel": "Destinations refusées (deny l'emporte sur allow). Adresses IP ou CIDR, séparées par des virgules",
+  "mgmt.urls.edit.socksSettings.invalidEntries": "Entrées de destination invalides : {{entries}}. Seules les adresses IP et les CIDR sont acceptées - un relais qui ne résout pas les noms ne peut pas appliquer de règle par nom, et Cosmos refuse de démarrer un relais dont le filtre contient une faute de frappe."
 }

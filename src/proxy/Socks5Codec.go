@@ -14,36 +14,30 @@ import (
 // and the connection lifecycle can be read apart, and so the codec can be
 // exercised without sockets.
 
-// socksRequest is a decoded client request. Exactly one of host/ip is populated,
-// depending on the address type the client used.
+// socksRequest is a decoded client request. ip is the destination: a socks5
+// request carries an IPv4/IPv6 address, and a request carrying a domain is
+// refused in readRequest, so there is no name to carry.
 type socksRequest struct {
 	command byte
-	host    string
 	ip      net.IP
 	port    string
 }
 
 func (r socksRequest) String() string {
-	switch {
-	case r.host != "":
-		return r.host + ":" + r.port
-	case r.ip != nil:
-		return r.ip.String() + ":" + r.port
-	default:
+	if r.ip == nil {
 		return "?"
 	}
+	return r.ip.String() + ":" + r.port
 }
 
+// socksAddr is the bound-address field of a reply. It echoes the address the
+// client asked for, which is always numeric here.
 type socksAddr struct {
 	ip   net.IP
-	host string
 	port string
 }
 
 func socksAddrFrom(req socksRequest) socksAddr {
-	if req.host != "" {
-		return socksAddr{host: req.host, port: req.port}
-	}
 	ip := req.ip
 	if ip == nil {
 		ip = net.IPv4zero
@@ -147,20 +141,15 @@ func readRequest(r io.Reader) (socksRequest, error) {
 		}
 		req.ip = net.IP(ip)
 	case socksATYPDomain:
-		n, err := readByte(r)
-		if err != nil {
-			return req, err
-		}
-		if n == 0 {
-			return req, fmt.Errorf("empty domain in request")
-		}
-		host := make([]byte, n)
-		if _, err := io.ReadFull(r, host); err != nil {
-			return req, err
-		}
-		req.host = string(host)
+		// RFC 1928 allows a client to send a domain and asks the server to
+		// resolve it. That is the remote-resolution mode (socks5h), and this
+		// relay does not do it: Cosmos is a reverse proxy, and resolving a
+		// client's outbound names is a forward-proxy feature. Refused with the
+		// address-type code, so a client that sends ATYP=0x03 gets a clean
+		// answer and resolves the name itself.
+		return req, fmt.Errorf("domain destinations are not supported: this relay dials addresses, a socks5 client must resolve the name itself")
 	default:
-		return req, fmt.Errorf("unsupported address type %d", atyp)
+		return req, fmt.Errorf("address type %d is not supported", atyp)
 	}
 
 	var pb [2]byte
@@ -187,12 +176,6 @@ func writeAuthReply(w io.Writer, status byte) error {
 // client hang waiting for bytes that never arrive.
 func encodeAddr(buf []byte, addr socksAddr) ([]byte, error) {
 	switch {
-	case addr.host != "":
-		if len(addr.host) > 255 {
-			return nil, fmt.Errorf("domain too long for a socks address: %s", addr.host)
-		}
-		buf = append(buf, socksATYPDomain, byte(len(addr.host)))
-		buf = append(buf, addr.host...)
 	case addr.ip != nil && len(addr.ip) == 16 && addr.ip.To4() == nil:
 		buf = append(buf, socksATYPIPv6)
 		buf = append(buf, addr.ip...)
@@ -238,10 +221,11 @@ func socksRepForError(err error) byte {
 	switch {
 	case strings.Contains(msg, "not allowed"):
 		return socksRepNotAllowed
-	case strings.Contains(msg, "no addresses"), strings.Contains(msg, "no such host"):
-		return socksRepHostUnreach
-	case strings.Contains(msg, "resolve"):
-		return socksRepHostUnreach
+	case strings.Contains(msg, "not supported"):
+		// A domain destination: the client must resolve it and retry with an
+		// address. This is permanent for this relay, so it is not the retryable
+		// "host unreachable" code.
+		return socksRepATYPNotSupport
 	case strings.Contains(msg, "refused"):
 		return socksRepConnRefused
 	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline"):

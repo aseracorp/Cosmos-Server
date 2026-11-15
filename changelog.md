@@ -10,7 +10,7 @@
  - Smartshield dashboard to edit bans
  - Smartshield whitelisting
  - Improve TCP proxy support
- - SOCKS5 relay routes (`socks5://`, `socks5h://` targets): authenticated outbound TCP proxy with Cosmos accounts and destination allow/deny filters
+ - SOCKS5 relay routes (`socks5://` target): authenticated outbound TCP proxy with Cosmos accounts and IP/CIDR destination allow/deny filters
  - Domains and their certificates are shared across the Constellation
  - Reuse the same Let's Encrypt account instead of creating one per order, avoiding rate limits
  - HTTP and HTTPS domains can coexist (redirects and secure cookies are decided per hostname)

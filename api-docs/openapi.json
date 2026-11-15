@@ -19373,7 +19373,7 @@
             "type": "integer"
           },
           "SocksAllowDestinations": {
-            "description": "SocksAllowDestinations / SocksDenyDestinations restrict where a relay may\nconnect: CIDRs, IPs, hostnames, or \"*.example.com\" wildcards. Deny wins\nover allow; an empty allow list means \"allow everything\".",
+            "description": "SocksAllowDestinations / SocksDenyDestinations restrict where a relay may\nconnect: IP addresses and CIDRs only. Deny wins over allow; an empty allow\nlist means \"allow everything\". Hostnames are rejected: the relay dials the\naddress the client sends and does not resolve names, so a hostname rule\ncannot be enforced.",
             "type": "array",
             "items": {
               "type": "string"

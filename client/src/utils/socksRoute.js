@@ -7,31 +7,20 @@
 // The server is the source of truth; this module exists to show the same rules
 // before a save, not to enforce them.
 
-// The two schemes SOCKS clients actually speak. socks5t is deliberately
-// absent: no URL parser, curl, browser or library accepts it (curl has
-// --socks5 and --socks5-hostname, not socks5t), and the relay is TCP-only, so
-// there is no UDP capability for a third scheme to signal.
-const SCHEMES = ['socks5://', 'socks5h://'];
+// The one scheme a SOCKS relay route can use.
+//
+// socks5h (--socks5-hostname) is deliberately absent: it asks Cosmos to resolve
+// the destination hostname, which is a forward-proxy feature. Cosmos is a
+// reverse proxy, and every client that reaches a route has already resolved the
+// name, so a relay here dials addresses and never resolves. socks5t is absent
+// too: no URL parser, curl, browser or library accepts it, and the relay is
+// TCP-only, so there is no UDP capability for a scheme to signal.
+const SCHEMES = ['socks5://'];
 
 /** True when this route is a SOCKS relay (target scheme selects the feature). */
 export const isSocksTarget = (target) => {
   if (!target || typeof target !== 'string') return false;
-  const lower = target.toLowerCase();
-  return SCHEMES.some((s) => lower.startsWith(s));
-};
-
-/**
- * Capability signals encoded by the scheme. socks5 vs socks5h says who
- * resolves the hostname; that is the whole split.
- */
-export const socksCapabilities = (target) => {
-  const lower = (target || '').toLowerCase();
-  return {
-    // socks5 asks the client to resolve; socks5h asks Cosmos to. Cosmos
-    // resolves both, so socks5 here is a client-side hint, not a behavioural
-    // switch -- the editor says so rather than pretending.
-    resolvesOnCosmos: lower.startsWith('socks5h://'),
-  };
+  return SCHEMES.some((s) => target.toLowerCase().startsWith(s));
 };
 
 const splitList = (value) => {
@@ -48,9 +37,11 @@ export const normalizeDestinationList = (value) => {
 };
 
 /**
- * A destination entry is a bare host, `*.domain`, an IPv4/IPv6 address or a CIDR.
- * Deliberately strict: a typo in a deny list is a hole, so the editor rejects
- * what the backend would reject at bind time.
+ * A destination entry is an IPv4/IPv6 address or a CIDR. Host names are not
+ * entries: the relay dials the address the client sent and never resolves, so a
+ * hostname rule would look like protection in the editor and match nothing at
+ * runtime. Deliberately strict, matching the backend, so the user is told
+ * before saving rather than at bind time.
  */
 export const destinationEntryIsInvalid = (entry) => {
   const s = String(entry || '').trim();
@@ -68,18 +59,13 @@ export const destinationEntryIsInvalid = (entry) => {
     if (n < 0 || n > max) return true;
     return ipLiteralIsInvalid(addr);
   }
-  if (s.startsWith('*.')) {
-    const rest = s.slice(2);
-    return !/^[a-z0-9.-]+$/i.test(rest) || !rest.includes('.');
-  }
-  // A host name contains a dot; a bare IP literal is fine too.
   if (s.includes(':')) return ipLiteralIsInvalid(s);
   // Dotted-quad-shaped entries are IPv4 literals, not host names: without this
   // split, "300.1.1.1" reads as a legal hostname and the backend rejects it at
   // bind time -- after the user already saved.
   if (/^[0-9.]+$/.test(s)) return ipLiteralIsInvalid(s);
-  if (s.includes('.')) return !/^[a-z0-9.*-]+$/i.test(s);
-  return true; // no dot, no colon: not a host, not a CIDR, not an IP
+  // Anything else with a dot is a host name, which this relay cannot enforce.
+  return true;
 };
 
 const ipLiteralIsInvalid = (addr) => {

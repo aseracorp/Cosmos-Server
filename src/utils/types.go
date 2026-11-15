@@ -496,8 +496,10 @@ type ProxyRouteConfig struct {
 	// (utils.CheckPassword) on every connection. Ignored by non-socks targets.
 	SocksAuthMode string `yaml:"socks_auth_mode,omitempty" json:"SocksAuthMode,omitempty"`
 	// SocksAllowDestinations / SocksDenyDestinations restrict where a relay may
-	// connect: CIDRs, IPs, hostnames, or "*.example.com" wildcards. Deny wins
-	// over allow; an empty allow list means "allow everything".
+	// connect: IP addresses and CIDRs only. Deny wins over allow; an empty allow
+	// list means "allow everything". Hostnames are rejected: the relay dials the
+	// address the client sends and does not resolve names, so a hostname rule
+	// cannot be enforced.
 	SocksAllowDestinations []string `yaml:"socks_allow_destinations,omitempty" json:"SocksAllowDestinations,omitempty"`
 	SocksDenyDestinations  []string `yaml:"socks_deny_destinations,omitempty" json:"SocksDenyDestinations,omitempty"`
 	// ManagedByKind / ManagedByName identify the feature that owns this route (see ManagedByKinds); both empty for a user-created route.

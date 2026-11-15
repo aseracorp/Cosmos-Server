@@ -20,7 +20,7 @@ import { CosmosCheckbox, CosmosCollapse, CosmosFormDivider, CosmosInputText, Cos
 import { CosmosContainerPicker } from '../users/containerPicker';
 import { snackit } from '../../../api/wrap';
 import { IsRouteSocketProxy, ValidateRouteSchema, getHostnameFromName, sanitizeRoute } from '../../../utils/routes';
-import { invalidDestinationEntries, isSocksRelayRoute, sanitizeSocksFields, socksCapabilities } from '../../../utils/socksRoute';
+import { invalidDestinationEntries, isSocksRelayRoute, sanitizeSocksFields } from '../../../utils/socksRoute';
 import { isDomain } from '../../../utils/indexs';
 import { useTranslation } from 'react-i18next';
 import { FilePickerButton } from '../../../components/filePicker';
@@ -330,19 +330,11 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                       </Alert>
                     </Grid>
 
-                    {(() => {
-                      const caps = socksCapabilities(formik.values.Target);
-                      return <Grid item xs={12}>
-                        <Alert color='info'>
-                          {t('mgmt.urls.edit.socksSettings.capabilities', {
-                            scheme: formik.values.Target,
-                            resolve: t(caps.resolvesOnCosmos
-                              ? 'mgmt.urls.edit.socksSettings.resolvesCosmos'
-                              : 'mgmt.urls.edit.socksSettings.resolvesClient'),
-                          })}
-                        </Alert>
-                      </Grid>;
-                    })()}
+                    <Grid item xs={12}>
+                      <Alert color='info'>
+                        {t('mgmt.urls.edit.socksSettings.capabilities')}
+                      </Alert>
+                    </Grid>
 
                     <CosmosSelect
                       name="SocksAuthMode"
@@ -358,7 +350,7 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                     <CosmosInputText
                       name="SocksAllowDestinations"
                       label={t('mgmt.urls.edit.socksSettings.allow.destinationsLabel')}
-                      placeholder="example.com, *.example.com, 10.0.0.0/8"
+                      placeholder="10.0.0.0/8, 192.168.1.0/24, 2001:db8::/32"
                       formik={formik}
                     />
                     {(() => {
@@ -373,7 +365,7 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                     <CosmosInputText
                       name="SocksDenyDestinations"
                       label={t('mgmt.urls.edit.socksSettings.deny.destinationsLabel')}
-                      placeholder="127.0.0.0/8, 10.0.0.0/8, metadata.google.internal"
+                      placeholder="127.0.0.0/8, 10.0.0.0/8, 169.254.169.254/32"
                       formik={formik}
                     />
                     {(() => {
