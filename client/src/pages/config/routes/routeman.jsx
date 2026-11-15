@@ -20,6 +20,7 @@ import { CosmosCheckbox, CosmosCollapse, CosmosFormDivider, CosmosInputText, Cos
 import { CosmosContainerPicker } from '../users/containerPicker';
 import { snackit } from '../../../api/wrap';
 import { IsRouteSocketProxy, ValidateRouteSchema, getHostnameFromName, sanitizeRoute } from '../../../utils/routes';
+import { invalidDestinationEntries, isSocksRelayRoute, sanitizeSocksFields } from '../../../utils/socksRoute';
 import { isDomain } from '../../../utils/indexs';
 import { useTranslation } from 'react-i18next';
 import { FilePickerButton } from '../../../components/filePicker';
@@ -103,6 +104,13 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
           LBMode: routeConfig.LBMode || '',
           LBStickyMode: routeConfig.LBStickyMode === true,
           AdditionalTargets: routeConfig.AdditionalTargets || [],
+          // SOCKS relay options. Lists are kept as comma-separated strings while
+          // editing (same convention as WhitelistInboundIPs) and parsed on submit.
+          SocksAuthMode: routeConfig.SocksAuthMode || '',
+          SocksAllowDestinations: routeConfig.SocksAllowDestinations
+            ? routeConfig.SocksAllowDestinations.join(', ') : '',
+          SocksDenyDestinations: routeConfig.SocksDenyDestinations
+            ? routeConfig.SocksDenyDestinations.join(', ') : '',
           _ExtraHeaders: routeConfig.ExtraHeaders
             ? Object.entries(routeConfig.ExtraHeaders).map(([key, value]) => ({ key, value }))
             : [],
@@ -136,6 +144,7 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
             delete fullValues._ExtraHeaders;
 
             fullValues = sanitizeRoute(fullValues);
+            fullValues = sanitizeSocksFields(fullValues);
 
             if(IsRouteSocketProxy(fullValues)) {
               if(!fullValues.Host.includes(':')) {
@@ -194,6 +203,8 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
           if (newRoute && routeNames.includes(fullValues.Name)) {
             return { Name: t('navigation.market.sources.nameNotUniqueValidation')  }
           }
+
+          fullValues = sanitizeSocksFields(fullValues);
 
           if(IsRouteSocketProxy(fullValues)) {
             if(!fullValues.Host.includes(':')) {
@@ -309,6 +320,62 @@ const RouteManagement = ({ routeConfig, routeNames, config, TargetContainer, noC
                       onChange={(e) => {
                       }}
                     />
+                    </>}
+
+                  {isSocksRelayRoute(formik.values) && <>
+                    <CosmosFormDivider title={t('mgmt.urls.edit.socksSettings.socksTitle')} />
+                    <Grid item xs={12}>
+                      <Alert severity='info'>
+                        {t('mgmt.urls.edit.socksSettings.socksInfo')}
+                      </Alert>
+                    </Grid>
+
+                    <Grid item xs={12}>
+                      <Alert color='info'>
+                        {t('mgmt.urls.edit.socksSettings.capabilities')}
+                      </Alert>
+                    </Grid>
+
+                    <CosmosSelect
+                      name="SocksAuthMode"
+                      label={t('mgmt.urls.edit.socksSettings.authMode.authModeLabel')}
+                      formik={formik}
+                      options={[
+                        ['', t('mgmt.urls.edit.socksSettings.authMode.auto')],
+                        ['none', t('mgmt.urls.edit.socksSettings.authMode.noneChoice')],
+                        ['password', t('mgmt.urls.edit.socksSettings.authMode.passwordChoice')],
+                      ]}
+                    />
+
+                    <CosmosInputText
+                      name="SocksAllowDestinations"
+                      label={t('mgmt.urls.edit.socksSettings.allow.destinationsLabel')}
+                      placeholder="10.0.0.0/8, 192.168.1.0/24, 2001:db8::/32"
+                      formik={formik}
+                    />
+                    {(() => {
+                      const bad = invalidDestinationEntries(formik.values.SocksAllowDestinations);
+                      return bad.length > 0 ? <Grid item xs={12}>
+                        <Alert severity='warning'>
+                          {t('mgmt.urls.edit.socksSettings.invalidEntries', { entries: bad.join(', ') })}
+                        </Alert>
+                      </Grid> : null;
+                    })()}
+
+                    <CosmosInputText
+                      name="SocksDenyDestinations"
+                      label={t('mgmt.urls.edit.socksSettings.deny.destinationsLabel')}
+                      placeholder="127.0.0.0/8, 10.0.0.0/8, 169.254.169.254/32"
+                      formik={formik}
+                    />
+                    {(() => {
+                      const bad = invalidDestinationEntries(formik.values.SocksDenyDestinations);
+                      return bad.length > 0 ? <Grid item xs={12}>
+                        <Alert severity='warning'>
+                          {t('mgmt.urls.edit.socksSettings.invalidEntries', { entries: bad.join(', ') })}
+                        </Alert>
+                      </Grid> : null;
+                    })()}
                     </>}
 
                   {!IsRouteSocketProxy(formik.values) && <>

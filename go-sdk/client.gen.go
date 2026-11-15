@@ -2260,7 +2260,18 @@ type UtilsProxyRouteConfig struct {
 	ManagedByName *string `json:"ManagedByName,omitempty"`
 
 	// ManagedByVersion ManagedByVersion is the owner's spec version this copy was rendered from (deployments only; see the routes-only apply in scheduler_node.go).
-	ManagedByVersion          *int                          `json:"ManagedByVersion,omitempty"`
+	ManagedByVersion *int `json:"ManagedByVersion,omitempty"`
+	// SocksAllowDestinations SocksAllowDestinations / SocksDenyDestinations restrict where a relay may
+	// connect: IP addresses and CIDRs only. Deny wins over allow; an empty allow
+	// list means "allow everything". Hostnames are rejected: the relay dials the
+	// address the client sends and does not resolve names, so a hostname rule
+	// cannot be enforced.
+	SocksAllowDestinations *[]string `json:"SocksAllowDestinations,omitempty"`
+	// SocksAuthMode SocksAuthMode gates the SOCKS relay's username/password subnegotiation:
+	// "" or "none" is anonymous, "password" requires a Cosmos account
+	// (utils.CheckPassword) on every connection. Ignored by non-socks targets.
+	SocksAuthMode             *string                       `json:"SocksAuthMode,omitempty"`
+	SocksDenyDestinations     *[]string                     `json:"SocksDenyDestinations,omitempty"`
 	AcceptInsecureHTTPSTarget *bool                         `json:"acceptInsecureHTTPSTarget,omitempty"`
 	AddionalFilters           *[]UtilsAddionalFiltersConfig `json:"addionalFilters,omitempty"`
 	AdminOnly                 *bool                         `json:"adminOnly,omitempty"`

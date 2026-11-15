@@ -51,3 +51,4 @@ terraform.tfstate.*
 ruvector.db
 tickets/
 CLAUDE.md
+CRON

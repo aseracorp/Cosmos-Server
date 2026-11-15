@@ -19372,6 +19372,23 @@
             "description": "ManagedByVersion is the owner's spec version this copy was rendered from (deployments only; see the routes-only apply in scheduler_node.go).",
             "type": "integer"
           },
+          "SocksAllowDestinations": {
+            "description": "SocksAllowDestinations / SocksDenyDestinations restrict where a relay may\nconnect: IP addresses and CIDRs only. Deny wins over allow; an empty allow\nlist means \"allow everything\". Hostnames are rejected: the relay dials the\naddress the client sends and does not resolve names, so a hostname rule\ncannot be enforced.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "SocksAuthMode": {
+            "description": "SocksAuthMode gates the SOCKS relay's username/password subnegotiation:\n\"\" or \"none\" is anonymous, \"password\" requires a Cosmos account\n(utils.CheckPassword) on every connection. Ignored by non-socks targets.",
+            "type": "string"
+          },
+          "SocksDenyDestinations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "acceptInsecureHTTPSTarget": {
             "type": "boolean"
           },
