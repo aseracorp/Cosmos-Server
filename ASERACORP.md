@@ -75,7 +75,7 @@ Verified by **patch-id** (`git show <fork commit> | git patch-id`) matched again
 | `c15b1b2c` | `fix(build)`: correct Pro-leak guard regex in `scripts/pre-commit` | **none** — upstream's own hook, see **Traps** | — |
 | `3e6e4093` | `chore(update)`: check updates on `aseracorp` (fork #44) | **none** — deliberate fork identity, keep out of upstream | — |
 | `fe1f2d1d` | `chore`: regenerate `api-docs/` + Go SDK (follows #590/#599) | — (chore) | — |
-| branch `feat/socks5-relay-routes` (`1eb395f2` relay, `f05e2de1` editor, `b0b2022b` wire format, `c3a6857e` e2e tests, `e9319dbb` TCP-only) | `feat(proxy)`: SOCKS5 relay routes — `socks5`/`socks5h` target schemes, RFC 1928 CONNECT + RFC 1929 auth, account-backed credentials, destination allow/deny, TCP-only (UDP ASSOCIATE and BIND refused); editor section + wire contract tests | **none** — fork-only, needs a PR | — (on branch, not landed on `unstable` yet) |
+| branch `feat/socks5-relay-routes` (`1eb395f2` relay, `f05e2de1` editor, `b0b2022b` wire format, `c3a6857e` e2e tests, `e9319dbb` TCP-only, `6835f36a` docs) | `feat(proxy)`: SOCKS5 relay routes — `socks5`/`socks5h` target schemes, RFC 1928 CONNECT + RFC 1929 auth, account-backed credentials, destination allow/deny, TCP-only (UDP ASSOCIATE and BIND refused); editor section + wire contract tests | [#58](https://github.com/aseracorp/Cosmos-Server/pull/58) — open against **fork** `unstable` | — (on branch, not landed on `unstable` yet) |
 
 Fork contributions **already merged** upstream: [#569](https://github.com/azukaar/Cosmos-Server/pull/569) (fix zram/swap shown under disks).
 
