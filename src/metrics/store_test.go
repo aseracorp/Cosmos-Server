@@ -19,6 +19,7 @@ func setupMetricsStore(t *testing.T) {
 	lock <- true
 	dataBuffer = map[string]DataPush{}
 	lastInserted = map[string]int{}
+	seenKeys = map[string]bool{}
 	lastHourPool = time.Time{}
 	lastDayPool = time.Time{}
 	<-lock
