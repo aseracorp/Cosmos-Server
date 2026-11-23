@@ -74,6 +74,7 @@ func API_ResetMetrics(w http.ResponseWriter, req *http.Request) {
 	lock <- true
 	dataBuffer = map[string]DataPush{}
 	lastInserted = map[string]int{}
+	seenKeys = map[string]bool{}
 	<-lock
 
 	if err := resetLocalMetrics(); err != nil {

@@ -202,8 +202,40 @@ func ModuloTime(start time.Time, modulo time.Duration) time.Time {
 
 var lastInserted = map[string]int{}
 
+// seenKeys records which decumulating keys already have a previous sample.
+// Zero is a legitimate counter reading, so lastInserted alone cannot tell
+// "no sample yet" from "the counter reads zero".
+var seenKeys = map[string]bool{}
+
 func PushSetMetric(key string, value int, def DataDef) {
 	go pushSetMetric(key, value, def)
+}
+
+// counterDelta turns two samples of a monotonic counter into the bytes/units
+// added between them.
+//
+// Counters do go backwards in real deployments: gopsutil sums /proc/net/dev
+// over every interface, so a veth, a docker bridge or a tailscale link going
+// away drops the aggregate; a NIC reload, a container restart or an agent
+// re-registering resets the counter to zero. Subtracting the previous sample
+// unconditionally then yields a large negative delta, which the "sum"
+// aggregation pools into the hour/day buckets and renders as negative network
+// traffic.
+//
+// A decrease is read as a reset: this sample carries no usable rate, so it
+// contributes nothing and the baseline is rebased to the new reading. The next
+// sample then measures from the reset point. That loses one sampling interval
+// of traffic and never produces a negative value, which is the trade the
+// dashboard needs — negative traffic is not a thing.
+func counterDelta(key string, value int) int {
+	if !seenKeys[key] {
+		// a single sample carries no rate information
+		return 0
+	}
+	if prev := lastInserted[key]; value >= prev {
+		return value - prev
+	}
+	return 0
 }
 
 func pushSetMetric(key string, value int, def DataDef) {
@@ -216,14 +248,7 @@ func pushSetMetric(key string, value int, def DataDef) {
 	defer func() { <-lock }()
 
 	if def.Decumulate || def.DecumulatePos {
-		if lastInserted[key] != 0 {
-			value = value - lastInserted[key]
-			if def.DecumulatePos && value < 0 {
-				value = 0
-			}
-		} else {
-			value = 0
-		}
+		value = counterDelta(key, value)
 	}
 
 	if dp, ok := dataBuffer[cacheKey]; ok {
@@ -261,6 +286,9 @@ func pushSetMetric(key string, value int, def DataDef) {
 	}
 
 	lastInserted[key] = originalValue
+	if def.Decumulate || def.DecumulatePos {
+		seenKeys[key] = true
+	}
 }
 
 func Run() {
@@ -289,6 +317,7 @@ func Run() {
 
 func Init() {
 	lastInserted = map[string]int{}
+	seenKeys = map[string]bool{}
 
 	Run()
 
